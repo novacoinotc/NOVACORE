@@ -19,32 +19,55 @@ const gradientColors = [
   { from: 'from-indigo-900/25', via: 'via-purple-900/15', to: 'to-violet-900/25' },
 ];
 
-// Shooting star directions
-type Direction = 'top-left' | 'top-right' | 'left' | 'right' | 'bottom-left' | 'bottom-right';
-
-const getShootingStarAnimation = (direction: Direction) => {
-  const animations: Record<Direction, { start: React.CSSProperties; end: { x: number; y: number }; rotation: number }> = {
-    'top-left': { start: { top: '-5%', right: '-5%' }, end: { x: -2000, y: 1200 }, rotation: 225 },
-    'top-right': { start: { top: '-5%', left: '-5%' }, end: { x: 2000, y: 1200 }, rotation: 135 },
-    'left': { start: { top: '30%', right: '-5%' }, end: { x: -2000, y: 200 }, rotation: 190 },
-    'right': { start: { top: '40%', left: '-5%' }, end: { x: 2000, y: 100 }, rotation: 10 },
-    'bottom-left': { start: { bottom: '-5%', right: '20%' }, end: { x: -1500, y: -800 }, rotation: 315 },
-    'bottom-right': { start: { bottom: '-5%', left: '20%' }, end: { x: 1500, y: -800 }, rotation: 45 },
-  };
-  return animations[direction];
-};
-
-const directions: Direction[] = ['top-left', 'top-right', 'left', 'right', 'bottom-left', 'bottom-right'];
-
+// Shooting star config - starts from edges, travels across screen
 const generateShootingStars = () => {
-  return Array.from({ length: 8 }, (_, i) => ({
-    id: i,
-    direction: directions[Math.floor(Math.random() * directions.length)],
-    duration: Math.random() * 1.5 + 0.8,
-    delay: Math.random() * 6,
-    size: Math.random() * 1.5 + 1,
-    length: Math.random() * 60 + 100,
-  }));
+  return Array.from({ length: 10 }, (_, i) => {
+    // Random starting position from any edge
+    const edge = Math.floor(Math.random() * 4); // 0=top, 1=right, 2=bottom, 3=left
+    let startX: number, startY: number, endX: number, endY: number, angle: number;
+
+    switch (edge) {
+      case 0: // From top
+        startX = Math.random() * 100;
+        startY = -5;
+        endX = startX + (Math.random() * 60 - 30);
+        endY = 120;
+        angle = Math.atan2(endY - startY, endX - startX) * (180 / Math.PI);
+        break;
+      case 1: // From right
+        startX = 105;
+        startY = Math.random() * 60;
+        endX = -20;
+        endY = startY + (Math.random() * 40 + 20);
+        angle = Math.atan2(endY - startY, endX - startX) * (180 / Math.PI);
+        break;
+      case 2: // From bottom (going up)
+        startX = Math.random() * 100;
+        startY = 105;
+        endX = startX + (Math.random() * 40 - 20);
+        endY = -20;
+        angle = Math.atan2(endY - startY, endX - startX) * (180 / Math.PI);
+        break;
+      default: // From left
+        startX = -5;
+        startY = Math.random() * 60;
+        endX = 120;
+        endY = startY + (Math.random() * 40 + 20);
+        angle = Math.atan2(endY - startY, endX - startX) * (180 / Math.PI);
+    }
+
+    return {
+      id: i,
+      startX,
+      startY,
+      endX,
+      endY,
+      angle,
+      duration: Math.random() * 1.2 + 0.6,
+      delay: Math.random() * 8 + i * 0.5,
+      tailLength: Math.random() * 40 + 60,
+    };
+  });
 };
 
 const generateParticles = (count: number) => {
@@ -81,7 +104,7 @@ export function MainLayout({ children }: MainLayoutProps) {
         className={`absolute inset-0 bg-gradient-to-br ${currentGradient.from} ${currentGradient.via} ${currentGradient.to}`}
       />
 
-      {/* Ambient glows - simplified */}
+      {/* Ambient glows */}
       <div className="absolute inset-0 pointer-events-none">
         <motion.div
           className="absolute w-[800px] h-[800px] bg-purple-500/10 rounded-full blur-[150px]"
@@ -97,42 +120,55 @@ export function MainLayout({ children }: MainLayoutProps) {
         />
       </div>
 
-      {/* Shooting stars - full screen, all directions */}
-      <div className="absolute inset-0 pointer-events-none">
-        {shootingStars.map((star) => {
-          const anim = getShootingStarAnimation(star.direction);
-          return (
-            <motion.div
-              key={star.id}
-              className="absolute"
-              style={{ ...anim.start }}
-              initial={{ opacity: 0, x: 0, y: 0 }}
-              animate={{
-                opacity: [0, 1, 1, 0],
-                x: [0, anim.end.x * 0.5, anim.end.x],
-                y: [0, anim.end.y * 0.5, anim.end.y],
+      {/* Shooting stars - dot with trail */}
+      <div className="absolute inset-0 pointer-events-none overflow-hidden">
+        {shootingStars.map((star) => (
+          <motion.div
+            key={star.id}
+            className="absolute"
+            style={{
+              left: `${star.startX}%`,
+              top: `${star.startY}%`,
+            }}
+            initial={{ opacity: 0 }}
+            animate={{
+              opacity: [0, 1, 1, 0],
+              left: [`${star.startX}%`, `${star.endX}%`],
+              top: [`${star.startY}%`, `${star.endY}%`],
+            }}
+            transition={{
+              duration: star.duration,
+              repeat: Infinity,
+              delay: star.delay,
+              repeatDelay: Math.random() * 5 + 3,
+              ease: "linear",
+            }}
+          >
+            {/* The star head - bright dot */}
+            <div
+              className="absolute rounded-full bg-white"
+              style={{
+                width: '3px',
+                height: '3px',
+                boxShadow: '0 0 4px 2px rgba(255,255,255,0.9), 0 0 8px 4px rgba(255,255,255,0.5)',
+                zIndex: 2,
               }}
-              transition={{
-                duration: star.duration,
-                repeat: Infinity,
-                delay: star.delay,
-                repeatDelay: Math.random() * 4 + 2,
-                ease: "linear",
+            />
+            {/* The trail - gradient that fades */}
+            <div
+              style={{
+                position: 'absolute',
+                width: `${star.tailLength}px`,
+                height: '2px',
+                background: 'linear-gradient(90deg, rgba(255,255,255,0.8) 0%, rgba(255,255,255,0.3) 30%, transparent 100%)',
+                transformOrigin: 'right center',
+                transform: `rotate(${star.angle + 180}deg) translateX(0)`,
+                right: '1px',
+                top: '0.5px',
               }}
-            >
-              <div
-                style={{
-                  width: `${star.length}px`,
-                  height: `${star.size}px`,
-                  background: 'linear-gradient(90deg, white, rgba(255,255,255,0.6), transparent)',
-                  borderRadius: '2px',
-                  transform: `rotate(${anim.rotation}deg)`,
-                  boxShadow: '0 0 6px rgba(255,255,255,0.8), 0 0 12px rgba(255,255,255,0.4)',
-                }}
-              />
-            </motion.div>
-          );
-        })}
+            />
+          </motion.div>
+        ))}
       </div>
 
       {/* Floating particles */}

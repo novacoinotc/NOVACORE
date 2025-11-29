@@ -1,34 +1,22 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap');
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-:root {
-  --purple: #9333ea;
-  --purple-light: #a855f7;
-  --dark-bg: #0a0a0a;
-}
-
 * {
   box-sizing: border-box;
 }
 
-html {
-  scroll-behavior: smooth;
-}
-
 body {
   font-family: 'Inter', sans-serif;
-  background: var(--dark-bg);
-  color: #ffffff;
-  overflow-x: hidden;
+  background: #000;
+  color: #fff;
+  -webkit-font-smoothing: antialiased;
 }
 
-/* Custom Scrollbar */
 ::-webkit-scrollbar {
-  width: 4px;
-  height: 4px;
+  width: 6px;
 }
 
 ::-webkit-scrollbar-track {
@@ -36,36 +24,19 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(147, 51, 234, 0.5);
-  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 3px;
 }
 
-::-webkit-scrollbar-thumb:hover {
-  background: var(--purple);
-}
-
-/* Input styles */
 input[type="number"]::-webkit-inner-spin-button,
 input[type="number"]::-webkit-outer-spin-button {
   -webkit-appearance: none;
-  margin: 0;
 }
 
-input[type="number"] {
-  -moz-appearance: textfield;
-}
-
-input:focus, select:focus, textarea:focus, button:focus {
+input:focus, select:focus, button:focus {
   outline: none;
 }
 
-/* Selection */
 ::selection {
-  background: rgba(147, 51, 234, 0.4);
-  color: white;
-}
-
-/* Mono font for numbers/code */
-.font-mono {
-  font-family: 'JetBrains Mono', monospace;
+  background: rgba(168, 85, 247, 0.3);
 }

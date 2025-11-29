@@ -15,21 +15,21 @@ export function Badge({
   ...props
 }: BadgeProps) {
   const variants = {
-    default: 'bg-dark-700 text-gray-400',
-    success: 'bg-green-500/10 text-green-500',
-    warning: 'bg-yellow-500/10 text-yellow-500',
-    danger: 'bg-red-500/10 text-red-500',
+    default: 'text-white/40',
+    success: 'text-green-400/80',
+    warning: 'text-yellow-400/80',
+    danger: 'text-red-400/80',
   };
 
   const sizes = {
-    sm: 'px-2 py-0.5 text-[10px]',
-    md: 'px-2.5 py-1 text-xs',
+    sm: 'text-[10px]',
+    md: 'text-xs',
   };
 
   return (
     <span
       className={cn(
-        'inline-flex items-center rounded font-medium',
+        'inline-flex items-center font-medium',
         variants[variant],
         sizes[size],
         className

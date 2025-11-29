@@ -1,54 +1,41 @@
 'use client';
 
-import { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import {
   LayoutDashboard,
   ArrowLeftRight,
-  History,
+  Clock,
   Users,
   Settings,
-  ChevronLeft,
-  ChevronRight,
 } from 'lucide-react';
 
 const navigation = [
   { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
   { name: 'Transferencias', href: '/transfers', icon: ArrowLeftRight },
-  { name: 'Historial', href: '/history', icon: History },
+  { name: 'Historial', href: '/history', icon: Clock },
   { name: 'Clientes', href: '/clients', icon: Users },
   { name: 'Configuracion', href: '/settings', icon: Settings },
 ];
 
 export function Sidebar() {
   const pathname = usePathname();
-  const [isCollapsed, setIsCollapsed] = useState(false);
 
   return (
-    <aside
-      className={cn(
-        'fixed left-0 top-0 z-40 h-screen flex flex-col bg-dark-900 border-r border-white/[0.04] transition-all duration-200',
-        isCollapsed ? 'w-16' : 'w-64'
-      )}
-    >
+    <aside className="fixed left-0 top-0 z-40 h-screen w-60 flex flex-col border-r border-white/[0.06] bg-black/40 backdrop-blur-xl">
       {/* Logo */}
-      <div className="h-16 flex items-center px-4 border-b border-white/[0.04]">
-        <Link href="/dashboard" className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-purple-600 flex items-center justify-center">
-            <span className="text-white font-bold text-sm">N</span>
+      <div className="h-14 flex items-center px-5">
+        <Link href="/dashboard" className="flex items-center gap-2">
+          <div className="w-6 h-6 rounded bg-white/10 flex items-center justify-center">
+            <span className="text-white text-xs font-medium">N</span>
           </div>
-          {!isCollapsed && (
-            <span className="font-semibold text-white tracking-wide">
-              NOVACORE
-            </span>
-          )}
+          <span className="text-sm font-medium text-white/90">NOVACORE</span>
         </Link>
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 p-3 space-y-1">
+      <nav className="flex-1 px-3 py-4">
         {navigation.map((item) => {
           const isActive = pathname === item.href || pathname.startsWith(item.href + '/');
           const Icon = item.icon;
@@ -57,38 +44,19 @@ export function Sidebar() {
             <Link key={item.name} href={item.href}>
               <div
                 className={cn(
-                  'flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors duration-150',
+                  'flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors',
                   isActive
-                    ? 'bg-purple-600/15 text-white'
-                    : 'text-gray-500 hover:text-white hover:bg-white/[0.03]'
+                    ? 'text-white bg-white/[0.08]'
+                    : 'text-white/40 hover:text-white/70 hover:bg-white/[0.04]'
                 )}
               >
-                <Icon className={cn('w-5 h-5', isActive && 'text-purple-400')} />
-                {!isCollapsed && (
-                  <span className="text-sm font-medium">{item.name}</span>
-                )}
+                <Icon className="w-4 h-4" />
+                <span>{item.name}</span>
               </div>
             </Link>
           );
         })}
       </nav>
-
-      {/* Collapse Toggle */}
-      <div className="p-3 border-t border-white/[0.04]">
-        <button
-          onClick={() => setIsCollapsed(!isCollapsed)}
-          className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-gray-500 hover:text-white hover:bg-white/[0.03] transition-colors"
-        >
-          {isCollapsed ? (
-            <ChevronRight className="w-4 h-4" />
-          ) : (
-            <>
-              <ChevronLeft className="w-4 h-4" />
-              <span className="text-sm">Colapsar</span>
-            </>
-          )}
-        </button>
-      </div>
     </aside>
   );
 }

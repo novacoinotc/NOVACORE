@@ -9,17 +9,11 @@ interface MainLayoutProps {
 
 export function MainLayout({ children }: MainLayoutProps) {
   return (
-    <div className="min-h-screen bg-dark-950">
-      {/* Sidebar */}
+    <div className="min-h-screen bg-black">
       <Sidebar />
-
-      {/* Main Content Area */}
-      <div className="pl-64 transition-all duration-200">
-        {/* Top Bar */}
+      <div className="pl-60">
         <TopBar />
-
-        {/* Page Content */}
-        <main className="min-h-[calc(100vh-4rem)] p-6 bg-dark-900/50">
+        <main className="p-6">
           {children}
         </main>
       </div>

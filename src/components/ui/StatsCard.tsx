@@ -1,7 +1,6 @@
 'use client';
 
 import { cn, formatCurrency, formatCompactNumber } from '@/lib/utils';
-import { TrendingUp, TrendingDown } from 'lucide-react';
 
 interface StatsCardProps {
   title: string;
@@ -28,27 +27,20 @@ export function StatsCard({
   };
 
   return (
-    <div className="rounded-xl bg-dark-800 border border-white/[0.04] p-5">
-      <p className="text-sm text-gray-500 mb-2">{title}</p>
-      <p className="text-2xl font-semibold font-mono text-white">
+    <div className="p-4">
+      <p className="text-xs text-white/30 mb-1">{title}</p>
+      <p className="text-xl font-medium font-mono text-white/90">
         {formattedValue()}
       </p>
       {change !== undefined && (
-        <div className="flex items-center gap-1 mt-2">
-          {change >= 0 ? (
-            <TrendingUp className="w-3 h-3 text-green-500" />
-          ) : (
-            <TrendingDown className="w-3 h-3 text-red-500" />
+        <p
+          className={cn(
+            'text-xs mt-1',
+            change >= 0 ? 'text-green-400/60' : 'text-red-400/60'
           )}
-          <span
-            className={cn(
-              'text-xs',
-              change >= 0 ? 'text-green-500' : 'text-red-500'
-            )}
-          >
-            {change >= 0 ? '+' : ''}{change.toFixed(1)}%
-          </span>
-        </div>
+        >
+          {change >= 0 ? '+' : ''}{change.toFixed(1)}%
+        </p>
       )}
     </div>
   );

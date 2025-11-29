@@ -7,15 +7,14 @@ import { RecentTransactions } from '@/components/dashboard/RecentTransactions';
 import { QuickActions } from '@/components/dashboard/QuickActions';
 import { Transaction } from '@/types';
 
-// Demo data
 const chartData = [
-  { name: 'Lun', incoming: 45000, outgoing: 32000 },
-  { name: 'Mar', incoming: 52000, outgoing: 28000 },
-  { name: 'Mie', incoming: 38000, outgoing: 41000 },
-  { name: 'Jue', incoming: 61000, outgoing: 35000 },
-  { name: 'Vie', incoming: 48000, outgoing: 52000 },
-  { name: 'Sab', incoming: 33000, outgoing: 22000 },
-  { name: 'Dom', incoming: 28000, outgoing: 18000 },
+  { name: 'L', incoming: 45000, outgoing: 32000 },
+  { name: 'M', incoming: 52000, outgoing: 28000 },
+  { name: 'X', incoming: 38000, outgoing: 41000 },
+  { name: 'J', incoming: 61000, outgoing: 35000 },
+  { name: 'V', incoming: 48000, outgoing: 52000 },
+  { name: 'S', incoming: 33000, outgoing: 22000 },
+  { name: 'D', incoming: 28000, outgoing: 18000 },
 ];
 
 const recentTransactions: Transaction[] = [
@@ -25,7 +24,7 @@ const recentTransactions: Transaction[] = [
     amount: 15000,
     status: 'scattered',
     beneficiaryName: 'NOVACORE SA DE CV',
-    payerName: 'JUAN PEREZ MARTINEZ',
+    payerName: 'Juan Perez',
     concept: 'PAGO DE SERVICIOS',
     trackingKey: 'NC2024112900001',
     date: new Date(Date.now() - 1000 * 60 * 5),
@@ -36,7 +35,7 @@ const recentTransactions: Transaction[] = [
     type: 'outgoing',
     amount: 8500,
     status: 'sent',
-    beneficiaryName: 'MARIA GARCIA LOPEZ',
+    beneficiaryName: 'Maria Garcia',
     payerName: 'NOVACORE SA DE CV',
     concept: 'DISPERSION NOMINA',
     trackingKey: 'NC2024112900002',
@@ -49,7 +48,7 @@ const recentTransactions: Transaction[] = [
     amount: 50000,
     status: 'scattered',
     beneficiaryName: 'NOVACORE SA DE CV',
-    payerName: 'CRYPTO EXCHANGE MX',
+    payerName: 'Crypto Exchange',
     concept: 'DEPOSITO FONDOS',
     trackingKey: 'NC2024112900003',
     date: new Date(Date.now() - 1000 * 60 * 45),
@@ -60,81 +59,41 @@ const recentTransactions: Transaction[] = [
     type: 'outgoing',
     amount: 25000,
     status: 'pending',
-    beneficiaryName: 'PROVEEDOR TECH SA',
+    beneficiaryName: 'Proveedor Tech',
     payerName: 'NOVACORE SA DE CV',
-    concept: 'PAGO FACTURA 001234',
+    concept: 'PAGO FACTURA',
     trackingKey: 'NC2024112900004',
     date: new Date(Date.now() - 1000 * 60 * 120),
     bank: 'HSBC',
-  },
-  {
-    id: '5',
-    type: 'incoming',
-    amount: 3500,
-    status: 'returned',
-    beneficiaryName: 'NOVACORE SA DE CV',
-    payerName: 'CLIENTE DEMO',
-    concept: 'DEVOLUCION',
-    trackingKey: 'NC2024112900005',
-    date: new Date(Date.now() - 1000 * 60 * 180),
-    bank: 'BANAMEX',
   },
 ];
 
 export default function DashboardPage() {
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div>
-        <h1 className="text-xl font-semibold text-white">Dashboard</h1>
-        <p className="text-sm text-gray-500 mt-1">Resumen de actividad</p>
+    <div className="space-y-6 max-w-6xl">
+      {/* Stats */}
+      <div className="grid grid-cols-4 gap-px bg-white/[0.04] rounded-lg overflow-hidden">
+        <StatsCard title="Entradas" value={125000} format="currency" change={12.5} />
+        <StatsCard title="Salidas" value={85000} format="currency" change={-5.2} />
+        <StatsCard title="Pendientes" value={12} format="number" />
+        <StatsCard title="Clientes" value={1248} format="number" />
       </div>
 
-      {/* Stats Grid */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatsCard
-          title="Entradas Hoy"
-          value={125000}
-          format="currency"
-          change={12.5}
+      {/* Quick Actions */}
+      <QuickActions />
+
+      {/* Main Content */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <BalanceCard
+          totalBalance={1250000}
+          availableBalance={980000}
+          transitBalance={270000}
         />
-        <StatsCard
-          title="Salidas Hoy"
-          value={85000}
-          format="currency"
-          change={-5.2}
-        />
-        <StatsCard
-          title="Pendientes"
-          value={12}
-          format="number"
-        />
-        <StatsCard
-          title="Clientes"
-          value={1248}
-          format="number"
-          change={3.8}
-        />
+        <TransactionChart data={chartData} />
       </div>
 
-      {/* Main Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Left Column */}
-        <div className="lg:col-span-2 space-y-6">
-          <BalanceCard
-            totalBalance={1250000}
-            availableBalance={980000}
-            transitBalance={270000}
-          />
-          <TransactionChart data={chartData} />
-        </div>
-
-        {/* Right Column */}
-        <div className="space-y-6">
-          <QuickActions />
-          <RecentTransactions transactions={recentTransactions.slice(0, 4)} />
-        </div>
-      </div>
+      {/* Recent */}
+      <RecentTransactions transactions={recentTransactions} />
     </div>
   );
 }

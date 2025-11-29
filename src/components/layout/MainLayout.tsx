@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useEffect, useState, useMemo } from 'react';
 import { Sidebar } from './Sidebar';
 import { TopBar } from './TopBar';
+import { BitcoinPrice } from './BitcoinPrice';
 
 interface MainLayoutProps {
   children: React.ReactNode;
@@ -18,57 +19,6 @@ const gradientColors = [
   { from: 'from-violet-900/25', via: 'via-fuchsia-900/15', to: 'to-pink-900/25' },
   { from: 'from-indigo-900/25', via: 'via-purple-900/15', to: 'to-violet-900/25' },
 ];
-
-// Shooting star config - starts from edges, travels across screen
-const generateShootingStars = () => {
-  return Array.from({ length: 10 }, (_, i) => {
-    // Random starting position from any edge
-    const edge = Math.floor(Math.random() * 4); // 0=top, 1=right, 2=bottom, 3=left
-    let startX: number, startY: number, endX: number, endY: number, angle: number;
-
-    switch (edge) {
-      case 0: // From top
-        startX = Math.random() * 100;
-        startY = -5;
-        endX = startX + (Math.random() * 60 - 30);
-        endY = 120;
-        angle = Math.atan2(endY - startY, endX - startX) * (180 / Math.PI);
-        break;
-      case 1: // From right
-        startX = 105;
-        startY = Math.random() * 60;
-        endX = -20;
-        endY = startY + (Math.random() * 40 + 20);
-        angle = Math.atan2(endY - startY, endX - startX) * (180 / Math.PI);
-        break;
-      case 2: // From bottom (going up)
-        startX = Math.random() * 100;
-        startY = 105;
-        endX = startX + (Math.random() * 40 - 20);
-        endY = -20;
-        angle = Math.atan2(endY - startY, endX - startX) * (180 / Math.PI);
-        break;
-      default: // From left
-        startX = -5;
-        startY = Math.random() * 60;
-        endX = 120;
-        endY = startY + (Math.random() * 40 + 20);
-        angle = Math.atan2(endY - startY, endX - startX) * (180 / Math.PI);
-    }
-
-    return {
-      id: i,
-      startX,
-      startY,
-      endX,
-      endY,
-      angle,
-      duration: Math.random() * 1.2 + 0.6,
-      delay: Math.random() * 8 + i * 0.5,
-      tailLength: Math.random() * 40 + 60,
-    };
-  });
-};
 
 const generateParticles = (count: number) => {
   return Array.from({ length: count }, (_, i) => ({
@@ -85,7 +35,6 @@ export function MainLayout({ children }: MainLayoutProps) {
   const pathname = usePathname();
   const [gradientIndex, setGradientIndex] = useState(0);
   const particles = useMemo(() => generateParticles(25), []);
-  const shootingStars = useMemo(() => generateShootingStars(), []);
 
   useEffect(() => {
     setGradientIndex(Math.floor(Math.random() * gradientColors.length));
@@ -120,55 +69,16 @@ export function MainLayout({ children }: MainLayoutProps) {
         />
       </div>
 
-      {/* Shooting stars - dot with trail */}
+      {/* CSS Shooting Stars */}
       <div className="absolute inset-0 pointer-events-none overflow-hidden">
-        {shootingStars.map((star) => (
-          <motion.div
-            key={star.id}
-            className="absolute"
-            style={{
-              left: `${star.startX}%`,
-              top: `${star.startY}%`,
-            }}
-            initial={{ opacity: 0 }}
-            animate={{
-              opacity: [0, 1, 1, 0],
-              left: [`${star.startX}%`, `${star.endX}%`],
-              top: [`${star.startY}%`, `${star.endY}%`],
-            }}
-            transition={{
-              duration: star.duration,
-              repeat: Infinity,
-              delay: star.delay,
-              repeatDelay: Math.random() * 5 + 3,
-              ease: "linear",
-            }}
-          >
-            {/* The star head - bright dot */}
-            <div
-              className="absolute rounded-full bg-white"
-              style={{
-                width: '3px',
-                height: '3px',
-                boxShadow: '0 0 4px 2px rgba(255,255,255,0.9), 0 0 8px 4px rgba(255,255,255,0.5)',
-                zIndex: 2,
-              }}
-            />
-            {/* The trail - gradient that fades */}
-            <div
-              style={{
-                position: 'absolute',
-                width: `${star.tailLength}px`,
-                height: '2px',
-                background: 'linear-gradient(90deg, rgba(255,255,255,0.8) 0%, rgba(255,255,255,0.3) 30%, transparent 100%)',
-                transformOrigin: 'right center',
-                transform: `rotate(${star.angle + 180}deg) translateX(0)`,
-                right: '1px',
-                top: '0.5px',
-              }}
-            />
-          </motion.div>
-        ))}
+        <div className="shooting-star" style={{ top: '10%', left: '20%', animationDelay: '0s' }} />
+        <div className="shooting-star" style={{ top: '20%', left: '60%', animationDelay: '2s' }} />
+        <div className="shooting-star" style={{ top: '5%', left: '80%', animationDelay: '4s' }} />
+        <div className="shooting-star" style={{ top: '30%', left: '40%', animationDelay: '6s' }} />
+        <div className="shooting-star" style={{ top: '15%', left: '10%', animationDelay: '8s' }} />
+        <div className="shooting-star" style={{ top: '25%', left: '90%', animationDelay: '3s' }} />
+        <div className="shooting-star" style={{ top: '8%', left: '50%', animationDelay: '5s' }} />
+        <div className="shooting-star" style={{ top: '35%', left: '30%', animationDelay: '7s' }} />
       </div>
 
       {/* Floating particles */}
@@ -236,6 +146,9 @@ export function MainLayout({ children }: MainLayoutProps) {
           </AnimatePresence>
         </div>
       </div>
+
+      {/* Bitcoin Price - Bottom Left */}
+      <BitcoinPrice />
     </div>
   );
 }

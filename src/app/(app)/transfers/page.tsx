@@ -257,7 +257,7 @@ export default function TransfersPage() {
                       onChange={(e) => handleInputChange('amount', e.target.value)}
                       error={errors.amount}
                       leftIcon={<span className="text-sm">$</span>}
-                      variant="neon"
+                      variant="glass"
                     />
                     <Input
                       label="Referencia Numerica"
@@ -353,7 +353,7 @@ export default function TransfersPage() {
             exit={{ opacity: 0, x: -20 }}
             className="max-w-2xl"
           >
-            <Card variant="neon">
+            <Card variant="gradient">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <Download className="w-5 h-5 text-green-400" />

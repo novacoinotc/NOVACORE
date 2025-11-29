@@ -15,7 +15,7 @@ interface SelectProps extends React.SelectHTMLAttributes<HTMLSelectElement> {
   error?: string;
   options: SelectOption[];
   placeholder?: string;
-  variant?: 'default' | 'glass' | 'neon';
+  variant?: 'default' | 'glass';
 }
 
 const Select = forwardRef<HTMLSelectElement, SelectProps>(
@@ -33,9 +33,8 @@ const Select = forwardRef<HTMLSelectElement, SelectProps>(
     ref
   ) => {
     const variants = {
-      default: 'bg-dark-700 border-white/10 focus:border-accent-primary',
-      glass: 'glass border-white/10 focus:border-white/30',
-      neon: 'bg-dark-800 border-neon-cyan/30 focus:border-neon-cyan',
+      default: 'bg-dark-700 border-white/10',
+      glass: 'bg-dark-800/50 backdrop-blur-sm border-white/10',
     };
 
     return (
@@ -51,10 +50,10 @@ const Select = forwardRef<HTMLSelectElement, SelectProps>(
             ref={ref}
             disabled={disabled}
             className={cn(
-              'w-full appearance-none rounded-lg border px-4 py-2.5 pr-10 text-white transition-all duration-300',
-              'focus:outline-none focus:ring-2 focus:ring-accent-primary/30',
-              'disabled:opacity-50 disabled:cursor-not-allowed',
+              'w-full appearance-none rounded-lg border px-4 py-2.5 pr-10 text-white transition-all duration-200',
               variants[variant],
+              'focus:outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20',
+              'disabled:opacity-50 disabled:cursor-not-allowed',
               error && 'border-red-500 focus:border-red-500',
               className
             )}

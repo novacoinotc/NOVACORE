@@ -1,6 +1,5 @@
 'use client';
 
-import { motion } from 'framer-motion';
 import {
   AreaChart,
   Area,
@@ -45,12 +44,7 @@ const CustomTooltip = ({ active, payload, label }: any) => {
 
 export function TransactionChart({ data }: TransactionChartProps) {
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: 0.2 }}
-      className="rounded-2xl bg-dark-700 border border-white/5 p-6"
-    >
+    <div className="rounded-2xl bg-dark-800 border border-white/5 p-6">
       <div className="flex items-center justify-between mb-6">
         <div>
           <h3 className="text-lg font-semibold text-white">Flujo de Transacciones</h3>
@@ -73,8 +67,8 @@ export function TransactionChart({ data }: TransactionChartProps) {
           <AreaChart data={data}>
             <defs>
               <linearGradient id="colorIncoming" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="#00ff66" stopOpacity={0.3} />
-                <stop offset="95%" stopColor="#00ff66" stopOpacity={0} />
+                <stop offset="5%" stopColor="#22c55e" stopOpacity={0.3} />
+                <stop offset="95%" stopColor="#22c55e" stopOpacity={0} />
               </linearGradient>
               <linearGradient id="colorOutgoing" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="5%" stopColor="#ef4444" stopOpacity={0.3} />
@@ -100,7 +94,7 @@ export function TransactionChart({ data }: TransactionChartProps) {
             <Area
               type="monotone"
               dataKey="incoming"
-              stroke="#00ff66"
+              stroke="#22c55e"
               strokeWidth={2}
               fillOpacity={1}
               fill="url(#colorIncoming)"
@@ -116,6 +110,6 @@ export function TransactionChart({ data }: TransactionChartProps) {
           </AreaChart>
         </ResponsiveContainer>
       </div>
-    </motion.div>
+    </div>
   );
 }

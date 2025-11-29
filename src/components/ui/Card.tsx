@@ -1,12 +1,10 @@
 'use client';
 
-import { motion } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import { forwardRef, ReactNode } from 'react';
 
 interface CardProps {
-  variant?: 'default' | 'glass' | 'neon' | 'gradient';
-  glow?: boolean;
+  variant?: 'default' | 'glass' | 'gradient';
   hover?: boolean;
   children?: ReactNode;
   className?: string;
@@ -18,7 +16,6 @@ const Card = forwardRef<HTMLDivElement, CardProps>(
     {
       className,
       variant = 'default',
-      glow = false,
       hover = true,
       children,
       onClick,
@@ -26,52 +23,24 @@ const Card = forwardRef<HTMLDivElement, CardProps>(
     ref
   ) => {
     const variants = {
-      default: 'bg-dark-700 border border-white/5',
-      glass: 'glass',
-      neon: 'bg-dark-800 neon-border',
-      gradient:
-        'bg-gradient-to-br from-dark-700 via-dark-800 to-dark-900 border border-white/5',
+      default: 'bg-dark-800 border border-white/5',
+      glass: 'bg-dark-800/50 backdrop-blur-sm border border-white/5',
+      gradient: 'bg-gradient-to-br from-dark-700 to-dark-800 border border-white/5',
     };
 
     return (
-      <motion.div
+      <div
         ref={ref}
-        whileHover={hover ? { y: -4, scale: 1.01 } : undefined}
-        transition={{ duration: 0.2 }}
         className={cn(
-          'relative rounded-xl p-6 overflow-hidden',
+          'relative rounded-xl p-6 overflow-hidden transition-all duration-200',
           variants[variant],
-          glow && 'shadow-glow',
-          hover && 'card-hover',
+          hover && 'hover:border-purple-500/30',
           className
         )}
         onClick={onClick}
       >
-        {/* Scan line effect for neon variant */}
-        {variant === 'neon' && (
-          <div className="absolute inset-0 overflow-hidden pointer-events-none">
-            <motion.div
-              className="absolute inset-x-0 h-px bg-gradient-to-r from-transparent via-neon-cyan to-transparent"
-              animate={{
-                y: ['-100%', '2000%'],
-              }}
-              transition={{
-                duration: 4,
-                repeat: Infinity,
-                ease: 'linear',
-              }}
-            />
-          </div>
-        )}
-
-        {/* Holographic overlay for gradient variant */}
-        {variant === 'gradient' && (
-          <div className="absolute inset-0 holographic pointer-events-none" />
-        )}
-
-        {/* Content */}
         <div className="relative z-10">{children}</div>
-      </motion.div>
+      </div>
     );
   }
 );

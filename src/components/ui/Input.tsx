@@ -1,7 +1,6 @@
 'use client';
 
 import { forwardRef, useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import { Eye, EyeOff, AlertCircle, CheckCircle } from 'lucide-react';
 
@@ -12,7 +11,7 @@ interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
   hint?: string;
   leftIcon?: React.ReactNode;
   rightIcon?: React.ReactNode;
-  variant?: 'default' | 'glass' | 'neon';
+  variant?: 'default' | 'glass';
 }
 
 const Input = forwardRef<HTMLInputElement, InputProps>(
@@ -33,15 +32,13 @@ const Input = forwardRef<HTMLInputElement, InputProps>(
     ref
   ) => {
     const [showPassword, setShowPassword] = useState(false);
-    const [isFocused, setIsFocused] = useState(false);
 
     const isPassword = type === 'password';
     const inputType = isPassword && showPassword ? 'text' : type;
 
     const variants = {
-      default: 'bg-dark-700 border-white/10 focus:border-accent-primary',
-      glass: 'glass border-white/10 focus:border-white/30',
-      neon: 'bg-dark-800 border-neon-cyan/30 focus:border-neon-cyan focus:shadow-neon-cyan',
+      default: 'bg-dark-700 border-white/10',
+      glass: 'bg-dark-800/50 backdrop-blur-sm border-white/10',
     };
 
     return (
@@ -67,33 +64,19 @@ const Input = forwardRef<HTMLInputElement, InputProps>(
             ref={ref}
             type={inputType}
             disabled={disabled}
-            onFocus={() => setIsFocused(true)}
-            onBlur={() => setIsFocused(false)}
             className={cn(
-              'w-full rounded-lg border px-4 py-2.5 text-white placeholder-gray-500 transition-all duration-300',
-              'focus:outline-none focus:ring-2 focus:ring-accent-primary/30',
-              'disabled:opacity-50 disabled:cursor-not-allowed',
+              'w-full rounded-lg border px-4 py-2.5 text-white placeholder-gray-500 transition-all duration-200',
               variants[variant],
+              'focus:outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20',
+              'disabled:opacity-50 disabled:cursor-not-allowed',
               leftIcon && 'pl-10',
               (rightIcon || isPassword) && 'pr-10',
-              error && 'border-red-500 focus:border-red-500 focus:ring-red-500/30',
-              success && 'border-green-500 focus:border-green-500 focus:ring-green-500/30',
+              error && 'border-red-500 focus:border-red-500 focus:ring-red-500/20',
+              success && 'border-green-500 focus:border-green-500 focus:ring-green-500/20',
               className
             )}
             {...props}
           />
-
-          {/* Focus glow effect */}
-          <AnimatePresence>
-            {isFocused && variant === 'neon' && (
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                className="absolute inset-0 rounded-lg bg-neon-cyan/5 pointer-events-none"
-              />
-            )}
-          </AnimatePresence>
 
           {/* Right Icon / Password Toggle / Status Icon */}
           <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-2">
@@ -119,31 +102,15 @@ const Input = forwardRef<HTMLInputElement, InputProps>(
         </div>
 
         {/* Helper Text */}
-        <AnimatePresence mode="wait">
-          {error && (
-            <motion.p
-              initial={{ opacity: 0, y: -4 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -4 }}
-              className="mt-1.5 text-sm text-red-400"
-            >
-              {error}
-            </motion.p>
-          )}
-          {success && !error && (
-            <motion.p
-              initial={{ opacity: 0, y: -4 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -4 }}
-              className="mt-1.5 text-sm text-green-400"
-            >
-              {success}
-            </motion.p>
-          )}
-          {hint && !error && !success && (
-            <p className="mt-1.5 text-sm text-gray-500">{hint}</p>
-          )}
-        </AnimatePresence>
+        {error && (
+          <p className="mt-1.5 text-sm text-red-400">{error}</p>
+        )}
+        {success && !error && (
+          <p className="mt-1.5 text-sm text-green-400">{success}</p>
+        )}
+        {hint && !error && !success && (
+          <p className="mt-1.5 text-sm text-gray-500">{hint}</p>
+        )}
       </div>
     );
   }

@@ -158,7 +158,7 @@ export default function HistoryPage() {
       </div>
 
       {/* Stats Summary */}
-      <div className="grid grid-cols-4 gap-px bg-white/[0.04] rounded-lg overflow-hidden">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-px bg-white/[0.04] rounded-lg overflow-hidden">
         {[
           { label: 'Transacciones', value: '1,248' },
           { label: 'Entradas', value: formatCurrency(2500000), isPositive: true },

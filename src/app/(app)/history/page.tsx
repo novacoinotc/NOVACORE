@@ -1,17 +1,14 @@
 'use client';
 
 import { useState } from 'react';
-import { motion } from 'framer-motion';
 import {
   History,
   Search,
-  Filter,
   Download,
   ArrowUpRight,
   ArrowDownLeft,
   Calendar,
   ChevronDown,
-  ExternalLink,
   Copy,
   Eye,
 } from 'lucide-react';
@@ -29,10 +26,9 @@ import {
   TableCell,
   Modal,
 } from '@/components/ui';
-import { formatCurrency, formatDate, formatClabe, getStatusText, cn } from '@/lib/utils';
+import { formatCurrency, formatDate, getStatusText, cn } from '@/lib/utils';
 import { Transaction } from '@/types';
 
-// Demo transactions
 const demoTransactions: Transaction[] = [
   {
     id: '1',
@@ -149,210 +145,188 @@ export default function HistoryPage() {
   };
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6 max-w-6xl">
       {/* Header */}
-      <motion.div
-        initial={{ opacity: 0, y: -20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="flex items-center justify-between"
-      >
+      <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-display font-bold text-white">
-            Historial de Transacciones
-          </h1>
-          <p className="text-gray-400 mt-1">
-            Consulta y exporta todas tus operaciones SPEI
-          </p>
+          <h1 className="text-xl font-medium text-white/90">Historial</h1>
+          <p className="text-sm text-white/40 mt-1">Consulta todas tus operaciones</p>
         </div>
         <Button variant="secondary" leftIcon={<Download className="w-4 h-4" />}>
           Exportar
         </Button>
-      </motion.div>
+      </div>
 
       {/* Stats Summary */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-4 gap-px bg-white/[0.04] rounded-lg overflow-hidden">
         {[
-          { label: 'Total Transacciones', value: '1,248', color: 'text-white' },
-          { label: 'Entradas', value: formatCurrency(2500000), color: 'text-green-400' },
-          { label: 'Salidas', value: formatCurrency(1800000), color: 'text-red-400' },
-          { label: 'En Transito', value: formatCurrency(85000), color: 'text-yellow-400' },
-        ].map((stat, i) => (
-          <motion.div
-            key={stat.label}
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: i * 0.1 }}
-            className="p-4 rounded-xl bg-dark-700 border border-white/5"
-          >
-            <p className="text-sm text-gray-400">{stat.label}</p>
-            <p className={cn('text-2xl font-mono font-bold mt-1', stat.color)}>
+          { label: 'Transacciones', value: '1,248' },
+          { label: 'Entradas', value: formatCurrency(2500000), isPositive: true },
+          { label: 'Salidas', value: formatCurrency(1800000) },
+          { label: 'En Transito', value: formatCurrency(85000), isWarning: true },
+        ].map((stat) => (
+          <div key={stat.label} className="bg-black/40 p-4">
+            <p className="text-xs text-white/30">{stat.label}</p>
+            <p className={cn(
+              'text-lg font-mono mt-1',
+              stat.isPositive ? 'text-green-400/80' : stat.isWarning ? 'text-yellow-400/80' : 'text-white/80'
+            )}>
               {stat.value}
             </p>
-          </motion.div>
+          </div>
         ))}
       </div>
 
       {/* Filters */}
-      <Card variant="glass">
-        <div className="p-4">
-          <div className="flex flex-wrap items-center gap-4">
-            <div className="flex-1 min-w-[200px]">
-              <Input
-                placeholder="Buscar por clave, nombre, concepto..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                leftIcon={<Search className="w-4 h-4" />}
-                variant="glass"
-              />
-            </div>
-            <Select
-              options={typeOptions}
-              value={typeFilter}
-              onChange={(e) => setTypeFilter(e.target.value)}
-              variant="glass"
+      <Card>
+        <div className="flex flex-wrap items-center gap-4">
+          <div className="flex-1 min-w-[200px]">
+            <Input
+              placeholder="Buscar por clave, nombre, concepto..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              leftIcon={<Search className="w-4 h-4" />}
             />
-            <Select
-              options={statusOptions}
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              variant="glass"
-            />
-            <Button variant="ghost" leftIcon={<Calendar className="w-4 h-4" />}>
-              Fecha
-              <ChevronDown className="w-4 h-4 ml-1" />
-            </Button>
           </div>
+          <Select
+            options={typeOptions}
+            value={typeFilter}
+            onChange={(e) => setTypeFilter(e.target.value)}
+          />
+          <Select
+            options={statusOptions}
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+          />
+          <Button variant="ghost" leftIcon={<Calendar className="w-4 h-4" />}>
+            Fecha
+            <ChevronDown className="w-4 h-4 ml-1" />
+          </Button>
         </div>
       </Card>
 
       {/* Transactions Table */}
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ delay: 0.2 }}
-      >
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Tipo</TableHead>
-              <TableHead>Clave de Rastreo</TableHead>
-              <TableHead>Beneficiario / Ordenante</TableHead>
-              <TableHead>Concepto</TableHead>
-              <TableHead>Monto</TableHead>
-              <TableHead>Estado</TableHead>
-              <TableHead>Fecha</TableHead>
-              <TableHead></TableHead>
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Tipo</TableHead>
+            <TableHead>Clave de Rastreo</TableHead>
+            <TableHead>Beneficiario / Ordenante</TableHead>
+            <TableHead>Concepto</TableHead>
+            <TableHead>Monto</TableHead>
+            <TableHead>Estado</TableHead>
+            <TableHead>Fecha</TableHead>
+            <TableHead></TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {filteredTransactions.map((tx) => (
+            <TableRow key={tx.id} className="cursor-pointer" onClick={() => openDetail(tx)}>
+              <TableCell>
+                <div
+                  className={cn(
+                    'w-8 h-8 rounded-md flex items-center justify-center',
+                    tx.type === 'incoming'
+                      ? 'bg-green-500/10 text-green-400/80'
+                      : 'bg-red-500/10 text-red-400/80'
+                  )}
+                >
+                  {tx.type === 'incoming' ? (
+                    <ArrowDownLeft className="w-4 h-4" />
+                  ) : (
+                    <ArrowUpRight className="w-4 h-4" />
+                  )}
+                </div>
+              </TableCell>
+              <TableCell>
+                <span className="font-mono text-sm text-white/60">{tx.trackingKey}</span>
+              </TableCell>
+              <TableCell>
+                <div>
+                  <p className="text-sm text-white/80">
+                    {tx.type === 'incoming' ? tx.payerName : tx.beneficiaryName}
+                  </p>
+                  <p className="text-xs text-white/30">{tx.bank}</p>
+                </div>
+              </TableCell>
+              <TableCell>
+                <span className="text-sm text-white/50">{tx.concept}</span>
+              </TableCell>
+              <TableCell>
+                <span
+                  className={cn(
+                    'font-mono text-sm',
+                    tx.type === 'incoming' ? 'text-green-400/80' : 'text-white/80'
+                  )}
+                >
+                  {tx.type === 'incoming' ? '+' : '-'} {formatCurrency(tx.amount)}
+                </span>
+              </TableCell>
+              <TableCell>
+                <Badge
+                  variant={
+                    tx.status === 'scattered'
+                      ? 'success'
+                      : tx.status === 'pending' || tx.status === 'sent'
+                      ? 'warning'
+                      : tx.status === 'returned'
+                      ? 'danger'
+                      : 'default'
+                  }
+                >
+                  {getStatusText(tx.status)}
+                </Badge>
+              </TableCell>
+              <TableCell>
+                <span className="text-xs text-white/40">{formatDate(tx.date.getTime())}</span>
+              </TableCell>
+              <TableCell>
+                <Button variant="ghost" size="sm">
+                  <Eye className="w-4 h-4" />
+                </Button>
+              </TableCell>
             </TableRow>
-          </TableHeader>
-          <TableBody>
-            {filteredTransactions.map((tx) => (
-              <TableRow key={tx.id} className="cursor-pointer" onClick={() => openDetail(tx)}>
-                <TableCell>
-                  <div
-                    className={cn(
-                      'w-10 h-10 rounded-lg flex items-center justify-center',
-                      tx.type === 'incoming'
-                        ? 'bg-green-500/10 text-green-400'
-                        : 'bg-red-500/10 text-red-400'
-                    )}
-                  >
-                    {tx.type === 'incoming' ? (
-                      <ArrowDownLeft className="w-5 h-5" />
-                    ) : (
-                      <ArrowUpRight className="w-5 h-5" />
-                    )}
-                  </div>
-                </TableCell>
-                <TableCell>
-                  <span className="font-mono text-sm text-neon-cyan">{tx.trackingKey}</span>
-                </TableCell>
-                <TableCell>
-                  <div>
-                    <p className="font-medium text-white">
-                      {tx.type === 'incoming' ? tx.payerName : tx.beneficiaryName}
-                    </p>
-                    <p className="text-xs text-gray-500">{tx.bank}</p>
-                  </div>
-                </TableCell>
-                <TableCell>
-                  <span className="text-gray-300">{tx.concept}</span>
-                </TableCell>
-                <TableCell>
-                  <span
-                    className={cn(
-                      'font-mono font-medium',
-                      tx.type === 'incoming' ? 'text-green-400' : 'text-white'
-                    )}
-                  >
-                    {tx.type === 'incoming' ? '+' : '-'} {formatCurrency(tx.amount)}
-                  </span>
-                </TableCell>
-                <TableCell>
-                  <Badge
-                    variant={
-                      tx.status === 'scattered'
-                        ? 'success'
-                        : tx.status === 'pending' || tx.status === 'sent'
-                        ? 'warning'
-                        : tx.status === 'returned'
-                        ? 'danger'
-                        : 'default'
-                    }
-                  >
-                    {getStatusText(tx.status)}
-                  </Badge>
-                </TableCell>
-                <TableCell>
-                  <span className="text-sm text-gray-400">{formatDate(tx.date.getTime())}</span>
-                </TableCell>
-                <TableCell>
-                  <Button variant="ghost" size="sm">
-                    <Eye className="w-4 h-4" />
-                  </Button>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+          ))}
+        </TableBody>
+      </Table>
 
-        {filteredTransactions.length === 0 && (
-          <div className="text-center py-12">
-            <History className="w-12 h-12 mx-auto text-gray-600 mb-4" />
-            <p className="text-gray-400">No se encontraron transacciones</p>
-          </div>
-        )}
-      </motion.div>
+      {filteredTransactions.length === 0 && (
+        <div className="text-center py-12">
+          <History className="w-10 h-10 mx-auto text-white/20 mb-3" />
+          <p className="text-white/40 text-sm">No se encontraron transacciones</p>
+        </div>
+      )}
 
       {/* Detail Modal */}
       <Modal
         isOpen={showDetailModal}
         onClose={() => setShowDetailModal(false)}
         title="Detalle de Transaccion"
-        size="lg"
+        size="md"
       >
         {selectedTransaction && (
           <div className="space-y-6">
             {/* Status Header */}
-            <div className="flex items-center gap-4 p-4 rounded-xl bg-dark-700">
+            <div className="flex items-center gap-4 p-4 rounded-lg bg-white/[0.02] border border-white/[0.06]">
               <div
                 className={cn(
-                  'w-14 h-14 rounded-xl flex items-center justify-center',
+                  'w-12 h-12 rounded-lg flex items-center justify-center',
                   selectedTransaction.type === 'incoming'
-                    ? 'bg-green-500/20 text-green-400'
-                    : 'bg-red-500/20 text-red-400'
+                    ? 'bg-green-500/10 text-green-400/80'
+                    : 'bg-red-500/10 text-red-400/80'
                 )}
               >
                 {selectedTransaction.type === 'incoming' ? (
-                  <ArrowDownLeft className="w-7 h-7" />
+                  <ArrowDownLeft className="w-6 h-6" />
                 ) : (
-                  <ArrowUpRight className="w-7 h-7" />
+                  <ArrowUpRight className="w-6 h-6" />
                 )}
               </div>
               <div className="flex-1">
-                <p className="text-sm text-gray-400">
+                <p className="text-xs text-white/40">
                   {selectedTransaction.type === 'incoming' ? 'Recibido de' : 'Enviado a'}
                 </p>
-                <p className="text-lg font-semibold text-white">
+                <p className="text-sm text-white/90">
                   {selectedTransaction.type === 'incoming'
                     ? selectedTransaction.payerName
                     : selectedTransaction.beneficiaryName}
@@ -368,8 +342,7 @@ export default function HistoryPage() {
                     ? 'danger'
                     : 'default'
                 }
-                size="lg"
-                pulse={selectedTransaction.status === 'pending' || selectedTransaction.status === 'sent'}
+                size="md"
               >
                 {getStatusText(selectedTransaction.status)}
               </Badge>
@@ -377,11 +350,11 @@ export default function HistoryPage() {
 
             {/* Amount */}
             <div className="text-center py-4">
-              <p className="text-sm text-gray-400 mb-1">Monto</p>
+              <p className="text-xs text-white/40 mb-1">Monto</p>
               <p
                 className={cn(
-                  'text-4xl font-mono font-bold',
-                  selectedTransaction.type === 'incoming' ? 'text-green-400' : 'text-white'
+                  'text-3xl font-mono',
+                  selectedTransaction.type === 'incoming' ? 'text-green-400/80' : 'text-white/90'
                 )}
               >
                 {selectedTransaction.type === 'incoming' ? '+' : '-'}{' '}
@@ -390,40 +363,35 @@ export default function HistoryPage() {
             </div>
 
             {/* Details Grid */}
-            <div className="grid grid-cols-2 gap-4">
-              <div className="p-3 rounded-lg bg-dark-700/50 border border-white/5">
-                <p className="text-xs text-gray-500 mb-1">Clave de Rastreo</p>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="p-3 rounded-md bg-white/[0.02] border border-white/[0.06]">
+                <p className="text-xs text-white/30 mb-1">Clave de Rastreo</p>
                 <div className="flex items-center gap-2">
-                  <p className="font-mono text-neon-cyan">{selectedTransaction.trackingKey}</p>
+                  <p className="font-mono text-sm text-white/70">{selectedTransaction.trackingKey}</p>
                   <button className="p-1 hover:bg-white/5 rounded">
-                    <Copy className="w-3 h-3 text-gray-400" />
+                    <Copy className="w-3 h-3 text-white/30" />
                   </button>
                 </div>
               </div>
-              <div className="p-3 rounded-lg bg-dark-700/50 border border-white/5">
-                <p className="text-xs text-gray-500 mb-1">Fecha y Hora</p>
-                <p className="text-white">{formatDate(selectedTransaction.date.getTime())}</p>
+              <div className="p-3 rounded-md bg-white/[0.02] border border-white/[0.06]">
+                <p className="text-xs text-white/30 mb-1">Fecha y Hora</p>
+                <p className="text-sm text-white/70">{formatDate(selectedTransaction.date.getTime())}</p>
               </div>
-              <div className="p-3 rounded-lg bg-dark-700/50 border border-white/5">
-                <p className="text-xs text-gray-500 mb-1">Banco</p>
-                <p className="text-white">{selectedTransaction.bank}</p>
+              <div className="p-3 rounded-md bg-white/[0.02] border border-white/[0.06]">
+                <p className="text-xs text-white/30 mb-1">Banco</p>
+                <p className="text-sm text-white/70">{selectedTransaction.bank}</p>
               </div>
-              <div className="p-3 rounded-lg bg-dark-700/50 border border-white/5">
-                <p className="text-xs text-gray-500 mb-1">Concepto</p>
-                <p className="text-white">{selectedTransaction.concept}</p>
+              <div className="p-3 rounded-md bg-white/[0.02] border border-white/[0.06]">
+                <p className="text-xs text-white/30 mb-1">Concepto</p>
+                <p className="text-sm text-white/70">{selectedTransaction.concept}</p>
               </div>
             </div>
 
             {/* Actions */}
-            <div className="flex gap-3 pt-4 border-t border-white/10">
+            <div className="flex gap-3 pt-4 border-t border-white/[0.06]">
               <Button variant="secondary" className="flex-1" leftIcon={<Copy className="w-4 h-4" />}>
                 Copiar Datos
               </Button>
-              {selectedTransaction.status === 'scattered' && (
-                <Button variant="ghost" className="flex-1" leftIcon={<ExternalLink className="w-4 h-4" />}>
-                  Ver CEP
-                </Button>
-              )}
             </div>
           </div>
         )}

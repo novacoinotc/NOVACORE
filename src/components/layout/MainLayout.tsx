@@ -2,7 +2,6 @@
 
 import { Sidebar } from './Sidebar';
 import { TopBar } from './TopBar';
-import { ParticlesBackground, FloatingOrbs } from './ParticlesBackground';
 
 interface MainLayoutProps {
   children: React.ReactNode;
@@ -10,21 +9,11 @@ interface MainLayoutProps {
 
 export function MainLayout({ children }: MainLayoutProps) {
   return (
-    <div className="min-h-screen bg-dark-900">
-      {/* Background Effects */}
-      <ParticlesBackground />
-      <FloatingOrbs />
-
-      {/* Sidebar */}
+    <div className="min-h-screen bg-black">
       <Sidebar />
-
-      {/* Main Content Area */}
-      <div className="pl-[280px] transition-all duration-200">
-        {/* Top Bar */}
+      <div className="pl-60">
         <TopBar />
-
-        {/* Page Content */}
-        <main className="relative z-10 min-h-[calc(100vh-5rem)] p-8">
+        <main className="p-6">
           {children}
         </main>
       </div>

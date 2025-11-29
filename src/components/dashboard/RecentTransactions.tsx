@@ -1,9 +1,8 @@
 'use client';
 
-import { ArrowUpRight, ArrowDownLeft, ExternalLink, Clock } from 'lucide-react';
-import { formatCurrency, formatRelativeTime, getStatusText, cn } from '@/lib/utils';
-import { Badge } from '@/components/ui';
+import { formatCurrency, formatRelativeTime, cn } from '@/lib/utils';
 import { Transaction } from '@/types';
+import Link from 'next/link';
 
 interface RecentTransactionsProps {
   transactions: Transaction[];
@@ -11,99 +10,40 @@ interface RecentTransactionsProps {
 
 export function RecentTransactions({ transactions }: RecentTransactionsProps) {
   return (
-    <div className="rounded-2xl bg-dark-800 border border-white/5 overflow-hidden">
-      <div className="p-6 border-b border-white/5">
-        <div className="flex items-center justify-between">
-          <div>
-            <h3 className="text-lg font-semibold text-white">Transacciones Recientes</h3>
-            <p className="text-sm text-gray-400">Ultimas 10 operaciones</p>
-          </div>
-          <button className="flex items-center gap-2 text-sm text-purple-400 hover:text-purple-300 transition-colors">
-            Ver todas
-            <ExternalLink className="w-4 h-4" />
-          </button>
-        </div>
+    <div className="rounded-lg border border-white/[0.06] bg-white/[0.02] backdrop-blur-sm overflow-hidden">
+      <div className="px-4 py-3 border-b border-white/[0.06] flex items-center justify-between">
+        <p className="text-xs text-white/30">Recientes</p>
+        <Link href="/history" className="text-xs text-white/30 hover:text-white/50">
+          Ver mas
+        </Link>
       </div>
 
-      <div className="divide-y divide-white/5">
+      <div className="divide-y divide-white/[0.04]">
         {transactions.map((tx) => (
-          <div
-            key={tx.id}
-            className="p-4 hover:bg-white/[0.02] transition-colors cursor-pointer group"
-          >
-            <div className="flex items-center gap-4">
-              {/* Icon */}
-              <div
+          <div key={tx.id} className="px-4 py-3 hover:bg-white/[0.02] transition-colors">
+            <div className="flex items-center justify-between">
+              <div className="flex-1 min-w-0">
+                <p className="text-sm text-white/70 truncate">
+                  {tx.type === 'incoming' ? tx.payerName : tx.beneficiaryName}
+                </p>
+                <p className="text-xs text-white/30">{formatRelativeTime(tx.date.getTime())}</p>
+              </div>
+              <p
                 className={cn(
-                  'p-3 rounded-xl transition-all duration-200',
-                  tx.type === 'incoming'
-                    ? 'bg-green-500/10 text-green-400 group-hover:bg-green-500/20'
-                    : 'bg-red-500/10 text-red-400 group-hover:bg-red-500/20'
+                  'font-mono text-sm',
+                  tx.type === 'incoming' ? 'text-green-400/80' : 'text-white/50'
                 )}
               >
-                {tx.type === 'incoming' ? (
-                  <ArrowDownLeft className="w-5 h-5" />
-                ) : (
-                  <ArrowUpRight className="w-5 h-5" />
-                )}
-              </div>
-
-              {/* Info */}
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <p className="font-medium text-white truncate">
-                    {tx.type === 'incoming' ? tx.payerName : tx.beneficiaryName}
-                  </p>
-                  <Badge
-                    variant={
-                      tx.status === 'scattered'
-                        ? 'success'
-                        : tx.status === 'pending' || tx.status === 'sent'
-                        ? 'warning'
-                        : tx.status === 'returned'
-                        ? 'danger'
-                        : 'default'
-                    }
-                    size="sm"
-                  >
-                    {getStatusText(tx.status)}
-                  </Badge>
-                </div>
-                <div className="flex items-center gap-2 mt-1">
-                  <span className="text-xs text-gray-500 font-mono">{tx.trackingKey}</span>
-                  <span className="text-xs text-gray-600">|</span>
-                  <span className="text-xs text-gray-500">{tx.concept}</span>
-                </div>
-              </div>
-
-              {/* Amount & Time */}
-              <div className="text-right">
-                <p
-                  className={cn(
-                    'font-mono font-semibold',
-                    tx.type === 'incoming' ? 'text-green-400' : 'text-white'
-                  )}
-                >
-                  {tx.type === 'incoming' ? '+' : '-'} {formatCurrency(tx.amount)}
-                </p>
-                <div className="flex items-center gap-1 justify-end mt-1">
-                  <Clock className="w-3 h-3 text-gray-500" />
-                  <span className="text-xs text-gray-500">
-                    {formatRelativeTime(tx.date.getTime())}
-                  </span>
-                </div>
-              </div>
+                {tx.type === 'incoming' ? '+' : '-'}{formatCurrency(tx.amount)}
+              </p>
             </div>
           </div>
         ))}
       </div>
 
       {transactions.length === 0 && (
-        <div className="p-12 text-center">
-          <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-dark-600 flex items-center justify-center">
-            <Clock className="w-8 h-8 text-gray-500" />
-          </div>
-          <p className="text-gray-400">No hay transacciones recientes</p>
+        <div className="p-6 text-center">
+          <p className="text-xs text-white/30">Sin transacciones</p>
         </div>
       )}
     </div>

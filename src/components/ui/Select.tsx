@@ -32,17 +32,10 @@ const Select = forwardRef<HTMLSelectElement, SelectProps>(
     },
     ref
   ) => {
-    const variants = {
-      default: 'bg-dark-700 border-white/10',
-      glass: 'bg-dark-800/50 backdrop-blur-sm border-white/10',
-    };
-
     return (
       <div className="w-full">
         {label && (
-          <label className="block text-sm font-medium text-gray-300 mb-1.5">
-            {label}
-          </label>
+          <label className="block text-xs text-white/40 mb-1.5">{label}</label>
         )}
 
         <div className="relative">
@@ -50,16 +43,15 @@ const Select = forwardRef<HTMLSelectElement, SelectProps>(
             ref={ref}
             disabled={disabled}
             className={cn(
-              'w-full appearance-none rounded-lg border px-4 py-2.5 pr-10 text-white transition-all duration-200',
-              variants[variant],
-              'focus:outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20',
-              'disabled:opacity-50 disabled:cursor-not-allowed',
-              error && 'border-red-500 focus:border-red-500',
+              'w-full appearance-none rounded-md border border-white/[0.08] bg-white/[0.04] px-3 py-2 pr-8 text-sm text-white transition-colors',
+              'focus:border-white/20 focus:bg-white/[0.06]',
+              'disabled:opacity-40 disabled:cursor-not-allowed',
+              error && 'border-red-500/50',
               className
             )}
             {...props}
           >
-            <option value="" disabled className="bg-dark-800 text-gray-400">
+            <option value="" disabled className="bg-neutral-900 text-white/40">
               {placeholder}
             </option>
             {options.map((option) => (
@@ -67,19 +59,19 @@ const Select = forwardRef<HTMLSelectElement, SelectProps>(
                 key={option.value}
                 value={option.value}
                 disabled={option.disabled}
-                className="bg-dark-800 text-white"
+                className="bg-neutral-900 text-white"
               >
                 {option.label}
               </option>
             ))}
           </select>
 
-          <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
-            <ChevronDown className="w-4 h-4 text-gray-400" />
+          <div className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none">
+            <ChevronDown className="w-4 h-4 text-white/30" />
           </div>
         </div>
 
-        {error && <p className="mt-1.5 text-sm text-red-400">{error}</p>}
+        {error && <p className="mt-1 text-xs text-red-400/80">{error}</p>}
       </div>
     );
   }

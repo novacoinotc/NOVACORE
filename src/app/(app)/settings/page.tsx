@@ -1,14 +1,11 @@
 'use client';
 
 import { useState } from 'react';
-import { motion } from 'framer-motion';
 import {
-  Settings,
   Key,
   Building2,
   Shield,
   Bell,
-  Palette,
   Globe,
   Server,
   CheckCircle,
@@ -32,12 +29,11 @@ import {
 import { cn } from '@/lib/utils';
 
 const tabs = [
-  { id: 'api', label: 'API & Credenciales', icon: Key },
-  { id: 'account', label: 'Cuenta Ordenante', icon: Building2 },
+  { id: 'api', label: 'API', icon: Key },
+  { id: 'account', label: 'Cuenta', icon: Building2 },
   { id: 'webhooks', label: 'Webhooks', icon: Server },
   { id: 'security', label: 'Seguridad', icon: Shield },
   { id: 'notifications', label: 'Notificaciones', icon: Bell },
-  { id: 'appearance', label: 'Apariencia', icon: Palette },
 ];
 
 export default function SettingsPage() {
@@ -50,67 +46,67 @@ export default function SettingsPage() {
     switch (activeTab) {
       case 'api':
         return (
-          <div className="space-y-6">
+          <div className="space-y-4">
             {/* Environment Toggle */}
-            <Card variant="glass">
+            <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
-                  <Globe className="w-5 h-5 text-accent-primary" />
+                  <Globe className="w-4 h-4 text-white/40" />
                   Ambiente
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="flex gap-4">
+                <div className="flex gap-3">
                   <button
                     onClick={() => setEnvironment('uat')}
                     className={cn(
-                      'flex-1 p-4 rounded-xl border-2 transition-all duration-300',
+                      'flex-1 p-4 rounded-lg border transition-colors',
                       environment === 'uat'
-                        ? 'border-yellow-500 bg-yellow-500/10'
-                        : 'border-white/10 hover:border-white/20'
+                        ? 'border-yellow-500/50 bg-yellow-500/5'
+                        : 'border-white/[0.06] hover:border-white/10'
                     )}
                   >
                     <div className="flex items-center gap-3">
                       <div
                         className={cn(
-                          'w-4 h-4 rounded-full',
-                          environment === 'uat' ? 'bg-yellow-500' : 'bg-dark-500'
+                          'w-3 h-3 rounded-full',
+                          environment === 'uat' ? 'bg-yellow-500/80' : 'bg-white/10'
                         )}
                       />
                       <div className="text-left">
-                        <p className="font-semibold text-white">UAT (Pruebas)</p>
-                        <p className="text-sm text-gray-500">apiuat.opm.mx</p>
+                        <p className="text-sm text-white/80">UAT (Pruebas)</p>
+                        <p className="text-xs text-white/30">apiuat.opm.mx</p>
                       </div>
                     </div>
                   </button>
                   <button
                     onClick={() => setEnvironment('production')}
                     className={cn(
-                      'flex-1 p-4 rounded-xl border-2 transition-all duration-300',
+                      'flex-1 p-4 rounded-lg border transition-colors',
                       environment === 'production'
-                        ? 'border-green-500 bg-green-500/10'
-                        : 'border-white/10 hover:border-white/20'
+                        ? 'border-green-500/50 bg-green-500/5'
+                        : 'border-white/[0.06] hover:border-white/10'
                     )}
                   >
                     <div className="flex items-center gap-3">
                       <div
                         className={cn(
-                          'w-4 h-4 rounded-full',
-                          environment === 'production' ? 'bg-green-500' : 'bg-dark-500'
+                          'w-3 h-3 rounded-full',
+                          environment === 'production' ? 'bg-green-500/80' : 'bg-white/10'
                         )}
                       />
                       <div className="text-left">
-                        <p className="font-semibold text-white">Produccion</p>
-                        <p className="text-sm text-gray-500">api.opm.mx</p>
+                        <p className="text-sm text-white/80">Produccion</p>
+                        <p className="text-xs text-white/30">api.opm.mx</p>
                       </div>
                     </div>
                   </button>
                 </div>
 
                 {environment === 'production' && (
-                  <div className="mt-4 p-3 rounded-lg bg-yellow-500/10 border border-yellow-500/20 flex items-center gap-2">
-                    <AlertTriangle className="w-4 h-4 text-yellow-400" />
-                    <p className="text-sm text-yellow-400">
+                  <div className="mt-4 p-3 rounded-md bg-yellow-500/5 border border-yellow-500/10 flex items-center gap-2">
+                    <AlertTriangle className="w-4 h-4 text-yellow-400/60" />
+                    <p className="text-xs text-yellow-400/80">
                       Las operaciones en produccion afectan cuentas reales
                     </p>
                   </div>
@@ -119,10 +115,10 @@ export default function SettingsPage() {
             </Card>
 
             {/* API Key */}
-            <Card variant="glass">
+            <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
-                  <Key className="w-5 h-5 text-neon-cyan" />
+                  <Key className="w-4 h-4 text-white/40" />
                   API Key
                 </CardTitle>
               </CardHeader>
@@ -132,8 +128,7 @@ export default function SettingsPage() {
                     type={showApiKey ? 'text' : 'password'}
                     value={apiKey}
                     onChange={(e) => setApiKey(e.target.value)}
-                    variant="glass"
-                    className="font-mono"
+                    className="font-mono pr-20"
                   />
                   <div className="absolute right-3 top-1/2 -translate-y-1/2 flex gap-2">
                     <button
@@ -141,24 +136,20 @@ export default function SettingsPage() {
                       className="p-1 hover:bg-white/5 rounded"
                     >
                       {showApiKey ? (
-                        <EyeOff className="w-4 h-4 text-gray-400" />
+                        <EyeOff className="w-4 h-4 text-white/30" />
                       ) : (
-                        <Eye className="w-4 h-4 text-gray-400" />
+                        <Eye className="w-4 h-4 text-white/30" />
                       )}
                     </button>
                     <button className="p-1 hover:bg-white/5 rounded">
-                      <Copy className="w-4 h-4 text-gray-400" />
+                      <Copy className="w-4 h-4 text-white/30" />
                     </button>
                   </div>
                 </div>
 
                 <div className="flex items-center gap-2">
-                  <Badge variant="success" pulse>
-                    Activa
-                  </Badge>
-                  <span className="text-sm text-gray-500">
-                    Ultima vez usada: hace 2 minutos
-                  </span>
+                  <Badge variant="success">Activa</Badge>
+                  <span className="text-xs text-white/30">Ultima vez usada: hace 2 minutos</span>
                 </div>
 
                 <Button variant="secondary" leftIcon={<RefreshCw className="w-4 h-4" />}>
@@ -168,46 +159,38 @@ export default function SettingsPage() {
             </Card>
 
             {/* RSA Keys */}
-            <Card variant="glass">
+            <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
-                  <Shield className="w-5 h-5 text-neon-purple" />
+                  <Shield className="w-4 h-4 text-white/40" />
                   Llaves RSA
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="p-4 rounded-xl bg-dark-700 border border-white/5">
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="p-3 rounded-md bg-white/[0.02] border border-white/[0.06]">
                     <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm text-gray-400">Llave Privada</span>
-                      <Badge variant="success" size="sm">
-                        Configurada
-                      </Badge>
+                      <span className="text-xs text-white/40">Llave Privada</span>
+                      <Badge variant="success" size="sm">OK</Badge>
                     </div>
-                    <p className="text-xs text-gray-500 font-mono truncate">
+                    <p className="text-[10px] text-white/20 font-mono truncate">
                       -----BEGIN PRIVATE KEY-----
                     </p>
                   </div>
-                  <div className="p-4 rounded-xl bg-dark-700 border border-white/5">
+                  <div className="p-3 rounded-md bg-white/[0.02] border border-white/[0.06]">
                     <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm text-gray-400">Llave Publica</span>
-                      <Badge variant="success" size="sm">
-                        Configurada
-                      </Badge>
+                      <span className="text-xs text-white/40">Llave Publica</span>
+                      <Badge variant="success" size="sm">OK</Badge>
                     </div>
-                    <p className="text-xs text-gray-500 font-mono truncate">
+                    <p className="text-[10px] text-white/20 font-mono truncate">
                       -----BEGIN PUBLIC KEY-----
                     </p>
                   </div>
                 </div>
 
                 <div className="flex gap-3">
-                  <Button variant="secondary" size="sm">
-                    Subir Llave Privada
-                  </Button>
-                  <Button variant="secondary" size="sm">
-                    Subir Llave Publica
-                  </Button>
+                  <Button variant="secondary" size="sm">Subir Privada</Button>
+                  <Button variant="secondary" size="sm">Subir Publica</Button>
                 </div>
               </CardContent>
             </Card>
@@ -216,24 +199,22 @@ export default function SettingsPage() {
 
       case 'account':
         return (
-          <Card variant="glass">
+          <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <Building2 className="w-5 h-5 text-accent-primary" />
+                <Building2 className="w-4 h-4 text-white/40" />
                 Cuenta Ordenante
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              <p className="text-gray-400 text-sm">
-                Configura los datos de la cuenta desde la cual se realizaran las transferencias
-                salientes.
+              <p className="text-sm text-white/40">
+                Configura los datos de la cuenta para transferencias salientes.
               </p>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <Input
                   label="CLABE Ordenante"
                   placeholder="684180017000000001"
-                  variant="glass"
                   hint="Cuenta operativa para dispersiones"
                 />
                 <Select
@@ -242,21 +223,18 @@ export default function SettingsPage() {
                     { value: '90684', label: 'OPM/TRANSFER' },
                     { value: '40012', label: 'BBVA MEXICO' },
                   ]}
-                  variant="glass"
                 />
               </div>
 
               <Input
                 label="Nombre Ordenante"
                 placeholder="NOVACORE SA DE CV"
-                variant="glass"
                 hint="Sin acentos ni caracteres especiales"
               />
 
               <Input
                 label="RFC Ordenante (Opcional)"
                 placeholder="NOV200101AAA"
-                variant="glass"
               />
 
               <Button leftIcon={<Save className="w-4 h-4" />}>Guardar Cambios</Button>
@@ -266,11 +244,11 @@ export default function SettingsPage() {
 
       case 'webhooks':
         return (
-          <div className="space-y-6">
-            <Card variant="glass">
+          <div className="space-y-4">
+            <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
-                  <Server className="w-5 h-5 text-green-400" />
+                  <Server className="w-4 h-4 text-green-400/60" />
                   Endpoints de Webhook
                 </CardTitle>
               </CardHeader>
@@ -278,14 +256,12 @@ export default function SettingsPage() {
                 <Input
                   label="URL Webhook - Depositos (SPEI In)"
                   placeholder="https://tu-dominio.com/api/webhooks/deposit"
-                  variant="glass"
                   hint="Recibe notificaciones de depositos entrantes"
                 />
 
                 <Input
                   label="URL Webhook - Estado de Ordenes"
                   placeholder="https://tu-dominio.com/api/webhooks/order-status"
-                  variant="glass"
                   hint="Recibe cambios de estado en ordenes salientes"
                 />
 
@@ -293,7 +269,6 @@ export default function SettingsPage() {
                   label="Secret del Webhook"
                   type="password"
                   placeholder="whsec_xxxxxxxxxx"
-                  variant="glass"
                   hint="Para verificar la autenticidad de las notificaciones"
                 />
 
@@ -301,12 +276,12 @@ export default function SettingsPage() {
               </CardContent>
             </Card>
 
-            <Card variant="glass">
+            <Card>
               <CardHeader>
                 <CardTitle>Eventos Recientes</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="space-y-3">
+                <div className="space-y-2">
                   {[
                     { type: 'supply', status: 'success', time: 'Hace 2 min' },
                     { type: 'orderStatus', status: 'success', time: 'Hace 5 min' },
@@ -314,21 +289,21 @@ export default function SettingsPage() {
                   ].map((event, i) => (
                     <div
                       key={i}
-                      className="flex items-center justify-between p-3 rounded-lg bg-dark-700"
+                      className="flex items-center justify-between p-3 rounded-md bg-white/[0.02]"
                     >
                       <div className="flex items-center gap-3">
                         {event.status === 'success' ? (
-                          <CheckCircle className="w-5 h-5 text-green-400" />
+                          <CheckCircle className="w-4 h-4 text-green-400/80" />
                         ) : (
-                          <AlertTriangle className="w-5 h-5 text-red-400" />
+                          <AlertTriangle className="w-4 h-4 text-red-400/80" />
                         )}
                         <div>
-                          <p className="text-white font-medium">{event.type}</p>
-                          <p className="text-xs text-gray-500">{event.time}</p>
+                          <p className="text-sm text-white/80">{event.type}</p>
+                          <p className="text-xs text-white/30">{event.time}</p>
                         </div>
                       </div>
                       <Badge variant={event.status === 'success' ? 'success' : 'danger'}>
-                        {event.status === 'success' ? 'Exitoso' : 'Fallido'}
+                        {event.status === 'success' ? 'OK' : 'Error'}
                       </Badge>
                     </div>
                   ))}
@@ -340,39 +315,37 @@ export default function SettingsPage() {
 
       case 'security':
         return (
-          <Card variant="glass">
+          <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <Shield className="w-5 h-5 text-neon-cyan" />
+                <Shield className="w-4 h-4 text-white/40" />
                 Seguridad
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-6">
-              <div className="flex items-center justify-between p-4 rounded-xl bg-dark-700 border border-white/5">
+              <div className="flex items-center justify-between p-4 rounded-md bg-white/[0.02] border border-white/[0.06]">
                 <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-lg bg-green-500/20">
-                    <Shield className="w-5 h-5 text-green-400" />
+                  <div className="p-2 rounded-md bg-green-500/10">
+                    <Shield className="w-4 h-4 text-green-400/80" />
                   </div>
                   <div>
-                    <p className="font-medium text-white">Autenticacion de 2 Factores</p>
-                    <p className="text-sm text-gray-500">Protege tu cuenta con 2FA</p>
+                    <p className="text-sm text-white/80">Autenticacion de 2 Factores</p>
+                    <p className="text-xs text-white/40">Protege tu cuenta con 2FA</p>
                   </div>
                 </div>
                 <Badge variant="success">Activo</Badge>
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">
-                  IPs Permitidas
-                </label>
+                <label className="block text-xs text-white/40 mb-2">IPs Permitidas</label>
                 <div className="space-y-2">
                   {['192.168.1.100', '10.0.0.50', '203.45.67.89'].map((ip) => (
                     <div
                       key={ip}
-                      className="flex items-center justify-between p-2 rounded-lg bg-dark-700"
+                      className="flex items-center justify-between p-2 rounded-md bg-white/[0.02]"
                     >
-                      <span className="font-mono text-gray-300">{ip}</span>
-                      <button className="text-red-400 hover:text-red-300">Eliminar</button>
+                      <span className="font-mono text-sm text-white/60">{ip}</span>
+                      <button className="text-xs text-red-400/80 hover:text-red-400">Eliminar</button>
                     </div>
                   ))}
                 </div>
@@ -386,14 +359,14 @@ export default function SettingsPage() {
 
       case 'notifications':
         return (
-          <Card variant="glass">
+          <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <Bell className="w-5 h-5 text-yellow-400" />
+                <Bell className="w-4 h-4 text-white/40" />
                 Preferencias de Notificaciones
               </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent className="space-y-3">
               {[
                 { label: 'Depositos recibidos', description: 'Notificar cuando llegue un SPEI' },
                 { label: 'Ordenes liquidadas', description: 'Confirmar dispersiones exitosas' },
@@ -402,84 +375,18 @@ export default function SettingsPage() {
               ].map((item) => (
                 <div
                   key={item.label}
-                  className="flex items-center justify-between p-4 rounded-xl bg-dark-700"
+                  className="flex items-center justify-between p-3 rounded-md bg-white/[0.02]"
                 >
                   <div>
-                    <p className="font-medium text-white">{item.label}</p>
-                    <p className="text-sm text-gray-500">{item.description}</p>
+                    <p className="text-sm text-white/80">{item.label}</p>
+                    <p className="text-xs text-white/30">{item.description}</p>
                   </div>
                   <label className="relative inline-flex items-center cursor-pointer">
                     <input type="checkbox" className="sr-only peer" defaultChecked />
-                    <div className="w-11 h-6 bg-dark-500 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-accent-primary"></div>
+                    <div className="w-9 h-5 bg-white/10 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white/60 after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-white/20"></div>
                   </label>
                 </div>
               ))}
-            </CardContent>
-          </Card>
-        );
-
-      case 'appearance':
-        return (
-          <Card variant="glass">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Palette className="w-5 h-5 text-neon-pink" />
-                Apariencia
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-3">
-                  Color de Acento
-                </label>
-                <div className="flex gap-3">
-                  {[
-                    { name: 'Cyan', color: 'bg-neon-cyan' },
-                    { name: 'Purple', color: 'bg-neon-purple' },
-                    { name: 'Pink', color: 'bg-neon-pink' },
-                    { name: 'Blue', color: 'bg-neon-blue' },
-                    { name: 'Green', color: 'bg-neon-green' },
-                  ].map((c) => (
-                    <button
-                      key={c.name}
-                      className={cn(
-                        'w-10 h-10 rounded-xl transition-all duration-200 hover:scale-110',
-                        c.color,
-                        c.name === 'Cyan' && 'ring-2 ring-white'
-                      )}
-                      title={c.name}
-                    />
-                  ))}
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-3">
-                  Efectos Visuales
-                </label>
-                <div className="space-y-3">
-                  {[
-                    { label: 'Particulas de fondo', enabled: true },
-                    { label: 'Efectos de brillo', enabled: true },
-                    { label: 'Animaciones', enabled: true },
-                  ].map((effect) => (
-                    <div
-                      key={effect.label}
-                      className="flex items-center justify-between p-3 rounded-lg bg-dark-700"
-                    >
-                      <span className="text-gray-300">{effect.label}</span>
-                      <label className="relative inline-flex items-center cursor-pointer">
-                        <input
-                          type="checkbox"
-                          className="sr-only peer"
-                          defaultChecked={effect.enabled}
-                        />
-                        <div className="w-11 h-6 bg-dark-500 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-accent-primary"></div>
-                      </label>
-                    </div>
-                  ))}
-                </div>
-              </div>
             </CardContent>
           </Card>
         );
@@ -490,21 +397,16 @@ export default function SettingsPage() {
   };
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6 max-w-4xl">
       {/* Header */}
-      <motion.div
-        initial={{ opacity: 0, y: -20 }}
-        animate={{ opacity: 1, y: 0 }}
-      >
-        <h1 className="text-3xl font-display font-bold text-white">Configuracion</h1>
-        <p className="text-gray-400 mt-1">
-          Administra las credenciales, webhooks y preferencias del sistema
-        </p>
-      </motion.div>
+      <div>
+        <h1 className="text-xl font-medium text-white/90">Configuracion</h1>
+        <p className="text-sm text-white/40 mt-1">Administra credenciales y preferencias</p>
+      </div>
 
-      <div className="flex flex-col lg:flex-row gap-8">
+      <div className="flex flex-col lg:flex-row gap-6">
         {/* Sidebar Tabs */}
-        <div className="lg:w-64 flex-shrink-0">
+        <div className="lg:w-48 flex-shrink-0">
           <nav className="space-y-1">
             {tabs.map((tab) => {
               const Icon = tab.icon;
@@ -513,14 +415,14 @@ export default function SettingsPage() {
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}
                   className={cn(
-                    'w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300 text-left',
+                    'w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm transition-colors text-left',
                     activeTab === tab.id
-                      ? 'bg-accent-primary/20 text-white border border-accent-primary/30'
-                      : 'text-gray-400 hover:text-white hover:bg-white/5'
+                      ? 'bg-white/[0.08] text-white'
+                      : 'text-white/40 hover:text-white/60 hover:bg-white/[0.04]'
                   )}
                 >
-                  <Icon className="w-5 h-5" />
-                  <span className="font-medium">{tab.label}</span>
+                  <Icon className="w-4 h-4" />
+                  <span>{tab.label}</span>
                 </button>
               );
             })}
@@ -528,16 +430,7 @@ export default function SettingsPage() {
         </div>
 
         {/* Content */}
-        <div className="flex-1">
-          <motion.div
-            key={activeTab}
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.2 }}
-          >
-            {renderTabContent()}
-          </motion.div>
-        </div>
+        <div className="flex-1">{renderTabContent()}</div>
       </div>
     </div>
   );

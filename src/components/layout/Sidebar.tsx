@@ -3,21 +3,32 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
-import { X } from 'lucide-react';
+import { useAuth } from '@/context/AuthContext';
+import { X, LogOut } from 'lucide-react';
 import {
   LayoutDashboard,
   ArrowLeftRight,
   Clock,
   Users,
   Settings,
+  UserCog,
 } from 'lucide-react';
+import { Permission } from '@/types';
 
-const navigation = [
-  { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
-  { name: 'Transferencias', href: '/transfers', icon: ArrowLeftRight },
-  { name: 'Historial', href: '/history', icon: Clock },
-  { name: 'Clientes', href: '/clients', icon: Users },
-  { name: 'Configuracion', href: '/settings', icon: Settings },
+interface NavItem {
+  name: string;
+  href: string;
+  icon: React.ComponentType<{ className?: string }>;
+  permission?: Permission;
+}
+
+const navigation: NavItem[] = [
+  { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard, permission: 'dashboard.view' },
+  { name: 'Transferencias', href: '/transfers', icon: ArrowLeftRight, permission: 'orders.view' },
+  { name: 'Historial', href: '/history', icon: Clock, permission: 'history.view' },
+  { name: 'Clientes', href: '/clients', icon: Users, permission: 'clients.view' },
+  { name: 'Usuarios', href: '/users', icon: UserCog, permission: 'users.view' },
+  { name: 'Configuracion', href: '/settings', icon: Settings, permission: 'settings.view' },
 ];
 
 interface SidebarProps {
@@ -27,6 +38,12 @@ interface SidebarProps {
 
 export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
   const pathname = usePathname();
+  const { user, hasPermission, logout } = useAuth();
+
+  // Filter navigation items based on permissions
+  const filteredNavigation = navigation.filter(
+    (item) => !item.permission || hasPermission(item.permission)
+  );
 
   return (
     <>
@@ -77,7 +94,7 @@ export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
 
         {/* Navigation */}
         <nav className="flex-1 px-3 py-4">
-          {navigation.map((item) => {
+          {filteredNavigation.map((item) => {
             const isActive = pathname === item.href || pathname.startsWith(item.href + '/');
             const Icon = item.icon;
 
@@ -98,6 +115,28 @@ export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
             );
           })}
         </nav>
+
+        {/* User section */}
+        {user && (
+          <div className="border-t border-white/[0.06] p-4">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="w-9 h-9 rounded-full bg-gradient-to-br from-purple-500 to-violet-600 flex items-center justify-center text-white text-sm font-medium flex-shrink-0">
+                {user.name.charAt(0).toUpperCase()}
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-white text-sm font-medium truncate">{user.name}</p>
+                <p className="text-white/40 text-xs truncate">{user.email}</p>
+              </div>
+            </div>
+            <button
+              onClick={logout}
+              className="w-full flex items-center gap-2 px-3 py-2 text-white/40 hover:text-red-400 hover:bg-red-500/10 rounded-md text-sm transition-colors"
+            >
+              <LogOut className="w-4 h-4" />
+              Cerrar sesión
+            </button>
+          </div>
+        )}
       </aside>
     </>
   );

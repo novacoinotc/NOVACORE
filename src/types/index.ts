@@ -1,5 +1,98 @@
 // API Types for OPM/Transfer SPEI Integration
 
+// ==================== AUTH TYPES ====================
+
+export type UserRole = 'admin' | 'user';
+
+// All available permissions in the system
+export const ALL_PERMISSIONS = {
+  // Dashboard
+  'dashboard.view': 'Ver dashboard',
+
+  // Balance
+  'balance.view': 'Ver saldos',
+
+  // Orders/Transfers
+  'orders.view': 'Ver transferencias',
+  'orders.create': 'Crear transferencias SPEI',
+  'orders.cancel': 'Cancelar transferencias',
+  'orders.cep': 'Obtener CEP de transferencias',
+  'orders.notify': 'Reenviar notificaciones webhook',
+
+  // Clients
+  'clients.view': 'Ver clientes',
+  'clients.create': 'Crear clientes',
+  'clients.update': 'Actualizar clientes',
+  'clients.status': 'Cambiar estado de clientes',
+
+  // History
+  'history.view': 'Ver historial de transacciones',
+
+  // Banks & Catalogs
+  'banks.view': 'Ver catálogo de bancos',
+  'catalogs.view': 'Ver tipos de cuenta y pago',
+
+  // Settings
+  'settings.view': 'Ver configuración',
+  'settings.update': 'Modificar configuración',
+
+  // User Management (admin only)
+  'users.view': 'Ver usuarios',
+  'users.create': 'Crear usuarios',
+  'users.update': 'Actualizar usuarios',
+  'users.delete': 'Eliminar usuarios',
+} as const;
+
+export type Permission = keyof typeof ALL_PERMISSIONS;
+
+// Default permissions for each role
+export const DEFAULT_ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
+  admin: Object.keys(ALL_PERMISSIONS) as Permission[],
+  user: [
+    'dashboard.view',
+    'balance.view',
+    'orders.view',
+    'orders.create',
+    'clients.view',
+    'history.view',
+    'banks.view',
+    'catalogs.view',
+    'settings.view',
+  ],
+};
+
+export interface User {
+  id: string;
+  email: string;
+  name: string;
+  role: UserRole;
+  permissions: Permission[];
+  avatar?: string;
+  createdAt: number;
+  updatedAt: number;
+  lastLogin?: number;
+  isActive: boolean;
+}
+
+export interface AuthState {
+  user: User | null;
+  isAuthenticated: boolean;
+  isLoading: boolean;
+}
+
+export interface LoginCredentials {
+  email: string;
+  password: string;
+}
+
+export interface CreateUserRequest {
+  email: string;
+  password: string;
+  name: string;
+  role: UserRole;
+  permissions: Permission[];
+}
+
 export interface Order {
   id: string;
   productId: string;

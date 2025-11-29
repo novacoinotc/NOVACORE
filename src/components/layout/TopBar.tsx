@@ -1,14 +1,16 @@
 'use client';
 
-import { Search, Menu } from 'lucide-react';
+import { Search, Menu, Shield, ShieldCheck } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useAuth } from '@/context/AuthContext';
 
 interface TopBarProps {
   onMenuClick?: () => void;
 }
 
 export function TopBar({ onMenuClick }: TopBarProps) {
+  const { user } = useAuth();
   const [btcPrice, setBtcPrice] = useState<number | null>(null);
   const [priceChange, setPriceChange] = useState<number>(0);
   const [priceKey, setPriceKey] = useState(0);
@@ -106,11 +108,34 @@ export function TopBar({ onMenuClick }: TopBarProps) {
         </div>
       </div>
 
-      {/* Status */}
-      <div className="flex items-center gap-2 text-xs text-white/40">
-        <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
-        <span className="hidden sm:inline">SPEI conectado</span>
-        <span className="sm:hidden">SPEI</span>
+      {/* Right section - Status and user role */}
+      <div className="flex items-center gap-4">
+        {/* SPEI Status */}
+        <div className="flex items-center gap-2 text-xs text-white/40">
+          <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+          <span className="hidden sm:inline">SPEI conectado</span>
+          <span className="sm:hidden">SPEI</span>
+        </div>
+
+        {/* User role badge - desktop only */}
+        {user && (
+          <div className="hidden lg:flex items-center gap-2">
+            <span
+              className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${
+                user.role === 'admin'
+                  ? 'bg-purple-500/10 text-purple-400 border border-purple-500/20'
+                  : 'bg-blue-500/10 text-blue-400 border border-blue-500/20'
+              }`}
+            >
+              {user.role === 'admin' ? (
+                <ShieldCheck className="w-3 h-3" />
+              ) : (
+                <Shield className="w-3 h-3" />
+              )}
+              {user.role === 'admin' ? 'Admin' : 'Usuario'}
+            </span>
+          </div>
+        )}
       </div>
     </header>
   );

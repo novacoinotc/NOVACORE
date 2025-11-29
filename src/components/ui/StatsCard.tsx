@@ -1,6 +1,5 @@
 'use client';
 
-import { motion } from 'framer-motion';
 import { cn, formatCurrency, formatCompactNumber } from '@/lib/utils';
 import { TrendingUp, TrendingDown } from 'lucide-react';
 
@@ -12,7 +11,7 @@ interface StatsCardProps {
   change?: number;
   changeLabel?: string;
   icon?: React.ReactNode;
-  variant?: 'default' | 'gradient' | 'neon';
+  variant?: 'default' | 'gradient' | 'gold';
   format?: 'currency' | 'number' | 'compact';
 }
 
@@ -39,24 +38,18 @@ export function StatsCard({
   };
 
   const variants = {
-    default: 'bg-dark-700 border-white/5',
-    gradient: 'bg-gradient-to-br from-accent-primary/20 via-dark-700 to-accent-secondary/20 border-accent-primary/20',
-    neon: 'bg-dark-800 border-neon-cyan/30',
+    default: 'bg-dark-800 border-white/5',
+    gradient: 'bg-gradient-to-br from-purple-600/20 via-dark-800 to-gold-500/10 border-purple-500/20',
+    gold: 'bg-dark-800 border-gold-500/30',
   };
 
   return (
-    <motion.div
-      whileHover={{ y: -4, scale: 1.02 }}
+    <div
       className={cn(
-        'relative rounded-xl border p-6 overflow-hidden',
+        'relative rounded-xl border p-6 overflow-hidden transition-all duration-200 hover:border-purple-500/30',
         variants[variant]
       )}
     >
-      {/* Background glow */}
-      {variant === 'gradient' && (
-        <div className="absolute inset-0 bg-gradient-to-br from-accent-primary/5 to-accent-secondary/5" />
-      )}
-
       {/* Content */}
       <div className="relative z-10">
         <div className="flex items-center justify-between mb-4">
@@ -72,17 +65,14 @@ export function StatsCard({
           {prefix && (
             <span className="text-lg text-gray-400">{prefix}</span>
           )}
-          <motion.span
+          <span
             className={cn(
               'text-3xl font-bold font-mono',
-              variant === 'neon' ? 'text-neon-cyan text-glow-cyan' : 'text-white'
+              variant === 'gold' ? 'text-gold-400' : 'text-white'
             )}
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            key={value}
           >
             {formattedValue()}
-          </motion.span>
+          </span>
           {suffix && (
             <span className="text-lg text-gray-400">{suffix}</span>
           )}
@@ -109,14 +99,6 @@ export function StatsCard({
           </div>
         )}
       </div>
-
-      {/* Decorative elements */}
-      {variant === 'neon' && (
-        <>
-          <div className="absolute top-0 right-0 w-20 h-20 bg-neon-cyan/10 rounded-full blur-2xl" />
-          <div className="absolute bottom-0 left-0 w-16 h-16 bg-neon-purple/10 rounded-full blur-2xl" />
-        </>
-      )}
-    </motion.div>
+    </div>
   );
 }

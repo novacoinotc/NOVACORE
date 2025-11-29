@@ -1,8 +1,7 @@
 'use client';
 
-import { motion } from 'framer-motion';
 import { ArrowUpRight, ArrowDownLeft, ExternalLink, Clock } from 'lucide-react';
-import { formatCurrency, formatRelativeTime, getStatusColor, getStatusText, cn } from '@/lib/utils';
+import { formatCurrency, formatRelativeTime, getStatusText, cn } from '@/lib/utils';
 import { Badge } from '@/components/ui';
 import { Transaction } from '@/types';
 
@@ -12,19 +11,14 @@ interface RecentTransactionsProps {
 
 export function RecentTransactions({ transactions }: RecentTransactionsProps) {
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: 0.3 }}
-      className="rounded-2xl bg-dark-700 border border-white/5 overflow-hidden"
-    >
+    <div className="rounded-2xl bg-dark-800 border border-white/5 overflow-hidden">
       <div className="p-6 border-b border-white/5">
         <div className="flex items-center justify-between">
           <div>
             <h3 className="text-lg font-semibold text-white">Transacciones Recientes</h3>
             <p className="text-sm text-gray-400">Ultimas 10 operaciones</p>
           </div>
-          <button className="flex items-center gap-2 text-sm text-accent-primary hover:text-accent-secondary transition-colors">
+          <button className="flex items-center gap-2 text-sm text-purple-400 hover:text-purple-300 transition-colors">
             Ver todas
             <ExternalLink className="w-4 h-4" />
           </button>
@@ -32,19 +26,16 @@ export function RecentTransactions({ transactions }: RecentTransactionsProps) {
       </div>
 
       <div className="divide-y divide-white/5">
-        {transactions.map((tx, index) => (
-          <motion.div
+        {transactions.map((tx) => (
+          <div
             key={tx.id}
-            initial={{ opacity: 0, x: -20 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ delay: index * 0.05 }}
             className="p-4 hover:bg-white/[0.02] transition-colors cursor-pointer group"
           >
             <div className="flex items-center gap-4">
               {/* Icon */}
               <div
                 className={cn(
-                  'p-3 rounded-xl transition-all duration-300',
+                  'p-3 rounded-xl transition-all duration-200',
                   tx.type === 'incoming'
                     ? 'bg-green-500/10 text-green-400 group-hover:bg-green-500/20'
                     : 'bg-red-500/10 text-red-400 group-hover:bg-red-500/20'
@@ -103,7 +94,7 @@ export function RecentTransactions({ transactions }: RecentTransactionsProps) {
                 </div>
               </div>
             </div>
-          </motion.div>
+          </div>
         ))}
       </div>
 
@@ -115,6 +106,6 @@ export function RecentTransactions({ transactions }: RecentTransactionsProps) {
           <p className="text-gray-400">No hay transacciones recientes</p>
         </div>
       )}
-    </motion.div>
+    </div>
   );
 }

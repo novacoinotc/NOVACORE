@@ -3,7 +3,7 @@
 import { cn } from '@/lib/utils';
 
 interface BadgeProps extends React.HTMLAttributes<HTMLSpanElement> {
-  variant?: 'default' | 'success' | 'warning' | 'danger' | 'info' | 'neon';
+  variant?: 'default' | 'success' | 'warning' | 'danger' | 'info' | 'gold';
   size?: 'sm' | 'md' | 'lg';
   pulse?: boolean;
 }
@@ -17,12 +17,12 @@ export function Badge({
   ...props
 }: BadgeProps) {
   const variants = {
-    default: 'bg-dark-500 text-gray-300 border-white/10',
+    default: 'bg-dark-600 text-gray-300 border-white/10',
     success: 'bg-green-500/10 text-green-400 border-green-500/30',
     warning: 'bg-yellow-500/10 text-yellow-400 border-yellow-500/30',
     danger: 'bg-red-500/10 text-red-400 border-red-500/30',
-    info: 'bg-blue-500/10 text-blue-400 border-blue-500/30',
-    neon: 'bg-neon-cyan/10 text-neon-cyan border-neon-cyan/30 shadow-neon-cyan/20',
+    info: 'bg-purple-500/10 text-purple-400 border-purple-500/30',
+    gold: 'bg-gold-500/10 text-gold-400 border-gold-500/30',
   };
 
   const sizes = {
@@ -49,8 +49,8 @@ export function Badge({
               variant === 'success' && 'bg-green-400',
               variant === 'warning' && 'bg-yellow-400',
               variant === 'danger' && 'bg-red-400',
-              variant === 'info' && 'bg-blue-400',
-              variant === 'neon' && 'bg-neon-cyan',
+              variant === 'info' && 'bg-purple-400',
+              variant === 'gold' && 'bg-gold-400',
               variant === 'default' && 'bg-gray-400'
             )}
           />
@@ -60,8 +60,8 @@ export function Badge({
               variant === 'success' && 'bg-green-400',
               variant === 'warning' && 'bg-yellow-400',
               variant === 'danger' && 'bg-red-400',
-              variant === 'info' && 'bg-blue-400',
-              variant === 'neon' && 'bg-neon-cyan',
+              variant === 'info' && 'bg-purple-400',
+              variant === 'gold' && 'bg-gold-400',
               variant === 'default' && 'bg-gray-400'
             )}
           />

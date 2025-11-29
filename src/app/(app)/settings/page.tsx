@@ -132,7 +132,7 @@ export default function SettingsPage() {
                     type={showApiKey ? 'text' : 'password'}
                     value={apiKey}
                     onChange={(e) => setApiKey(e.target.value)}
-                    variant="neon"
+                    variant="glass"
                     className="font-mono"
                   />
                   <div className="absolute right-3 top-1/2 -translate-y-1/2 flex gap-2">

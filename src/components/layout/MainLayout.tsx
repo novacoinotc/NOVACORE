@@ -34,10 +34,16 @@ const generateParticles = (count: number) => {
 export function MainLayout({ children }: MainLayoutProps) {
   const pathname = usePathname();
   const [gradientIndex, setGradientIndex] = useState(0);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const particles = useMemo(() => generateParticles(25), []);
 
   useEffect(() => {
     setGradientIndex(Math.floor(Math.random() * gradientColors.length));
+  }, [pathname]);
+
+  // Close sidebar on route change (mobile)
+  useEffect(() => {
+    setSidebarOpen(false);
   }, [pathname]);
 
   const currentGradient = gradientColors[gradientIndex];
@@ -56,34 +62,31 @@ export function MainLayout({ children }: MainLayoutProps) {
       {/* Ambient glows */}
       <div className="absolute inset-0 pointer-events-none">
         <motion.div
-          className="absolute w-[800px] h-[800px] bg-purple-500/10 rounded-full blur-[150px]"
+          className="absolute w-[500px] h-[500px] lg:w-[800px] lg:h-[800px] bg-purple-500/10 rounded-full blur-[100px] lg:blur-[150px]"
           style={{ left: '-20%', top: '-30%' }}
           animate={{ scale: [1, 1.1, 1], opacity: [0.1, 0.15, 0.1] }}
           transition={{ duration: 15, repeat: Infinity, ease: "easeInOut" }}
         />
         <motion.div
-          className="absolute w-[600px] h-[600px] bg-blue-500/10 rounded-full blur-[150px]"
+          className="absolute w-[400px] h-[400px] lg:w-[600px] lg:h-[600px] bg-blue-500/10 rounded-full blur-[100px] lg:blur-[150px]"
           style={{ right: '-15%', bottom: '-20%' }}
           animate={{ scale: [1, 1.15, 1], opacity: [0.1, 0.12, 0.1] }}
           transition={{ duration: 18, repeat: Infinity, ease: "easeInOut" }}
         />
       </div>
 
-      {/* CSS Shooting Stars - Subtle, multi-directional, less frequent */}
-      <div className="absolute inset-0 pointer-events-none overflow-hidden">
-        {/* Direction 1: diagonal down-left */}
+      {/* CSS Shooting Stars - hidden on mobile for performance */}
+      <div className="hidden md:block absolute inset-0 pointer-events-none overflow-hidden">
         <div className="shooting-star dir-1" style={{ top: '8%', left: '25%', animationDelay: '0s' }} />
         <div className="shooting-star dir-1" style={{ top: '15%', left: '70%', animationDelay: '4s' }} />
-        {/* Direction 2: diagonal down-right */}
         <div className="shooting-star dir-2" style={{ top: '12%', right: '30%', animationDelay: '2s' }} />
         <div className="shooting-star dir-2" style={{ top: '20%', right: '60%', animationDelay: '7s' }} />
-        {/* Direction 3: horizontal */}
         <div className="shooting-star dir-3" style={{ top: '25%', right: '10%', animationDelay: '5s' }} />
       </div>
 
-      {/* Floating particles */}
+      {/* Floating particles - fewer on mobile */}
       <div className="absolute inset-0 pointer-events-none">
-        {particles.map((particle) => (
+        {particles.slice(0, 15).map((particle) => (
           <motion.div
             key={particle.id}
             className="absolute rounded-full bg-white/40"
@@ -107,9 +110,9 @@ export function MainLayout({ children }: MainLayoutProps) {
         ))}
       </div>
 
-      {/* Twinkling stars */}
+      {/* Twinkling stars - fewer on mobile */}
       <div className="absolute inset-0 pointer-events-none">
-        {Array.from({ length: 20 }).map((_, i) => (
+        {Array.from({ length: 12 }).map((_, i) => (
           <motion.div
             key={`twinkle-${i}`}
             className="absolute w-0.5 h-0.5 bg-white rounded-full"
@@ -129,9 +132,9 @@ export function MainLayout({ children }: MainLayoutProps) {
 
       {/* Content */}
       <div className="relative z-10">
-        <Sidebar />
-        <div className="pl-60">
-          <TopBar />
+        <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+        <div className="lg:pl-60">
+          <TopBar onMenuClick={() => setSidebarOpen(true)} />
           <AnimatePresence mode="wait">
             <motion.main
               key={pathname}
@@ -139,7 +142,7 @@ export function MainLayout({ children }: MainLayoutProps) {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               transition={{ duration: 0.12 }}
-              className="p-6"
+              className="p-4 lg:p-6"
             >
               {children}
             </motion.main>
@@ -147,8 +150,10 @@ export function MainLayout({ children }: MainLayoutProps) {
         </div>
       </div>
 
-      {/* Bitcoin Price - Bottom Left */}
-      <BitcoinPrice />
+      {/* Bitcoin Price - Bottom Left (hidden on very small screens) */}
+      <div className="hidden sm:block">
+        <BitcoinPrice />
+      </div>
     </div>
   );
 }

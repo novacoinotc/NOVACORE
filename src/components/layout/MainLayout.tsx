@@ -21,22 +21,35 @@ const gradientColors = [
   { from: 'from-teal-900/30', via: 'via-emerald-900/20', to: 'to-green-900/30' },
 ];
 
-// Generate random positions for floating particles
+// Generate random particles
 const generateParticles = (count: number) => {
   return Array.from({ length: count }, (_, i) => ({
     id: i,
     x: Math.random() * 100,
     y: Math.random() * 100,
-    size: Math.random() * 4 + 2,
-    duration: Math.random() * 20 + 15,
-    delay: Math.random() * 5,
+    size: Math.random() * 3 + 1,
+    duration: Math.random() * 8 + 4,
+    delay: Math.random() * 3,
+  }));
+};
+
+// Generate shooting stars
+const generateShootingStars = (count: number) => {
+  return Array.from({ length: count }, (_, i) => ({
+    id: i,
+    startX: Math.random() * 100,
+    startY: Math.random() * 50,
+    duration: Math.random() * 2 + 1,
+    delay: Math.random() * 8,
+    size: Math.random() * 2 + 1,
   }));
 };
 
 export function MainLayout({ children }: MainLayoutProps) {
   const pathname = usePathname();
   const [gradientIndex, setGradientIndex] = useState(0);
-  const [particles] = useState(() => generateParticles(20));
+  const particles = useMemo(() => generateParticles(40), []);
+  const shootingStars = useMemo(() => generateShootingStars(6), []);
 
   // Change gradient randomly on route change
   useEffect(() => {
@@ -46,15 +59,6 @@ export function MainLayout({ children }: MainLayoutProps) {
 
   const currentGradient = gradientColors[gradientIndex];
 
-  // Memoize floating orbs with random properties
-  const orbs = useMemo(() => [
-    { color: 'bg-purple-500/20', size: 'w-96 h-96', x: -10, y: -10, duration: 25 },
-    { color: 'bg-blue-500/15', size: 'w-80 h-80', x: 80, y: 20, duration: 30 },
-    { color: 'bg-emerald-500/15', size: 'w-72 h-72', x: 30, y: 70, duration: 22 },
-    { color: 'bg-cyan-500/20', size: 'w-64 h-64', x: 70, y: 60, duration: 28 },
-    { color: 'bg-violet-500/15', size: 'w-56 h-56', x: 50, y: 30, duration: 20 },
-  ], []);
-
   return (
     <div className="min-h-screen bg-black relative overflow-hidden">
       {/* Animated gradient background */}
@@ -62,38 +66,59 @@ export function MainLayout({ children }: MainLayoutProps) {
         key={gradientIndex}
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        transition={{ duration: 1.5 }}
+        transition={{ duration: 0.8 }}
         className={`absolute inset-0 bg-gradient-to-br ${currentGradient.from} ${currentGradient.via} ${currentGradient.to}`}
       />
 
-      {/* Large floating orbs */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        {orbs.map((orb, i) => (
-          <motion.div
-            key={i}
-            className={`absolute ${orb.size} ${orb.color} rounded-full blur-3xl`}
-            initial={{ x: `${orb.x}%`, y: `${orb.y}%` }}
-            animate={{
-              x: [`${orb.x}%`, `${orb.x + 15}%`, `${orb.x - 10}%`, `${orb.x}%`],
-              y: [`${orb.y}%`, `${orb.y - 20}%`, `${orb.y + 15}%`, `${orb.y}%`],
-              scale: [1, 1.1, 0.95, 1],
-            }}
-            transition={{
-              duration: orb.duration,
-              repeat: Infinity,
-              ease: "easeInOut",
-            }}
-          />
-        ))}
+      {/* Ambient glow - dispersed across full screen */}
+      <div className="absolute inset-0 pointer-events-none">
+        <motion.div
+          className="absolute w-[600px] h-[600px] bg-purple-500/15 rounded-full blur-[120px]"
+          style={{ left: '-15%', top: '-20%' }}
+          animate={{
+            x: [0, 100, 50, 0],
+            y: [0, 80, -30, 0],
+            scale: [1, 1.2, 0.9, 1],
+          }}
+          transition={{ duration: 20, repeat: Infinity, ease: "easeInOut" }}
+        />
+        <motion.div
+          className="absolute w-[500px] h-[500px] bg-blue-500/15 rounded-full blur-[100px]"
+          style={{ right: '-10%', top: '10%' }}
+          animate={{
+            x: [0, -80, 40, 0],
+            y: [0, 60, -40, 0],
+            scale: [1, 0.9, 1.1, 1],
+          }}
+          transition={{ duration: 25, repeat: Infinity, ease: "easeInOut" }}
+        />
+        <motion.div
+          className="absolute w-[450px] h-[450px] bg-emerald-500/12 rounded-full blur-[100px]"
+          style={{ left: '30%', bottom: '-15%' }}
+          animate={{
+            x: [0, 60, -40, 0],
+            y: [0, -70, 30, 0],
+            scale: [1, 1.15, 0.95, 1],
+          }}
+          transition={{ duration: 18, repeat: Infinity, ease: "easeInOut" }}
+        />
+        <motion.div
+          className="absolute w-[400px] h-[400px] bg-cyan-500/10 rounded-full blur-[80px]"
+          style={{ right: '20%', bottom: '20%' }}
+          animate={{
+            x: [0, -50, 70, 0],
+            y: [0, 50, -60, 0],
+          }}
+          transition={{ duration: 22, repeat: Infinity, ease: "easeInOut" }}
+        />
       </div>
 
-      {/* Floating particles */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+      {/* Floating particles - more and faster */}
+      <div className="absolute inset-0 pointer-events-none">
         {particles.map((particle) => (
           <motion.div
             key={particle.id}
-            className="absolute rounded-full bg-white/20"
+            className="absolute rounded-full bg-white/30"
             style={{
               width: particle.size,
               height: particle.size,
@@ -101,9 +126,10 @@ export function MainLayout({ children }: MainLayoutProps) {
               top: `${particle.y}%`,
             }}
             animate={{
-              y: [0, -30, 0],
-              x: [0, Math.random() * 20 - 10, 0],
-              opacity: [0.2, 0.5, 0.2],
+              y: [0, -50, 0],
+              x: [0, Math.random() * 30 - 15, 0],
+              opacity: [0.1, 0.6, 0.1],
+              scale: [1, 1.5, 1],
             }}
             transition={{
               duration: particle.duration,
@@ -115,60 +141,74 @@ export function MainLayout({ children }: MainLayoutProps) {
         ))}
       </div>
 
-      {/* Moving lines */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none opacity-10">
-        <motion.div
-          className="absolute h-px w-full bg-gradient-to-r from-transparent via-white to-transparent"
-          style={{ top: '20%' }}
-          animate={{ x: ['-100%', '100%'] }}
-          transition={{ duration: 8, repeat: Infinity, ease: "linear" }}
-        />
-        <motion.div
-          className="absolute h-px w-full bg-gradient-to-r from-transparent via-white to-transparent"
-          style={{ top: '50%' }}
-          animate={{ x: ['100%', '-100%'] }}
-          transition={{ duration: 12, repeat: Infinity, ease: "linear" }}
-        />
-        <motion.div
-          className="absolute h-px w-full bg-gradient-to-r from-transparent via-white to-transparent"
-          style={{ top: '80%' }}
-          animate={{ x: ['-100%', '100%'] }}
-          transition={{ duration: 10, repeat: Infinity, ease: "linear" }}
-        />
-        <motion.div
-          className="absolute w-px h-full bg-gradient-to-b from-transparent via-white to-transparent"
-          style={{ left: '25%' }}
-          animate={{ y: ['-100%', '100%'] }}
-          transition={{ duration: 15, repeat: Infinity, ease: "linear" }}
-        />
-        <motion.div
-          className="absolute w-px h-full bg-gradient-to-b from-transparent via-white to-transparent"
-          style={{ left: '75%' }}
-          animate={{ y: ['100%', '-100%'] }}
-          transition={{ duration: 18, repeat: Infinity, ease: "linear" }}
-        />
+      {/* Shooting stars */}
+      <div className="absolute inset-0 pointer-events-none overflow-hidden">
+        {shootingStars.map((star) => (
+          <motion.div
+            key={star.id}
+            className="absolute"
+            style={{
+              left: `${star.startX}%`,
+              top: `${star.startY}%`,
+            }}
+            initial={{ opacity: 0, x: 0, y: 0 }}
+            animate={{
+              opacity: [0, 1, 1, 0],
+              x: [0, 150, 300],
+              y: [0, 75, 150],
+            }}
+            transition={{
+              duration: star.duration,
+              repeat: Infinity,
+              delay: star.delay,
+              repeatDelay: Math.random() * 5 + 3,
+              ease: "easeOut",
+            }}
+          >
+            <div
+              className="bg-gradient-to-r from-white via-white/80 to-transparent"
+              style={{
+                width: '80px',
+                height: `${star.size}px`,
+                borderRadius: '50%',
+                boxShadow: '0 0 10px rgba(255,255,255,0.5)',
+              }}
+            />
+          </motion.div>
+        ))}
+      </div>
+
+      {/* Twinkling stars */}
+      <div className="absolute inset-0 pointer-events-none">
+        {Array.from({ length: 30 }).map((_, i) => (
+          <motion.div
+            key={`star-${i}`}
+            className="absolute w-1 h-1 bg-white rounded-full"
+            style={{
+              left: `${Math.random() * 100}%`,
+              top: `${Math.random() * 100}%`,
+            }}
+            animate={{
+              opacity: [0, 1, 0],
+              scale: [0.5, 1, 0.5],
+            }}
+            transition={{
+              duration: Math.random() * 2 + 1,
+              repeat: Infinity,
+              delay: Math.random() * 3,
+            }}
+          />
+        ))}
       </div>
 
       {/* Subtle grid overlay */}
       <div
-        className="absolute inset-0 opacity-[0.015]"
+        className="absolute inset-0 opacity-[0.02]"
         style={{
           backgroundImage: `linear-gradient(rgba(255,255,255,0.1) 1px, transparent 1px),
                            linear-gradient(90deg, rgba(255,255,255,0.1) 1px, transparent 1px)`,
           backgroundSize: '60px 60px'
         }}
-      />
-
-      {/* Pulsing corner accents */}
-      <motion.div
-        className="absolute top-0 left-0 w-32 h-32 bg-gradient-to-br from-purple-500/10 to-transparent"
-        animate={{ opacity: [0.3, 0.6, 0.3] }}
-        transition={{ duration: 4, repeat: Infinity }}
-      />
-      <motion.div
-        className="absolute bottom-0 right-0 w-40 h-40 bg-gradient-to-tl from-cyan-500/10 to-transparent"
-        animate={{ opacity: [0.3, 0.5, 0.3] }}
-        transition={{ duration: 5, repeat: Infinity }}
       />
 
       {/* Content */}
@@ -179,10 +219,10 @@ export function MainLayout({ children }: MainLayoutProps) {
           <AnimatePresence mode="wait">
             <motion.main
               key={pathname}
-              initial={{ opacity: 0, y: 20, filter: 'blur(10px)' }}
-              animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
-              exit={{ opacity: 0, y: -20, filter: 'blur(10px)' }}
-              transition={{ duration: 0.4, ease: 'easeOut' }}
+              initial={{ opacity: 0, scale: 0.98 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 1.02 }}
+              transition={{ duration: 0.15, ease: 'easeOut' }}
               className="p-6"
             >
               {children}

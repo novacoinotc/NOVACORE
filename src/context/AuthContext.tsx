@@ -2,7 +2,7 @@
 
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
-import { User, Permission, ALL_PERMISSIONS, DEFAULT_ROLE_PERMISSIONS } from '@/types';
+import { User, Permission } from '@/types';
 
 interface AuthContextType {
   user: User | null;
@@ -17,54 +17,8 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// Demo users (in production, this would be a database/API)
-const DEMO_USERS: Array<User & { password: string }> = [
-  {
-    id: '1',
-    email: 'admin@novacore.mx',
-    password: 'admin123',
-    name: 'Administrador',
-    role: 'admin',
-    permissions: Object.keys(ALL_PERMISSIONS) as Permission[],
-    isActive: true,
-    createdAt: Date.now(),
-    updatedAt: Date.now(),
-  },
-  {
-    id: '2',
-    email: 'usuario@novacore.mx',
-    password: 'user123',
-    name: 'Usuario Demo',
-    role: 'user',
-    permissions: DEFAULT_ROLE_PERMISSIONS.user,
-    isActive: true,
-    createdAt: Date.now(),
-    updatedAt: Date.now(),
-  },
-];
-
 // Pages that don't require authentication
 const PUBLIC_PATHS = ['/login'];
-
-// Get stored users from localStorage or use demo users
-function getStoredUsers(): Array<User & { password: string }> {
-  if (typeof window === 'undefined') return DEMO_USERS;
-  try {
-    const stored = localStorage.getItem('novacore_users');
-    if (stored) {
-      return JSON.parse(stored);
-    }
-  } catch {
-    // Ignore errors
-  }
-  // Initialize with demo users
-  try {
-    localStorage.setItem('novacore_users', JSON.stringify(DEMO_USERS));
-  } catch {
-    // Ignore storage errors
-  }
-  return DEMO_USERS;
-}
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -124,38 +78,38 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [user, isLoading, pathname, router, mounted]);
 
   const login = useCallback(async (email: string, password: string): Promise<boolean> => {
-    // Simulate network delay
-    await new Promise((resolve) => setTimeout(resolve, 500));
+    try {
+      const response = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      });
 
-    const users = getStoredUsers();
-    const foundUser = users.find(
-      (u) => u.email === email && u.password === password
-    );
+      if (!response.ok) {
+        return false;
+      }
 
-    if (!foundUser || !foundUser.isActive) {
+      const data = await response.json();
+
+      // Save session to localStorage
+      const session = {
+        user: data.user,
+        token: data.token,
+        expiresAt: data.expiresAt,
+      };
+
+      try {
+        localStorage.setItem('novacore_session', JSON.stringify(session));
+      } catch {
+        // Ignore storage errors
+      }
+
+      setUser(data.user);
+      return true;
+    } catch (error) {
+      console.error('Login error:', error);
       return false;
     }
-
-    const { password: _, ...userWithoutPassword } = foundUser;
-    const sessionUser: User = {
-      ...userWithoutPassword,
-      lastLogin: Date.now(),
-    };
-
-    // Save session
-    const session = {
-      user: sessionUser,
-      expiresAt: Date.now() + 24 * 60 * 60 * 1000, // 24 hours
-    };
-
-    try {
-      localStorage.setItem('novacore_session', JSON.stringify(session));
-    } catch {
-      // Ignore storage errors
-    }
-    setUser(sessionUser);
-
-    return true;
   }, []);
 
   const logout = useCallback(() => {
@@ -230,43 +184,4 @@ export function useRequirePermission(permission: Permission, redirectTo = '/dash
   }, [hasPermission, isLoading, permission, redirectTo, router]);
 
   return { isLoading, hasAccess: hasPermission(permission) };
-}
-
-// Helper to get users (for admin panel)
-export function getUsers(): User[] {
-  const users = getStoredUsers();
-  return users.map(({ password, ...user }) => user);
-}
-
-// Helper to save users (for admin panel)
-export function saveUser(userData: User & { password?: string }): void {
-  const users = getStoredUsers();
-  const existingIndex = users.findIndex((u) => u.id === userData.id);
-
-  if (existingIndex >= 0) {
-    // Update existing user
-    users[existingIndex] = {
-      ...users[existingIndex],
-      ...userData,
-      password: userData.password || users[existingIndex].password,
-      updatedAt: Date.now(),
-    };
-  } else {
-    // Create new user
-    users.push({
-      ...userData,
-      password: userData.password || 'password123',
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-    } as User & { password: string });
-  }
-
-  localStorage.setItem('novacore_users', JSON.stringify(users));
-}
-
-// Helper to delete user (for admin panel)
-export function deleteUser(userId: string): void {
-  const users = getStoredUsers();
-  const filtered = users.filter((u) => u.id !== userId);
-  localStorage.setItem('novacore_users', JSON.stringify(filtered));
 }

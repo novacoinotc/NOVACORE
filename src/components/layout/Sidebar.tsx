@@ -25,32 +25,22 @@ export function Sidebar() {
   return (
     <aside className="fixed left-0 top-0 z-40 h-screen w-60 flex flex-col border-r border-white/[0.06] bg-black/40 backdrop-blur-xl">
       {/* Logo */}
-      <div className="h-20 flex flex-col items-center justify-center px-5 border-b border-white/[0.06]">
-        <Link href="/dashboard" className="flex flex-col items-center gap-1">
-          {/* Neon Logo */}
-          <div className="relative">
-            <span
-              className="text-xl font-bold tracking-wider"
-              style={{
-                fontFamily: "'Orbitron', 'JetBrains Mono', monospace",
-                color: '#fff',
-                textShadow: `
-                  0 0 5px rgba(168, 85, 247, 0.8),
-                  0 0 10px rgba(168, 85, 247, 0.6),
-                  0 0 20px rgba(168, 85, 247, 0.4),
-                  0 0 40px rgba(168, 85, 247, 0.2)
-                `,
-              }}
-            >
-              NOVA<span style={{ color: '#a855f7' }}>CORE</span>
-            </span>
-          </div>
-          {/* Tagline */}
+      <div className="h-16 flex items-center justify-center px-5 border-b border-white/[0.06]">
+        <Link href="/dashboard">
           <span
-            className="text-[9px] tracking-[0.2em] text-white/40 uppercase"
-            style={{ fontFamily: "'JetBrains Mono', monospace" }}
+            className="text-xl font-bold tracking-wider"
+            style={{
+              fontFamily: "'Orbitron', 'JetBrains Mono', monospace",
+              color: '#fff',
+              textShadow: `
+                0 0 5px rgba(168, 85, 247, 0.8),
+                0 0 10px rgba(168, 85, 247, 0.6),
+                0 0 20px rgba(168, 85, 247, 0.4),
+                0 0 40px rgba(168, 85, 247, 0.2)
+              `,
+            }}
           >
-            in crypto we trust
+            NOVA<span style={{ color: '#a855f7' }}>CORE</span>
           </span>
         </Link>
       </div>

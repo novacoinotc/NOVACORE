@@ -69,16 +69,16 @@ export function MainLayout({ children }: MainLayoutProps) {
         />
       </div>
 
-      {/* CSS Shooting Stars */}
+      {/* CSS Shooting Stars - Subtle, multi-directional, less frequent */}
       <div className="absolute inset-0 pointer-events-none overflow-hidden">
-        <div className="shooting-star" style={{ top: '10%', left: '20%', animationDelay: '0s' }} />
-        <div className="shooting-star" style={{ top: '20%', left: '60%', animationDelay: '2s' }} />
-        <div className="shooting-star" style={{ top: '5%', left: '80%', animationDelay: '4s' }} />
-        <div className="shooting-star" style={{ top: '30%', left: '40%', animationDelay: '6s' }} />
-        <div className="shooting-star" style={{ top: '15%', left: '10%', animationDelay: '8s' }} />
-        <div className="shooting-star" style={{ top: '25%', left: '90%', animationDelay: '3s' }} />
-        <div className="shooting-star" style={{ top: '8%', left: '50%', animationDelay: '5s' }} />
-        <div className="shooting-star" style={{ top: '35%', left: '30%', animationDelay: '7s' }} />
+        {/* Direction 1: diagonal down-left */}
+        <div className="shooting-star dir-1" style={{ top: '8%', left: '25%', animationDelay: '0s' }} />
+        <div className="shooting-star dir-1" style={{ top: '15%', left: '70%', animationDelay: '4s' }} />
+        {/* Direction 2: diagonal down-right */}
+        <div className="shooting-star dir-2" style={{ top: '12%', right: '30%', animationDelay: '2s' }} />
+        <div className="shooting-star dir-2" style={{ top: '20%', right: '60%', animationDelay: '7s' }} />
+        {/* Direction 3: horizontal */}
+        <div className="shooting-star dir-3" style={{ top: '25%', right: '10%', animationDelay: '5s' }} />
       </div>
 
       {/* Floating particles */}

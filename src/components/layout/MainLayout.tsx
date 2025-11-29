@@ -84,6 +84,16 @@ export function MainLayout({ children }: MainLayoutProps) {
         <div className="shooting-star dir-3" style={{ top: '25%', right: '10%', animationDelay: '5s' }} />
       </div>
 
+      {/* Galaxy Explosions - hidden on mobile for performance */}
+      <div className="hidden md:block absolute inset-0 pointer-events-none overflow-hidden">
+        <div className="galaxy-explosion exp-1" style={{ top: '18%', left: '15%', animationDelay: '0s' }} />
+        <div className="galaxy-explosion exp-1" style={{ top: '65%', right: '20%', animationDelay: '9s' }} />
+        <div className="galaxy-explosion exp-2" style={{ top: '35%', right: '35%', animationDelay: '5s' }} />
+        <div className="galaxy-explosion exp-2" style={{ top: '75%', left: '40%', animationDelay: '14s' }} />
+        <div className="galaxy-explosion exp-3" style={{ top: '45%', left: '60%', animationDelay: '3s' }} />
+        <div className="galaxy-explosion exp-3" style={{ top: '25%', right: '15%', animationDelay: '12s' }} />
+      </div>
+
       {/* Floating particles - fewer on mobile */}
       <div className="absolute inset-0 pointer-events-none">
         {particles.slice(0, 15).map((particle) => (

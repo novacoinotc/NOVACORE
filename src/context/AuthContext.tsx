@@ -2,7 +2,7 @@
 
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
-import { User, Permission, ALL_PERMISSIONS, DEFAULT_ROLE_PERMISSIONS, UserRole } from '@/types';
+import { User, Permission, ALL_PERMISSIONS, DEFAULT_ROLE_PERMISSIONS } from '@/types';
 
 interface AuthContextType {
   user: User | null;
@@ -49,16 +49,20 @@ const PUBLIC_PATHS = ['/login'];
 // Get stored users from localStorage or use demo users
 function getStoredUsers(): Array<User & { password: string }> {
   if (typeof window === 'undefined') return DEMO_USERS;
-  const stored = localStorage.getItem('novacore_users');
-  if (stored) {
-    try {
+  try {
+    const stored = localStorage.getItem('novacore_users');
+    if (stored) {
       return JSON.parse(stored);
-    } catch {
-      return DEMO_USERS;
     }
+  } catch {
+    // Ignore errors
   }
   // Initialize with demo users
-  localStorage.setItem('novacore_users', JSON.stringify(DEMO_USERS));
+  try {
+    localStorage.setItem('novacore_users', JSON.stringify(DEMO_USERS));
+  } catch {
+    // Ignore storage errors
+  }
   return DEMO_USERS;
 }
 
@@ -67,9 +71,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [mounted, setMounted] = useState(false);
+
+  // Set mounted state
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   // Check for existing session on mount
   useEffect(() => {
+    if (!mounted) return;
+
     const checkSession = () => {
       try {
         const sessionStr = localStorage.getItem('novacore_session');
@@ -84,17 +96,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
       } catch (error) {
         console.error('Error checking session:', error);
-        localStorage.removeItem('novacore_session');
+        try {
+          localStorage.removeItem('novacore_session');
+        } catch {
+          // Ignore
+        }
       }
       setIsLoading(false);
     };
 
     checkSession();
-  }, []);
+  }, [mounted]);
 
   // Redirect logic
   useEffect(() => {
-    if (isLoading) return;
+    if (!mounted || isLoading) return;
 
     const isPublicPath = PUBLIC_PATHS.includes(pathname);
 
@@ -105,7 +121,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // Already logged in and on login page
       router.push('/dashboard');
     }
-  }, [user, isLoading, pathname, router]);
+  }, [user, isLoading, pathname, router, mounted]);
 
   const login = useCallback(async (email: string, password: string): Promise<boolean> => {
     // Simulate network delay
@@ -132,14 +148,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       expiresAt: Date.now() + 24 * 60 * 60 * 1000, // 24 hours
     };
 
-    localStorage.setItem('novacore_session', JSON.stringify(session));
+    try {
+      localStorage.setItem('novacore_session', JSON.stringify(session));
+    } catch {
+      // Ignore storage errors
+    }
     setUser(sessionUser);
 
     return true;
   }, []);
 
   const logout = useCallback(() => {
-    localStorage.removeItem('novacore_session');
+    try {
+      localStorage.removeItem('novacore_session');
+    } catch {
+      // Ignore
+    }
     setUser(null);
     router.push('/login');
   }, [router]);
@@ -175,7 +199,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const value = {
     user,
     isAuthenticated: !!user,
-    isLoading,
+    isLoading: !mounted || isLoading,
     login,
     logout,
     hasPermission,

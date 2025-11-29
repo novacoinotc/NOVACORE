@@ -4,31 +4,11 @@ import { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useRouter } from 'next/navigation';
 import { Eye, EyeOff, Lock, Mail, AlertCircle, Loader2 } from 'lucide-react';
-
-// Simulated users for demo (in production, this would be a database)
-const DEMO_USERS = [
-  {
-    id: '1',
-    email: 'admin@novacore.mx',
-    password: 'admin123',
-    name: 'Administrador',
-    role: 'admin' as const,
-    permissions: [] as string[], // Admin has all permissions
-    isActive: true,
-  },
-  {
-    id: '2',
-    email: 'usuario@novacore.mx',
-    password: 'user123',
-    name: 'Usuario Demo',
-    role: 'user' as const,
-    permissions: ['dashboard.view', 'balance.view', 'orders.view', 'orders.create', 'clients.view', 'history.view', 'banks.view', 'catalogs.view', 'settings.view'],
-    isActive: true,
-  },
-];
+import { useAuth } from '@/context/AuthContext';
 
 export default function LoginPage() {
   const router = useRouter();
+  const { login, isAuthenticated, isLoading: authLoading } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -36,69 +16,65 @@ export default function LoginPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [mounted, setMounted] = useState(false);
 
-  // Generate random gradient on mount
-  const gradient = useMemo(() => {
+  // Generate random gradient on mount (only client-side)
+  const [gradient, setGradient] = useState('from-purple-900/40 via-violet-800/30 to-indigo-900/40');
+
+  useEffect(() => {
+    setMounted(true);
     const gradients = [
       'from-purple-900/40 via-violet-800/30 to-indigo-900/40',
       'from-indigo-900/40 via-purple-800/30 to-fuchsia-900/40',
       'from-violet-900/40 via-indigo-800/30 to-purple-900/40',
     ];
-    return gradients[Math.floor(Math.random() * gradients.length)];
+    setGradient(gradients[Math.floor(Math.random() * gradients.length)]);
   }, []);
 
+  // Redirect if already logged in
   useEffect(() => {
-    setMounted(true);
-    // Check if already logged in
-    const session = localStorage.getItem('novacore_session');
-    if (session) {
+    if (mounted && !authLoading && isAuthenticated) {
       router.push('/dashboard');
     }
-  }, [router]);
+  }, [mounted, authLoading, isAuthenticated, router]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     setIsLoading(true);
 
-    // Simulate network delay
-    await new Promise((resolve) => setTimeout(resolve, 1000));
+    try {
+      const success = await login(email, password);
 
-    const user = DEMO_USERS.find(
-      (u) => u.email === email && u.password === password
-    );
+      if (!success) {
+        setError('Credenciales inválidas o usuario desactivado');
+        setIsLoading(false);
+        return;
+      }
 
-    if (!user) {
-      setError('Credenciales inválidas');
+      // Redirect to dashboard (AuthContext will handle this too)
+      router.push('/dashboard');
+    } catch (err) {
+      setError('Error al iniciar sesión. Intenta de nuevo.');
       setIsLoading(false);
-      return;
     }
-
-    if (!user.isActive) {
-      setError('Usuario desactivado. Contacta al administrador.');
-      setIsLoading(false);
-      return;
-    }
-
-    // Save session
-    const session = {
-      user: {
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        role: user.role,
-        permissions: user.permissions,
-        lastLogin: Date.now(),
-      },
-      expiresAt: Date.now() + 24 * 60 * 60 * 1000, // 24 hours
-    };
-
-    localStorage.setItem('novacore_session', JSON.stringify(session));
-
-    // Redirect to dashboard
-    router.push('/dashboard');
   };
 
-  if (!mounted) return null;
+  // Show loading state while checking auth
+  if (!mounted || authLoading) {
+    return (
+      <div className="min-h-screen bg-[#030014] flex items-center justify-center">
+        <Loader2 className="w-8 h-8 text-purple-500 animate-spin" />
+      </div>
+    );
+  }
+
+  // Already authenticated, will redirect
+  if (isAuthenticated) {
+    return (
+      <div className="min-h-screen bg-[#030014] flex items-center justify-center">
+        <Loader2 className="w-8 h-8 text-purple-500 animate-spin" />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen relative flex items-center justify-center overflow-hidden bg-[#030014]">
@@ -186,6 +162,7 @@ export default function LoginPage() {
                   placeholder="usuario@novacore.mx"
                   className="w-full bg-white/[0.03] border border-white/[0.08] rounded-lg py-3 pl-10 pr-4 text-white placeholder:text-white/20 focus:outline-none focus:border-purple-500/50 focus:ring-1 focus:ring-purple-500/30 transition-all"
                   required
+                  disabled={isLoading}
                 />
               </div>
             </div>
@@ -204,6 +181,7 @@ export default function LoginPage() {
                   placeholder="••••••••"
                   className="w-full bg-white/[0.03] border border-white/[0.08] rounded-lg py-3 pl-10 pr-12 text-white placeholder:text-white/20 focus:outline-none focus:border-purple-500/50 focus:ring-1 focus:ring-purple-500/30 transition-all"
                   required
+                  disabled={isLoading}
                 />
                 <button
                   type="button"
@@ -223,8 +201,8 @@ export default function LoginPage() {
             <motion.button
               type="submit"
               disabled={isLoading}
-              whileHover={{ scale: 1.01 }}
-              whileTap={{ scale: 0.99 }}
+              whileHover={{ scale: isLoading ? 1 : 1.01 }}
+              whileTap={{ scale: isLoading ? 1 : 0.99 }}
               className="w-full py-3 bg-gradient-to-r from-purple-600 to-violet-600 hover:from-purple-500 hover:to-violet-500 text-white font-medium rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-lg shadow-purple-500/20"
             >
               {isLoading ? (

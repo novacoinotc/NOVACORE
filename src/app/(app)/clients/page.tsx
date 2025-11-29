@@ -207,7 +207,7 @@ export default function ClientsPage() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-4 gap-px bg-white/[0.04] rounded-lg overflow-hidden">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-px bg-white/[0.04] rounded-lg overflow-hidden">
         {[
           { label: 'Total', value: demoClients.length },
           { label: 'Activos', value: demoClients.filter((c) => c.status === 'ACTIVE').length, isPositive: true },

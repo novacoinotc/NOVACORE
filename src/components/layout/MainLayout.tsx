@@ -150,8 +150,8 @@ export function MainLayout({ children }: MainLayoutProps) {
         </div>
       </div>
 
-      {/* Bitcoin Price - Bottom Left (hidden on very small screens) */}
-      <div className="hidden sm:block">
+      {/* Bitcoin Price - Bottom Left (desktop only, mobile shows in TopBar) */}
+      <div className="hidden lg:block">
         <BitcoinPrice />
       </div>
     </div>

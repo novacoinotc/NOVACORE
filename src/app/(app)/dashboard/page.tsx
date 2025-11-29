@@ -72,7 +72,7 @@ export default function DashboardPage() {
   return (
     <div className="space-y-6 max-w-6xl">
       {/* Stats */}
-      <div className="grid grid-cols-4 gap-px bg-white/[0.04] rounded-lg overflow-hidden">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-px bg-white/[0.04] rounded-lg overflow-hidden">
         <StatsCard title="Entradas" value={125000} format="currency" change={12.5} />
         <StatsCard title="Salidas" value={85000} format="currency" change={-5.2} />
         <StatsCard title="Pendientes" value={12} format="number" />

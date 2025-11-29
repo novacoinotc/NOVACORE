@@ -92,8 +92,30 @@ export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
           </button>
         </div>
 
+        {/* User section - at top */}
+        {user && (
+          <div className="border-b border-white/[0.06] p-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-purple-500 to-violet-600 flex items-center justify-center text-white font-medium flex-shrink-0">
+                {user.name.charAt(0).toUpperCase()}
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-white text-sm font-medium truncate">{user.name}</p>
+                <p className="text-white/40 text-xs truncate">{user.email}</p>
+              </div>
+              <button
+                onClick={logout}
+                className="p-2 text-white/30 hover:text-red-400 hover:bg-red-500/10 rounded-md transition-colors"
+                title="Cerrar sesión"
+              >
+                <LogOut className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Navigation */}
-        <nav className="flex-1 px-3 py-4">
+        <nav className="flex-1 px-3 py-4 overflow-y-auto">
           {filteredNavigation.map((item) => {
             const isActive = pathname === item.href || pathname.startsWith(item.href + '/');
             const Icon = item.icon;
@@ -115,28 +137,6 @@ export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
             );
           })}
         </nav>
-
-        {/* User section */}
-        {user && (
-          <div className="border-t border-white/[0.06] p-4">
-            <div className="flex items-center gap-3 mb-3">
-              <div className="w-9 h-9 rounded-full bg-gradient-to-br from-purple-500 to-violet-600 flex items-center justify-center text-white text-sm font-medium flex-shrink-0">
-                {user.name.charAt(0).toUpperCase()}
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="text-white text-sm font-medium truncate">{user.name}</p>
-                <p className="text-white/40 text-xs truncate">{user.email}</p>
-              </div>
-            </div>
-            <button
-              onClick={logout}
-              className="w-full flex items-center gap-2 px-3 py-2 text-white/40 hover:text-red-400 hover:bg-red-500/10 rounded-md text-sm transition-colors"
-            >
-              <LogOut className="w-4 h-4" />
-              Cerrar sesión
-            </button>
-          </div>
-        )}
       </aside>
     </>
   );

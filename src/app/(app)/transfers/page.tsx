@@ -285,7 +285,7 @@ export default function TransfersPage() {
 
                   <div className="pt-4">
                     <Button
-                      size="lg"
+                      size="md"
                       className="w-full"
                       onClick={handleSubmit}
                       rightIcon={<ArrowRight className="w-5 h-5" />}

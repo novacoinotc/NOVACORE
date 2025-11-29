@@ -1,14 +1,5 @@
 'use client';
 
-import { motion } from 'framer-motion';
-import {
-  ArrowUpRight,
-  ArrowDownLeft,
-  Users,
-  Clock,
-  Activity,
-  Zap,
-} from 'lucide-react';
 import { StatsCard } from '@/components/ui';
 import { BalanceCard } from '@/components/dashboard/BalanceCard';
 import { TransactionChart } from '@/components/dashboard/TransactionChart';
@@ -92,70 +83,44 @@ const recentTransactions: Transaction[] = [
 
 export default function DashboardPage() {
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       {/* Header */}
-      <motion.div
-        initial={{ opacity: 0, y: -20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="flex items-center justify-between"
-      >
-        <div>
-          <h1 className="text-3xl font-display font-bold text-white">
-            Dashboard
-          </h1>
-          <p className="text-gray-400 mt-1">
-            Bienvenido de vuelta. Aqui esta el resumen de tu actividad.
-          </p>
-        </div>
-        <div className="flex items-center gap-2 px-4 py-2 rounded-xl bg-dark-700 border border-white/5">
-          <Activity className="w-5 h-5 text-neon-cyan animate-pulse" />
-          <span className="text-sm text-gray-400">Sistema activo</span>
-          <span className="text-sm font-mono text-neon-cyan">24/7</span>
-        </div>
-      </motion.div>
+      <div>
+        <h1 className="text-xl font-semibold text-white">Dashboard</h1>
+        <p className="text-sm text-gray-500 mt-1">Resumen de actividad</p>
+      </div>
 
       {/* Stats Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <StatsCard
           title="Entradas Hoy"
           value={125000}
           format="currency"
           change={12.5}
-          changeLabel="vs ayer"
-          icon={<ArrowDownLeft className="w-5 h-5 text-green-400" />}
-          variant="default"
         />
         <StatsCard
           title="Salidas Hoy"
           value={85000}
           format="currency"
           change={-5.2}
-          changeLabel="vs ayer"
-          icon={<ArrowUpRight className="w-5 h-5 text-red-400" />}
-          variant="default"
         />
         <StatsCard
-          title="Ordenes Pendientes"
+          title="Pendientes"
           value={12}
           format="number"
-          icon={<Clock className="w-5 h-5 text-yellow-400" />}
-          variant="default"
         />
         <StatsCard
-          title="Clientes Activos"
+          title="Clientes"
           value={1248}
           format="number"
           change={3.8}
-          changeLabel="este mes"
-          icon={<Users className="w-5 h-5 text-accent-primary" />}
-          variant="gradient"
         />
       </div>
 
       {/* Main Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* Left Column - Balance & Chart */}
-        <div className="lg:col-span-2 space-y-8">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Left Column */}
+        <div className="lg:col-span-2 space-y-6">
           <BalanceCard
             totalBalance={1250000}
             availableBalance={980000}
@@ -164,64 +129,12 @@ export default function DashboardPage() {
           <TransactionChart data={chartData} />
         </div>
 
-        {/* Right Column - Quick Actions & Stats */}
-        <div className="space-y-8">
+        {/* Right Column */}
+        <div className="space-y-6">
           <QuickActions />
-
-          {/* Live Activity */}
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.4 }}
-            className="rounded-2xl bg-dark-700 border border-white/5 p-6"
-          >
-            <div className="flex items-center gap-3 mb-4">
-              <div className="p-2 rounded-lg bg-neon-cyan/10">
-                <Zap className="w-5 h-5 text-neon-cyan" />
-              </div>
-              <div>
-                <h3 className="font-semibold text-white">Actividad en Vivo</h3>
-                <p className="text-xs text-gray-500">SPEI en tiempo real</p>
-              </div>
-            </div>
-
-            <div className="space-y-3">
-              {[
-                { type: 'in', amount: '$2,500', time: 'Ahora' },
-                { type: 'out', amount: '$1,200', time: '2s' },
-                { type: 'in', amount: '$8,000', time: '5s' },
-              ].map((item, i) => (
-                <motion.div
-                  key={i}
-                  initial={{ opacity: 0, x: -20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: i * 0.2 }}
-                  className="flex items-center justify-between py-2 px-3 rounded-lg bg-dark-600/50"
-                >
-                  <div className="flex items-center gap-2">
-                    <div
-                      className={`w-2 h-2 rounded-full ${
-                        item.type === 'in' ? 'bg-green-400' : 'bg-red-400'
-                      } animate-pulse`}
-                    />
-                    <span
-                      className={`text-sm font-mono ${
-                        item.type === 'in' ? 'text-green-400' : 'text-red-400'
-                      }`}
-                    >
-                      {item.type === 'in' ? '+' : '-'} {item.amount}
-                    </span>
-                  </div>
-                  <span className="text-xs text-gray-500">{item.time}</span>
-                </motion.div>
-              ))}
-            </div>
-          </motion.div>
+          <RecentTransactions transactions={recentTransactions.slice(0, 4)} />
         </div>
       </div>
-
-      {/* Recent Transactions */}
-      <RecentTransactions transactions={recentTransactions} />
     </div>
   );
 }

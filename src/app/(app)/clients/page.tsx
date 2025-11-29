@@ -374,7 +374,7 @@ export default function ClientsPage() {
         isOpen={showDetailModal}
         onClose={() => setShowDetailModal(false)}
         title="Detalle del Cliente"
-        size="lg"
+        size="md"
       >
         {selectedClient && (
           <div className="space-y-6">
@@ -401,7 +401,7 @@ export default function ClientsPage() {
                 </h3>
                 <p className="text-gray-400 font-mono">{selectedClient.rfc}</p>
               </div>
-              <Badge variant={getStatusVariant(selectedClient.status)} size="lg">
+              <Badge variant={getStatusVariant(selectedClient.status)} size="md">
                 {getStatusText(selectedClient.status)}
               </Badge>
             </div>

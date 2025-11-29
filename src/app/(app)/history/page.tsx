@@ -328,7 +328,7 @@ export default function HistoryPage() {
         isOpen={showDetailModal}
         onClose={() => setShowDetailModal(false)}
         title="Detalle de Transaccion"
-        size="lg"
+        size="md"
       >
         {selectedTransaction && (
           <div className="space-y-6">
@@ -368,8 +368,7 @@ export default function HistoryPage() {
                     ? 'danger'
                     : 'default'
                 }
-                size="lg"
-                pulse={selectedTransaction.status === 'pending' || selectedTransaction.status === 'sent'}
+                size="md"
               >
                 {getStatusText(selectedTransaction.status)}
               </Badge>

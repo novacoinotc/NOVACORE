@@ -6,24 +6,14 @@ import { TrendingUp, TrendingDown } from 'lucide-react';
 interface StatsCardProps {
   title: string;
   value: number;
-  prefix?: string;
-  suffix?: string;
   change?: number;
-  changeLabel?: string;
-  icon?: React.ReactNode;
-  variant?: 'default' | 'gradient' | 'gold';
   format?: 'currency' | 'number' | 'compact';
 }
 
 export function StatsCard({
   title,
   value,
-  prefix,
-  suffix,
   change,
-  changeLabel,
-  icon,
-  variant = 'default',
   format = 'number',
 }: StatsCardProps) {
   const formattedValue = () => {
@@ -37,68 +27,29 @@ export function StatsCard({
     }
   };
 
-  const variants = {
-    default: 'bg-dark-800 border-white/5',
-    gradient: 'bg-gradient-to-br from-purple-600/20 via-dark-800 to-gold-500/10 border-purple-500/20',
-    gold: 'bg-dark-800 border-gold-500/30',
-  };
-
   return (
-    <div
-      className={cn(
-        'relative rounded-xl border p-6 overflow-hidden transition-all duration-200 hover:border-purple-500/30',
-        variants[variant]
-      )}
-    >
-      {/* Content */}
-      <div className="relative z-10">
-        <div className="flex items-center justify-between mb-4">
-          <span className="text-sm font-medium text-gray-400">{title}</span>
-          {icon && (
-            <div className="p-2 rounded-lg bg-white/5">
-              {icon}
-            </div>
-          )}
-        </div>
-
-        <div className="flex items-baseline gap-2">
-          {prefix && (
-            <span className="text-lg text-gray-400">{prefix}</span>
+    <div className="rounded-xl bg-dark-800 border border-white/[0.04] p-5">
+      <p className="text-sm text-gray-500 mb-2">{title}</p>
+      <p className="text-2xl font-semibold font-mono text-white">
+        {formattedValue()}
+      </p>
+      {change !== undefined && (
+        <div className="flex items-center gap-1 mt-2">
+          {change >= 0 ? (
+            <TrendingUp className="w-3 h-3 text-green-500" />
+          ) : (
+            <TrendingDown className="w-3 h-3 text-red-500" />
           )}
           <span
             className={cn(
-              'text-3xl font-bold font-mono',
-              variant === 'gold' ? 'text-gold-400' : 'text-white'
+              'text-xs',
+              change >= 0 ? 'text-green-500' : 'text-red-500'
             )}
           >
-            {formattedValue()}
+            {change >= 0 ? '+' : ''}{change.toFixed(1)}%
           </span>
-          {suffix && (
-            <span className="text-lg text-gray-400">{suffix}</span>
-          )}
         </div>
-
-        {change !== undefined && (
-          <div className="flex items-center gap-1.5 mt-3">
-            {change >= 0 ? (
-              <TrendingUp className="w-4 h-4 text-green-400" />
-            ) : (
-              <TrendingDown className="w-4 h-4 text-red-400" />
-            )}
-            <span
-              className={cn(
-                'text-sm font-medium',
-                change >= 0 ? 'text-green-400' : 'text-red-400'
-              )}
-            >
-              {change >= 0 ? '+' : ''}{change.toFixed(2)}%
-            </span>
-            {changeLabel && (
-              <span className="text-sm text-gray-500">{changeLabel}</span>
-            )}
-          </div>
-        )}
-      </div>
+      )}
     </div>
   );
 }

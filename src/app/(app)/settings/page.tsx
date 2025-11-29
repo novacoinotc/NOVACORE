@@ -153,7 +153,7 @@ export default function SettingsPage() {
                 </div>
 
                 <div className="flex items-center gap-2">
-                  <Badge variant="success" pulse>
+                  <Badge variant="success">
                     Activa
                   </Badge>
                   <span className="text-sm text-gray-500">

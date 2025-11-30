@@ -157,9 +157,10 @@ export async function POST(request: NextRequest) {
       if (company && savedTransaction) {
         const commissionResult = await processCommission(savedTransaction, company);
         if (commissionResult.success && commissionResult.commissionAmount > 0) {
-          console.log(`Commission processed: ${commissionResult.commissionAmount} MXN`, {
-            transactionId: commissionResult.commissionTransactionId,
+          console.log(`Pending commission created: ${commissionResult.commissionAmount} MXN`, {
+            pendingCommissionId: commissionResult.pendingCommissionId,
             originalTx: transactionId,
+            note: 'Will be processed at daily cutoff (10 PM)',
           });
         }
       }

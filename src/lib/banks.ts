@@ -157,3 +157,29 @@ export function getBankSelectOptions(): { value: string; label: string }[] {
     label: bank.shortName,
   }));
 }
+
+/**
+ * Get bank short name from SPEI code or CLABE prefix
+ * @param code - 3-digit bank code or 5-digit SPEI code
+ * @returns Bank short name or 'N/A' if not found
+ */
+export function getBankName(code: string): string {
+  if (!code) return 'N/A';
+
+  // Try as SPEI code first (5 digits)
+  const speiBank = SPEI_CODES[code];
+  if (speiBank) return speiBank.shortName;
+
+  // Try as CLABE prefix (3 digits)
+  const clabeBank = BANK_CODES[code];
+  if (clabeBank) return clabeBank.shortName;
+
+  // Try extracting 3-digit prefix from longer codes
+  if (code.length >= 3) {
+    const prefix = code.substring(0, 3);
+    const prefixBank = BANK_CODES[prefix];
+    if (prefixBank) return prefixBank.shortName;
+  }
+
+  return 'N/A';
+}

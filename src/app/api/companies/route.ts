@@ -16,6 +16,10 @@ export async function GET() {
       phone: c.phone,
       address: c.address,
       isActive: c.is_active,
+      speiInEnabled: c.spei_in_enabled,
+      speiOutEnabled: c.spei_out_enabled,
+      commissionPercentage: parseFloat(c.commission_percentage?.toString() || '0'),
+      parentClabe: c.parent_clabe,
       createdAt: new Date(c.created_at).getTime(),
       updatedAt: new Date(c.updated_at).getTime(),
     }));
@@ -34,7 +38,7 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { name, businessName, rfc, email, phone, address, isActive } = body;
+    const { name, businessName, rfc, email, phone, address, isActive, speiInEnabled, speiOutEnabled, commissionPercentage, parentClabe } = body;
 
     // Validation
     if (!name || !businessName || !rfc || !email) {
@@ -49,6 +53,14 @@ export async function POST(request: NextRequest) {
     if (!rfcRegex.test(rfc)) {
       return NextResponse.json(
         { error: 'Formato de RFC inválido' },
+        { status: 400 }
+      );
+    }
+
+    // Validate commission percentage
+    if (commissionPercentage !== undefined && (commissionPercentage < 0 || commissionPercentage > 100)) {
+      return NextResponse.json(
+        { error: 'El porcentaje de comisión debe estar entre 0 y 100' },
         { status: 400 }
       );
     }
@@ -72,6 +84,10 @@ export async function POST(request: NextRequest) {
       phone,
       address,
       isActive: isActive ?? true,
+      speiInEnabled: speiInEnabled ?? true,
+      speiOutEnabled: speiOutEnabled ?? true,
+      commissionPercentage: commissionPercentage ?? 0,
+      parentClabe: parentClabe || undefined,
     });
 
     // Return company
@@ -84,6 +100,10 @@ export async function POST(request: NextRequest) {
       phone: dbCompany.phone,
       address: dbCompany.address,
       isActive: dbCompany.is_active,
+      speiInEnabled: dbCompany.spei_in_enabled,
+      speiOutEnabled: dbCompany.spei_out_enabled,
+      commissionPercentage: parseFloat(dbCompany.commission_percentage?.toString() || '0'),
+      parentClabe: dbCompany.parent_clabe,
       createdAt: new Date(dbCompany.created_at).getTime(),
       updatedAt: new Date(dbCompany.updated_at).getTime(),
     };

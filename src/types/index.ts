@@ -105,6 +105,10 @@ export interface Company {
   phone?: string;
   address?: string;
   isActive: boolean;
+  speiInEnabled: boolean;    // SPEI IN habilitado
+  speiOutEnabled: boolean;   // SPEI OUT habilitado
+  commissionPercentage: number; // Porcentaje de comisión (0-100)
+  parentClabe?: string;      // CLABE madre para comisiones
   createdAt: number;
   updatedAt: number;
 }

@@ -13,7 +13,9 @@ import {
   Loader2,
   Users,
   CreditCard,
+  Eye,
 } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 import { useAuth, useRequirePermission } from '@/context/AuthContext';
 import { Company } from '@/types';
 
@@ -40,8 +42,10 @@ const defaultFormData: CompanyFormData = {
 };
 
 export default function CompaniesPage() {
+  const router = useRouter();
   const { user: currentUser, hasPermission } = useAuth();
   const { isLoading, hasAccess } = useRequirePermission('companies.view');
+  const isSuperAdmin = currentUser?.role === 'super_admin';
 
   const [companies, setCompanies] = useState<Company[]>([]);
   const [loadingCompanies, setLoadingCompanies] = useState(true);
@@ -309,6 +313,15 @@ export default function CompaniesPage() {
                 </span>
               </div>
               <div className="flex items-center gap-1">
+                {isSuperAdmin && (
+                  <button
+                    onClick={() => router.push(`/companies/${company.id}`)}
+                    className="p-2 text-white/40 hover:text-purple-400 hover:bg-purple-500/10 rounded-lg transition-colors"
+                    title="Ver detalles"
+                  >
+                    <Eye className="w-4 h-4" />
+                  </button>
+                )}
                 {hasPermission('companies.update') && (
                   <button
                     onClick={() => handleEdit(company)}

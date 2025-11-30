@@ -6,7 +6,10 @@ import {
   getClabeAccountByClabe,
   createTransaction,
   getTransactionByTrackingKey,
+  getCompanyById,
+  getTransactionById,
 } from '@/lib/db';
+import { processCommission, canReceiveSpei } from '@/lib/commissions';
 
 /**
  * POST /api/webhooks/deposit
@@ -104,6 +107,16 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    // 1b. Check if company can receive SPEI IN
+    const speiCheck = await canReceiveSpei(clabeAccount.company_id);
+    if (!speiCheck.allowed) {
+      console.warn(`SPEI IN blocked for company ${clabeAccount.company_id}: ${speiCheck.reason}`);
+      return NextResponse.json({
+        returnCode: 13, // Beneficiario no reconoce pago
+        errorDescription: speiCheck.reason || 'Empresa no puede recibir transferencias SPEI',
+      });
+    }
+
     // 2. Check for duplicate tracking key
     const existingTransaction = await getTransactionByTrackingKey(data.trackingKey);
     if (existingTransaction) {
@@ -118,7 +131,7 @@ export async function POST(request: NextRequest) {
     const transactionId = `tx_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
 
     try {
-      await createTransaction({
+      const savedTransaction = await createTransaction({
         id: transactionId,
         clabeAccountId: clabeAccount.id,
         type: 'incoming',
@@ -138,6 +151,18 @@ export async function POST(request: NextRequest) {
       });
 
       console.log(`Transaction saved: ${transactionId} for CLABE ${clabeAccount.id}`);
+
+      // 4. Process commission if configured
+      const company = await getCompanyById(clabeAccount.company_id);
+      if (company && savedTransaction) {
+        const commissionResult = await processCommission(savedTransaction, company);
+        if (commissionResult.success && commissionResult.commissionAmount > 0) {
+          console.log(`Commission processed: ${commissionResult.commissionAmount} MXN`, {
+            transactionId: commissionResult.commissionTransactionId,
+            originalTx: transactionId,
+          });
+        }
+      }
     } catch (dbError) {
       console.error('Failed to save transaction:', dbError);
       // Still accept the transaction even if DB save fails

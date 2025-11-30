@@ -3,12 +3,22 @@ import bcrypt from 'bcryptjs';
 import { getUserById, updateUser, deleteUser, getUserByEmail, getCompanyById, setUserClabeAccess, getUserClabeAccess } from '@/lib/db';
 import { ALL_PERMISSIONS, Permission, UserRole } from '@/types';
 
+// Helper to get current user from request headers
+async function getCurrentUser(request: NextRequest) {
+  const userId = request.headers.get('x-user-id');
+  if (!userId) return null;
+  return await getUserById(userId);
+}
+
 // GET /api/users/[id] - Get single user
 export async function GET(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
   try {
+    // Get current user for authorization
+    const currentUser = await getCurrentUser(request);
+
     const dbUser = await getUserById(params.id);
 
     if (!dbUser) {
@@ -16,6 +26,16 @@ export async function GET(
         { error: 'Usuario no encontrado' },
         { status: 404 }
       );
+    }
+
+    // Authorization: company_admin can only view users from their company
+    if (currentUser && currentUser.role === 'company_admin') {
+      if (dbUser.company_id !== currentUser.company_id) {
+        return NextResponse.json(
+          { error: 'No tienes permiso para ver este usuario' },
+          { status: 403 }
+        );
+      }
     }
 
     // Get CLABE account access
@@ -71,6 +91,9 @@ export async function PUT(
     const body = await request.json();
     const { email, password, name, role, companyId, permissions, clabeAccountIds, isActive } = body;
 
+    // Get current user for authorization
+    const currentUser = await getCurrentUser(request);
+
     // Check if user exists
     const existingUser = await getUserById(params.id);
     if (!existingUser) {
@@ -78,6 +101,53 @@ export async function PUT(
         { error: 'Usuario no encontrado' },
         { status: 404 }
       );
+    }
+
+    // Authorization: company_admin can only update users from their company
+    if (currentUser && currentUser.role === 'company_admin') {
+      // Cannot update users from other companies
+      if (existingUser.company_id !== currentUser.company_id) {
+        return NextResponse.json(
+          { error: 'No tienes permiso para modificar usuarios de otra empresa' },
+          { status: 403 }
+        );
+      }
+      // Cannot change user's company
+      if (companyId && companyId !== currentUser.company_id) {
+        return NextResponse.json(
+          { error: 'No puedes mover usuarios a otra empresa' },
+          { status: 403 }
+        );
+      }
+      // Cannot promote to super_admin
+      if (role === 'super_admin') {
+        return NextResponse.json(
+          { error: 'No tienes permiso para crear super administradores' },
+          { status: 403 }
+        );
+      }
+      // Cannot modify super_admin users
+      if (existingUser.role === 'super_admin') {
+        return NextResponse.json(
+          { error: 'No tienes permiso para modificar super administradores' },
+          { status: 403 }
+        );
+      }
+    } else if (currentUser && currentUser.role === 'user') {
+      // Regular users can only update themselves
+      if (params.id !== currentUser.id) {
+        return NextResponse.json(
+          { error: 'No tienes permiso para modificar otros usuarios' },
+          { status: 403 }
+        );
+      }
+      // Cannot change their own role or company
+      if (role || companyId) {
+        return NextResponse.json(
+          { error: 'No tienes permiso para cambiar tu rol o empresa' },
+          { status: 403 }
+        );
+      }
     }
 
     // Check if email is being changed to one that already exists
@@ -194,12 +264,46 @@ export async function DELETE(
   { params }: { params: { id: string } }
 ) {
   try {
+    // Get current user for authorization
+    const currentUser = await getCurrentUser(request);
+
     // Check if user exists
     const existingUser = await getUserById(params.id);
     if (!existingUser) {
       return NextResponse.json(
         { error: 'Usuario no encontrado' },
         { status: 404 }
+      );
+    }
+
+    // Authorization: company_admin can only delete users from their company
+    if (currentUser && currentUser.role === 'company_admin') {
+      // Cannot delete users from other companies
+      if (existingUser.company_id !== currentUser.company_id) {
+        return NextResponse.json(
+          { error: 'No tienes permiso para eliminar usuarios de otra empresa' },
+          { status: 403 }
+        );
+      }
+      // Cannot delete super_admin
+      if (existingUser.role === 'super_admin') {
+        return NextResponse.json(
+          { error: 'No tienes permiso para eliminar super administradores' },
+          { status: 403 }
+        );
+      }
+      // Cannot delete themselves (for safety)
+      if (existingUser.id === currentUser.id) {
+        return NextResponse.json(
+          { error: 'No puedes eliminarte a ti mismo' },
+          { status: 400 }
+        );
+      }
+    } else if (currentUser && currentUser.role === 'user') {
+      // Regular users cannot delete anyone
+      return NextResponse.json(
+        { error: 'No tienes permiso para eliminar usuarios' },
+        { status: 403 }
       );
     }
 

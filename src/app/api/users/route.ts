@@ -1,7 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
-import { getAllUsers, getUsersByCompanyId, createUser, getUserByEmail, getCompanyById, setUserClabeAccess, getUserClabeAccess } from '@/lib/db';
+import { getAllUsers, getUsersByCompanyId, createUser, getUserByEmail, getCompanyById, setUserClabeAccess, getUserClabeAccess, getUserById } from '@/lib/db';
 import { ALL_PERMISSIONS, Permission, UserRole } from '@/types';
+
+// Helper to get current user from request headers
+async function getCurrentUser(request: NextRequest) {
+  const userId = request.headers.get('x-user-id');
+  if (!userId) return null;
+  return await getUserById(userId);
+}
 
 // GET /api/users - List users (with optional companyId filter)
 export async function GET(request: NextRequest) {
@@ -9,9 +16,22 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const companyId = searchParams.get('companyId');
 
+    // Get current user for authorization
+    const currentUser = await getCurrentUser(request);
+
     let dbUsers;
 
-    if (companyId) {
+    // company_admin can only see users from their company
+    if (currentUser && currentUser.role === 'company_admin') {
+      if (!currentUser.company_id) {
+        return NextResponse.json(
+          { error: 'No tienes una empresa asignada' },
+          { status: 403 }
+        );
+      }
+      // Force filter to their company only
+      dbUsers = await getUsersByCompanyId(currentUser.company_id);
+    } else if (companyId) {
       dbUsers = await getUsersByCompanyId(companyId);
     } else {
       dbUsers = await getAllUsers();
@@ -57,6 +77,9 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { email, password, name, role, companyId, permissions, clabeAccountIds, isActive } = body;
 
+    // Get current user for authorization
+    const currentUser = await getCurrentUser(request);
+
     // Validation
     if (!email || !password || !name || !role) {
       return NextResponse.json(
@@ -71,6 +94,30 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { error: 'Rol inválido' },
         { status: 400 }
+      );
+    }
+
+    // Authorization: company_admin can only create users for their own company
+    if (currentUser && currentUser.role === 'company_admin') {
+      // company_admin cannot create super_admin
+      if (role === 'super_admin') {
+        return NextResponse.json(
+          { error: 'No tienes permiso para crear super administradores' },
+          { status: 403 }
+        );
+      }
+      // company_admin can only create users for their own company
+      if (companyId !== currentUser.company_id) {
+        return NextResponse.json(
+          { error: 'Solo puedes crear usuarios para tu propia empresa' },
+          { status: 403 }
+        );
+      }
+    } else if (currentUser && currentUser.role === 'user') {
+      // Regular users cannot create users
+      return NextResponse.json(
+        { error: 'No tienes permiso para crear usuarios' },
+        { status: 403 }
       );
     }
 

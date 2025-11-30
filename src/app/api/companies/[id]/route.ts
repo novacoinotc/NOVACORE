@@ -1,12 +1,114 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCompanyById, updateCompany, deleteCompany, getCompanyByRfc, getUsersByCompanyId } from '@/lib/db';
+import { getCompanyById, updateCompany, deleteCompany, getCompanyByRfc, getUsersByCompanyId, getCompanyWithDetails, getTransactionsByCompanyId, getUserById } from '@/lib/db';
+import { getBankName } from '@/lib/banks';
 
-// GET /api/companies/[id] - Get single company
+// Helper to get current user from request headers
+async function getCurrentUser(request: NextRequest) {
+  const userId = request.headers.get('x-user-id');
+  if (!userId) return null;
+  return await getUserById(userId);
+}
+
+// GET /api/companies/[id] - Get single company with optional details
 export async function GET(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
   try {
+    const { searchParams } = new URL(request.url);
+    const includeDetails = searchParams.get('details') === 'true';
+
+    // Get current user for authorization
+    const currentUser = await getCurrentUser(request);
+
+    // Authorization: company_admin can only view their own company
+    if (currentUser && currentUser.role === 'company_admin') {
+      if (params.id !== currentUser.company_id) {
+        return NextResponse.json(
+          { error: 'No tienes permiso para ver esta empresa' },
+          { status: 403 }
+        );
+      }
+    }
+
+    if (includeDetails) {
+      // Get company with all details (users, CLABE accounts, stats)
+      const details = await getCompanyWithDetails(params.id);
+
+      if (!details) {
+        return NextResponse.json(
+          { error: 'Empresa no encontrada' },
+          { status: 404 }
+        );
+      }
+
+      // Get transactions for this company
+      const { transactions: recentTransactions, total: transactionCount } = await getTransactionsByCompanyId(params.id, { itemsPerPage: 20 });
+
+      const company = {
+        id: details.company.id,
+        name: details.company.name,
+        businessName: details.company.business_name,
+        rfc: details.company.rfc,
+        email: details.company.email,
+        phone: details.company.phone,
+        address: details.company.address,
+        isActive: details.company.is_active,
+        speiInEnabled: details.company.spei_in_enabled,
+        speiOutEnabled: details.company.spei_out_enabled,
+        commissionPercentage: parseFloat(details.company.commission_percentage?.toString() || '0'),
+        parentClabe: details.company.parent_clabe,
+        createdAt: new Date(details.company.created_at).getTime(),
+        updatedAt: new Date(details.company.updated_at).getTime(),
+      };
+
+      const users = details.users.map((u) => ({
+        id: u.id,
+        email: u.email,
+        name: u.name,
+        role: u.role,
+        isActive: u.is_active,
+        lastLogin: u.last_login ? new Date(u.last_login).getTime() : null,
+        createdAt: new Date(u.created_at).getTime(),
+      }));
+
+      const clabeAccounts = details.clabeAccounts.map((c) => ({
+        id: c.id,
+        clabe: c.clabe,
+        alias: c.alias,
+        description: c.description,
+        isActive: c.is_active,
+        createdAt: new Date(c.created_at).getTime(),
+      }));
+
+      const transactions = recentTransactions.map((tx) => ({
+        id: tx.id,
+        type: tx.type,
+        amount: parseFloat(tx.amount?.toString() || '0'),
+        status: tx.status,
+        beneficiaryName: tx.beneficiary_name,
+        payerName: tx.payer_name,
+        concept: tx.concept,
+        trackingKey: tx.tracking_key,
+        date: new Date(tx.created_at),
+        bank: tx.type === 'incoming'
+          ? getBankName(tx.payer_bank || '')
+          : getBankName(tx.beneficiary_bank || ''),
+      }));
+
+      return NextResponse.json({
+        company,
+        users,
+        clabeAccounts,
+        transactions,
+        stats: {
+          ...details.stats,
+          transactionCount,
+        },
+      });
+    }
+
+    // Basic company info only
     const dbCompany = await getCompanyById(params.id);
 
     if (!dbCompany) {
@@ -25,6 +127,10 @@ export async function GET(
       phone: dbCompany.phone,
       address: dbCompany.address,
       isActive: dbCompany.is_active,
+      speiInEnabled: dbCompany.spei_in_enabled,
+      speiOutEnabled: dbCompany.spei_out_enabled,
+      commissionPercentage: parseFloat(dbCompany.commission_percentage?.toString() || '0'),
+      parentClabe: dbCompany.parent_clabe,
       createdAt: new Date(dbCompany.created_at).getTime(),
       updatedAt: new Date(dbCompany.updated_at).getTime(),
     };
@@ -46,7 +152,35 @@ export async function PUT(
 ) {
   try {
     const body = await request.json();
-    const { name, businessName, rfc, email, phone, address, isActive } = body;
+    const { name, businessName, rfc, email, phone, address, isActive, speiInEnabled, speiOutEnabled, commissionPercentage, parentClabe } = body;
+
+    // Get current user for authorization
+    const currentUser = await getCurrentUser(request);
+
+    // Authorization: only super_admin can modify company settings
+    if (currentUser && currentUser.role !== 'super_admin') {
+      // company_admin can only update basic info of their own company
+      if (currentUser.role === 'company_admin') {
+        if (params.id !== currentUser.company_id) {
+          return NextResponse.json(
+            { error: 'No tienes permiso para modificar esta empresa' },
+            { status: 403 }
+          );
+        }
+        // company_admin cannot change SPEI settings or commission
+        if (speiInEnabled !== undefined || speiOutEnabled !== undefined || commissionPercentage !== undefined || parentClabe !== undefined) {
+          return NextResponse.json(
+            { error: 'No tienes permiso para modificar la configuración de SPEI o comisiones' },
+            { status: 403 }
+          );
+        }
+      } else {
+        return NextResponse.json(
+          { error: 'No tienes permiso para modificar empresas' },
+          { status: 403 }
+        );
+      }
+    }
 
     // Check if company exists
     const existingCompany = await getCompanyById(params.id);
@@ -79,6 +213,14 @@ export async function PUT(
       }
     }
 
+    // Validate commission percentage
+    if (commissionPercentage !== undefined && (commissionPercentage < 0 || commissionPercentage > 100)) {
+      return NextResponse.json(
+        { error: 'El porcentaje de comisión debe estar entre 0 y 100' },
+        { status: 400 }
+      );
+    }
+
     const dbCompany = await updateCompany(params.id, {
       name,
       businessName,
@@ -87,6 +229,10 @@ export async function PUT(
       phone,
       address,
       isActive,
+      speiInEnabled,
+      speiOutEnabled,
+      commissionPercentage,
+      parentClabe,
     });
 
     if (!dbCompany) {
@@ -105,6 +251,10 @@ export async function PUT(
       phone: dbCompany.phone,
       address: dbCompany.address,
       isActive: dbCompany.is_active,
+      speiInEnabled: dbCompany.spei_in_enabled,
+      speiOutEnabled: dbCompany.spei_out_enabled,
+      commissionPercentage: parseFloat(dbCompany.commission_percentage?.toString() || '0'),
+      parentClabe: dbCompany.parent_clabe,
       createdAt: new Date(dbCompany.created_at).getTime(),
       updatedAt: new Date(dbCompany.updated_at).getTime(),
     };

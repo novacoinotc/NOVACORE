@@ -27,6 +27,11 @@ export default function LoginPage() {
       'from-violet-900/40 via-indigo-800/30 to-purple-900/40',
     ];
     setGradient(gradients[Math.floor(Math.random() * gradients.length)]);
+
+    // Initialize database on first load (creates tables and demo users if not exist)
+    fetch('/api/auth/init', { method: 'POST' }).catch(() => {
+      // Ignore errors - database may already be initialized
+    });
   }, []);
 
   // Redirect if already logged in

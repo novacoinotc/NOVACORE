@@ -187,7 +187,7 @@ export default function UsersPage() {
         email: formData.email,
         name: formData.name,
         role: formData.role,
-        permissions: formData.role === 'admin'
+        permissions: formData.role === 'super_admin'
           ? Object.keys(ALL_PERMISSIONS) as Permission[]
           : formData.permissions,
         isActive: formData.isActive,
@@ -228,7 +228,7 @@ export default function UsersPage() {
 
   // Toggle permission
   const togglePermission = (permission: Permission) => {
-    if (formData.role === 'admin') return; // Admin has all permissions
+    if (formData.role === 'super_admin') return; // Super admin has all permissions
 
     setFormData((prev) => ({
       ...prev,
@@ -240,7 +240,7 @@ export default function UsersPage() {
 
   // Toggle all permissions in a category
   const toggleCategory = (category: string) => {
-    if (formData.role === 'admin') return;
+    if (formData.role === 'super_admin') return;
 
     const categoryPermissions = PERMISSION_CATEGORIES[category as keyof typeof PERMISSION_CATEGORIES] as readonly Permission[];
     const allSelected = categoryPermissions.every((p) => formData.permissions.includes(p));
@@ -270,7 +270,7 @@ export default function UsersPage() {
     setFormData((prev) => ({
       ...prev,
       role,
-      permissions: role === 'admin'
+      permissions: role === 'super_admin'
         ? Object.keys(ALL_PERMISSIONS) as Permission[]
         : DEFAULT_ROLE_PERMISSIONS[role],
     }));
@@ -365,17 +365,19 @@ export default function UsersPage() {
                   <td className="px-6 py-4">
                     <span
                       className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${
-                        user.role === 'admin'
+                        user.role === 'super_admin'
                           ? 'bg-purple-500/10 text-purple-400 border border-purple-500/20'
-                          : 'bg-blue-500/10 text-blue-400 border border-blue-500/20'
+                          : user.role === 'company_admin'
+                          ? 'bg-blue-500/10 text-blue-400 border border-blue-500/20'
+                          : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
                       }`}
                     >
-                      {user.role === 'admin' ? (
+                      {user.role === 'super_admin' ? (
                         <ShieldCheck className="w-3 h-3" />
                       ) : (
                         <Shield className="w-3 h-3" />
                       )}
-                      {user.role === 'admin' ? 'Administrador' : 'Usuario'}
+                      {user.role === 'super_admin' ? 'Super Admin' : user.role === 'company_admin' ? 'Admin Empresa' : 'Usuario'}
                     </span>
                   </td>
                   <td className="px-6 py-4">
@@ -396,7 +398,7 @@ export default function UsersPage() {
                   </td>
                   <td className="px-6 py-4">
                     <span className="text-white/60 text-sm">
-                      {user.role === 'admin'
+                      {user.role === 'super_admin'
                         ? 'Todos'
                         : `${user.permissions.length} permisos`}
                     </span>
@@ -551,7 +553,8 @@ export default function UsersPage() {
                       className="w-full bg-white/[0.03] border border-white/[0.08] rounded-lg py-2.5 px-4 text-white text-sm focus:outline-none focus:border-purple-500/50 transition-colors"
                     >
                       <option value="user" className="bg-[#0a0a1a]">Usuario</option>
-                      <option value="admin" className="bg-[#0a0a1a]">Administrador</option>
+                      <option value="company_admin" className="bg-[#0a0a1a]">Admin Empresa</option>
+                      <option value="super_admin" className="bg-[#0a0a1a]">Super Admin</option>
                     </select>
                   </div>
                 </div>
@@ -585,7 +588,7 @@ export default function UsersPage() {
                       <Shield className="w-4 h-4 text-purple-400" />
                       Permisos
                     </h3>
-                    {formData.role === 'admin' && (
+                    {formData.role === 'super_admin' && (
                       <span className="text-purple-400 text-xs bg-purple-500/10 px-2 py-1 rounded">
                         Admin tiene todos los permisos
                       </span>
@@ -596,7 +599,7 @@ export default function UsersPage() {
                     {Object.entries(PERMISSION_CATEGORIES).map(([category, permissions]) => {
                       const categoryPermissions = permissions as readonly Permission[];
                       const selectedCount = categoryPermissions.filter((p) =>
-                        formData.role === 'admin' || formData.permissions.includes(p)
+                        formData.role === 'super_admin' || formData.permissions.includes(p)
                       ).length;
                       const isExpanded = expandedCategories.includes(category);
 
@@ -608,7 +611,7 @@ export default function UsersPage() {
                           {/* Category header */}
                           <div
                             className={`flex items-center justify-between px-4 py-3 ${
-                              formData.role === 'admin'
+                              formData.role === 'super_admin'
                                 ? 'bg-purple-500/5'
                                 : 'bg-white/[0.02] hover:bg-white/[0.04]'
                             } cursor-pointer transition-colors`}
@@ -621,19 +624,19 @@ export default function UsersPage() {
                                   e.stopPropagation();
                                   toggleCategory(category);
                                 }}
-                                disabled={formData.role === 'admin'}
+                                disabled={formData.role === 'super_admin'}
                                 className={`w-5 h-5 rounded border flex items-center justify-center transition-colors ${
-                                  formData.role === 'admin' || selectedCount === categoryPermissions.length
+                                  formData.role === 'super_admin' || selectedCount === categoryPermissions.length
                                     ? 'bg-purple-500 border-purple-500'
                                     : selectedCount > 0
                                     ? 'bg-purple-500/50 border-purple-500/50'
                                     : 'border-white/20 hover:border-white/40'
                                 }`}
                               >
-                                {(formData.role === 'admin' || selectedCount === categoryPermissions.length) && (
+                                {(formData.role === 'super_admin' || selectedCount === categoryPermissions.length) && (
                                   <Check className="w-3 h-3 text-white" />
                                 )}
-                                {formData.role !== 'admin' && selectedCount > 0 && selectedCount < categoryPermissions.length && (
+                                {formData.role !== 'super_admin' && selectedCount > 0 && selectedCount < categoryPermissions.length && (
                                   <div className="w-2 h-0.5 bg-white rounded" />
                                 )}
                               </button>
@@ -665,14 +668,14 @@ export default function UsersPage() {
                                 <div className="px-4 py-3 space-y-2 bg-black/20">
                                   {categoryPermissions.map((permission) => {
                                     const isSelected =
-                                      formData.role === 'admin' ||
+                                      formData.role === 'super_admin' ||
                                       formData.permissions.includes(permission);
 
                                     return (
                                       <label
                                         key={permission}
                                         className={`flex items-center gap-3 cursor-pointer ${
-                                          formData.role === 'admin'
+                                          formData.role === 'super_admin'
                                             ? 'opacity-60 cursor-default'
                                             : ''
                                         }`}
@@ -680,7 +683,7 @@ export default function UsersPage() {
                                         <button
                                           type="button"
                                           onClick={() => togglePermission(permission)}
-                                          disabled={formData.role === 'admin'}
+                                          disabled={formData.role === 'super_admin'}
                                           className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${
                                             isSelected
                                               ? 'bg-purple-500 border-purple-500'

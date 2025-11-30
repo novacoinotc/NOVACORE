@@ -122,17 +122,19 @@ export function TopBar({ onMenuClick }: TopBarProps) {
           <div className="hidden lg:flex items-center gap-2">
             <span
               className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${
-                user.role === 'admin'
+                user.role === 'super_admin'
                   ? 'bg-purple-500/10 text-purple-400 border border-purple-500/20'
-                  : 'bg-blue-500/10 text-blue-400 border border-blue-500/20'
+                  : user.role === 'company_admin'
+                  ? 'bg-blue-500/10 text-blue-400 border border-blue-500/20'
+                  : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
               }`}
             >
-              {user.role === 'admin' ? (
+              {user.role === 'super_admin' ? (
                 <ShieldCheck className="w-3 h-3" />
               ) : (
                 <Shield className="w-3 h-3" />
               )}
-              {user.role === 'admin' ? 'Admin' : 'Usuario'}
+              {user.role === 'super_admin' ? 'Super Admin' : user.role === 'company_admin' ? 'Empresa' : 'Usuario'}
             </span>
           </div>
         )}

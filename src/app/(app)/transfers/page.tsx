@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   SendHorizontal,
   Download,
@@ -16,10 +16,14 @@ import {
   Copy,
   Loader2,
   RefreshCw,
+  Bookmark,
+  ChevronDown,
 } from 'lucide-react';
 import { Button, Input, Select, Card, CardHeader, CardTitle, CardContent, Modal } from '@/components/ui';
 import { formatCurrency, formatClabe, validateClabe, sanitizeForSpei } from '@/lib/utils';
 import { getBankFromClabe, getBankSelectOptions, getPopularBanks, BankInfo } from '@/lib/banks';
+import { useAuth } from '@/context/AuthContext';
+import { SavedAccount } from '@/types';
 
 // Account types for SPEI
 const accountTypes = [
@@ -29,6 +33,7 @@ const accountTypes = [
 ];
 
 export default function TransfersPage() {
+  const { user } = useAuth();
   const [activeTab, setActiveTab] = useState<'send' | 'receive'>('send');
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
@@ -38,6 +43,11 @@ export default function TransfersPage() {
   const [banks, setBanks] = useState<{ value: string; label: string }[]>([]);
   const [isLoadingBanks, setIsLoadingBanks] = useState(true);
   const [detectedBank, setDetectedBank] = useState<BankInfo | null>(null);
+
+  // Saved accounts state
+  const [savedAccounts, setSavedAccounts] = useState<SavedAccount[]>([]);
+  const [isLoadingSavedAccounts, setIsLoadingSavedAccounts] = useState(false);
+  const [showSavedAccountsDropdown, setShowSavedAccountsDropdown] = useState(false);
 
   // Form data
   const [formData, setFormData] = useState({
@@ -93,6 +103,65 @@ export default function TransfersPage() {
 
     loadBanks();
   }, []);
+
+  // Load saved accounts
+  const loadSavedAccounts = useCallback(async () => {
+    if (!user?.id) return;
+
+    setIsLoadingSavedAccounts(true);
+    try {
+      const response = await fetch('/api/saved-accounts', {
+        headers: {
+          'x-user-id': user.id,
+        },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setSavedAccounts(data.filter((acc: SavedAccount) => acc.isActive));
+      }
+    } catch (error) {
+      console.error('Error loading saved accounts:', error);
+    } finally {
+      setIsLoadingSavedAccounts(false);
+    }
+  }, [user?.id]);
+
+  useEffect(() => {
+    loadSavedAccounts();
+  }, [loadSavedAccounts]);
+
+  // Select a saved account and fill the form
+  const selectSavedAccount = (account: SavedAccount) => {
+    // Get bank info from the saved account
+    const bankFromClabe = getBankFromClabe(account.clabe);
+
+    setFormData({
+      beneficiaryAccount: account.clabe,
+      beneficiaryBank: account.bankCode.length === 3 ? (bankFromClabe?.speiCode || `40${account.bankCode}`) : account.bankCode,
+      beneficiaryName: account.beneficiaryName,
+      beneficiaryUid: account.beneficiaryRfc || '',
+      beneficiaryAccountType: (account.accountType || 40).toString(),
+      amount: formData.amount, // Keep the current amount
+      concept: formData.concept, // Keep the current concept
+      numericalReference: formData.numericalReference, // Keep the current reference
+    });
+
+    // Set detected bank
+    if (bankFromClabe) {
+      setDetectedBank(bankFromClabe);
+    }
+
+    // Clear any errors for filled fields
+    setErrors((prev) => ({
+      ...prev,
+      beneficiaryAccount: '',
+      beneficiaryBank: '',
+      beneficiaryName: '',
+    }));
+
+    setShowSavedAccountsDropdown(false);
+  };
 
   // Auto-detect bank from CLABE
   useEffect(() => {
@@ -282,6 +351,55 @@ export default function TransfersPage() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Form */}
           <div className="lg:col-span-2 space-y-4">
+            {/* Saved Accounts Selector */}
+            {savedAccounts.length > 0 && (
+              <Card>
+                <CardContent className="py-3">
+                  <div className="relative">
+                    <button
+                      type="button"
+                      onClick={() => setShowSavedAccountsDropdown(!showSavedAccountsDropdown)}
+                      className="w-full flex items-center justify-between px-4 py-3 rounded-lg bg-white/[0.02] border border-white/[0.08] hover:bg-white/[0.04] transition-colors"
+                    >
+                      <div className="flex items-center gap-3">
+                        <Bookmark className="w-4 h-4 text-purple-400" />
+                        <span className="text-white/70 text-sm">Seleccionar cuenta guardada</span>
+                        <span className="text-xs text-white/30">({savedAccounts.length} disponibles)</span>
+                      </div>
+                      <ChevronDown className={`w-4 h-4 text-white/40 transition-transform ${showSavedAccountsDropdown ? 'rotate-180' : ''}`} />
+                    </button>
+
+                    {showSavedAccountsDropdown && (
+                      <div className="absolute top-full left-0 right-0 mt-1 z-50 bg-[#0a0a1a] border border-white/[0.08] rounded-lg shadow-xl max-h-64 overflow-y-auto">
+                        {savedAccounts.map((account) => (
+                          <button
+                            key={account.id}
+                            type="button"
+                            onClick={() => selectSavedAccount(account)}
+                            className="w-full flex items-start gap-3 px-4 py-3 hover:bg-white/[0.04] transition-colors text-left border-b border-white/[0.04] last:border-b-0"
+                          >
+                            <div className="w-8 h-8 rounded-md bg-white/[0.06] flex items-center justify-center flex-shrink-0 mt-0.5">
+                              <Building2 className="w-4 h-4 text-white/40" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2">
+                                <span className="text-white/80 text-sm font-medium truncate">{account.alias}</span>
+                                <span className="text-xs text-white/30 px-1.5 py-0.5 bg-white/[0.04] rounded">
+                                  {account.bankName}
+                                </span>
+                              </div>
+                              <p className="text-xs text-white/40 truncate">{account.beneficiaryName}</p>
+                              <p className="text-xs text-white/30 font-mono">{formatClabe(account.clabe)}</p>
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">

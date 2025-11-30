@@ -1,16 +1,30 @@
-import { DbTransaction, DbCompany, getCompanyById, getClabeAccountById, createTransaction } from './db';
+import {
+  DbTransaction,
+  DbCompany,
+  getCompanyById,
+  getClabeAccountById,
+  createTransaction,
+  createPendingCommission,
+  getPendingCommissionsGroupedByCompany,
+  createCommissionCutoff,
+  markCommissionsAsProcessed,
+  markCommissionsAsFailed,
+  updateCommissionCutoffStatus,
+} from './db';
 // Note: In production, you would import createSpeiOutOrder from './opm-api' for actual SPEI transfers
 
 /**
  * Commission processing module
  *
- * Handles automatic commission calculation and transfer to parent account (cuenta madre/integradora)
+ * Handles automatic commission calculation and daily cutoff transfer to parent account (cuenta madre/integradora)
+ * Instead of creating micro SPEIs for each incoming transaction, commissions are accumulated
+ * and sent as a single SPEI at the daily cutoff time (10 PM)
  */
 
 export interface CommissionResult {
   success: boolean;
   commissionAmount: number;
-  commissionTransactionId?: string;
+  pendingCommissionId?: string;
   error?: string;
 }
 
@@ -27,7 +41,7 @@ export function calculateCommission(amount: number, percentage: number): number 
 
 /**
  * Process commission for an incoming transaction
- * Creates a commission transaction and optionally sends it to the parent CLABE
+ * Creates a pending commission record that will be processed at the daily cutoff (10 PM)
  */
 export async function processCommission(
   transaction: DbTransaction,
@@ -56,55 +70,223 @@ export async function processCommission(
       return { success: true, commissionAmount: 0 };
     }
 
-    // Create commission transaction record
-    const commissionTrackingKey = `COM${Date.now()}${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
-    const commissionTxId = `tx_comm_${Date.now()}`;
+    // Create pending commission record (will be processed at daily cutoff - 10 PM)
+    const pendingCommissionId = `pc_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
 
-    const commissionTx = await createTransaction({
-      id: commissionTxId,
-      clabeAccountId: transaction.clabe_account_id || undefined,
-      type: 'outgoing',
-      status: 'pending',
+    await createPendingCommission({
+      id: pendingCommissionId,
+      companyId: company.id,
+      sourceTransactionId: transaction.id,
       amount: commissionAmount,
-      concept: `Comision ${commissionPercentage}% - ${transaction.tracking_key}`,
-      trackingKey: commissionTrackingKey,
-      beneficiaryAccount: company.parent_clabe,
-      beneficiaryName: 'NOVACORE INTEGRADORA',
+      percentage: commissionPercentage,
     });
 
-    console.log(`Commission transaction created: ${commissionTxId}`, {
+    console.log(`Pending commission created: ${pendingCommissionId}`, {
       originalTx: transaction.tracking_key,
       amount: commissionAmount,
       percentage: commissionPercentage,
       targetClabe: company.parent_clabe,
+      note: 'Will be processed at daily cutoff (10 PM)',
     });
-
-    // In production, you would trigger the actual SPEI transfer here
-    // For now, we just record the commission transaction
-    // The actual transfer would be done via OPM API:
-    //
-    // try {
-    //   await createSpeiOutOrder({
-    //     concept: `Comision ${commissionPercentage}%`,
-    //     beneficiaryAccount: company.parent_clabe,
-    //     beneficiaryBank: company.parent_clabe.substring(0, 3), // Extract bank code
-    //     beneficiaryName: 'NOVACORE INTEGRADORA',
-    //     // ... other required fields
-    //   });
-    // } catch (error) {
-    //   console.error('Failed to send commission SPEI:', error);
-    // }
 
     return {
       success: true,
       commissionAmount,
-      commissionTransactionId: commissionTxId,
+      pendingCommissionId,
     };
   } catch (error) {
     console.error('Commission processing error:', error);
     return {
       success: false,
       commissionAmount: 0,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    };
+  }
+}
+
+/**
+ * Daily cutoff result for a single company
+ */
+export interface CutoffResult {
+  companyId: string;
+  success: boolean;
+  cutoffId?: string;
+  totalAmount: number;
+  commissionCount: number;
+  transactionId?: string;
+  trackingKey?: string;
+  error?: string;
+}
+
+/**
+ * Process daily commission cutoff
+ * This should be called at 10 PM to process all pending commissions
+ * Groups commissions by company and sends a single SPEI to each company's parent CLABE
+ */
+export async function processDailyCommissionCutoff(): Promise<{
+  success: boolean;
+  results: CutoffResult[];
+  totalProcessed: number;
+  totalAmount: number;
+}> {
+  const results: CutoffResult[] = [];
+  let totalProcessed = 0;
+  let totalAmount = 0;
+
+  try {
+    // Get pending commissions grouped by company
+    const groupedCommissions = await getPendingCommissionsGroupedByCompany();
+
+    if (groupedCommissions.length === 0) {
+      console.log('No pending commissions to process at cutoff');
+      return { success: true, results: [], totalProcessed: 0, totalAmount: 0 };
+    }
+
+    console.log(`Processing daily cutoff for ${groupedCommissions.length} companies`);
+
+    for (const group of groupedCommissions) {
+      const result = await processCompanyCutoff(group);
+      results.push(result);
+
+      if (result.success) {
+        totalProcessed += result.commissionCount;
+        totalAmount += result.totalAmount;
+      }
+    }
+
+    return {
+      success: true,
+      results,
+      totalProcessed,
+      totalAmount,
+    };
+  } catch (error) {
+    console.error('Daily cutoff processing error:', error);
+    return {
+      success: false,
+      results,
+      totalProcessed,
+      totalAmount,
+    };
+  }
+}
+
+/**
+ * Process cutoff for a single company
+ */
+async function processCompanyCutoff(group: {
+  companyId: string;
+  totalAmount: number;
+  count: number;
+  commissionIds: string[];
+}): Promise<CutoffResult> {
+  try {
+    // Get company details
+    const company = await getCompanyById(group.companyId);
+    if (!company) {
+      return {
+        companyId: group.companyId,
+        success: false,
+        totalAmount: group.totalAmount,
+        commissionCount: group.count,
+        error: 'Company not found',
+      };
+    }
+
+    if (!company.parent_clabe) {
+      // Mark as failed since there's no target CLABE
+      await markCommissionsAsFailed(group.commissionIds);
+      return {
+        companyId: group.companyId,
+        success: false,
+        totalAmount: group.totalAmount,
+        commissionCount: group.count,
+        error: 'No parent CLABE configured',
+      };
+    }
+
+    // Round total amount to 2 decimal places
+    const roundedAmount = Math.round(group.totalAmount * 100) / 100;
+
+    // Create cutoff record
+    const cutoffId = `cutoff_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+    const cutoff = await createCommissionCutoff({
+      id: cutoffId,
+      companyId: group.companyId,
+      targetClabe: company.parent_clabe,
+      totalAmount: roundedAmount,
+      commissionCount: group.count,
+      cutoffDate: new Date(),
+    });
+
+    // Mark commissions as processing
+    await markCommissionsAsProcessed(group.commissionIds, cutoffId);
+
+    // Create the consolidated commission transaction
+    const trackingKey = `CUTOFF${Date.now()}${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
+    const transactionId = `tx_cutoff_${Date.now()}`;
+    const today = new Date().toLocaleDateString('es-MX', { day: '2-digit', month: '2-digit', year: 'numeric' });
+
+    const transaction = await createTransaction({
+      id: transactionId,
+      type: 'outgoing',
+      status: 'pending',
+      amount: roundedAmount,
+      concept: `CORTE COMISIONES ${today} (${group.count} ops)`,
+      trackingKey,
+      beneficiaryAccount: company.parent_clabe,
+      beneficiaryName: 'NOVACORE INTEGRADORA',
+    });
+
+    // Update cutoff with transaction info
+    await updateCommissionCutoffStatus(cutoffId, 'processing', {
+      transactionId,
+      trackingKey,
+    });
+
+    console.log(`Cutoff processed for company ${group.companyId}:`, {
+      cutoffId,
+      transactionId,
+      trackingKey,
+      amount: roundedAmount,
+      commissionCount: group.count,
+      targetClabe: company.parent_clabe,
+    });
+
+    // In production, here you would:
+    // 1. Send the actual SPEI via OPM API
+    // 2. Update the cutoff status to 'sent' or 'failed' based on result
+    //
+    // try {
+    //   await createSpeiOutOrder({
+    //     concept: `CORTE COMISIONES ${today}`,
+    //     beneficiaryAccount: company.parent_clabe,
+    //     beneficiaryBank: company.parent_clabe.substring(0, 3),
+    //     beneficiaryName: 'NOVACORE INTEGRADORA',
+    //     amount: roundedAmount,
+    //     trackingKey,
+    //   });
+    //   await updateCommissionCutoffStatus(cutoffId, 'sent');
+    // } catch (error) {
+    //   await updateCommissionCutoffStatus(cutoffId, 'failed', { errorDetail: error.message });
+    // }
+
+    return {
+      companyId: group.companyId,
+      success: true,
+      cutoffId,
+      totalAmount: roundedAmount,
+      commissionCount: group.count,
+      transactionId,
+      trackingKey,
+    };
+  } catch (error) {
+    console.error(`Error processing cutoff for company ${group.companyId}:`, error);
+    return {
+      companyId: group.companyId,
+      success: false,
+      totalAmount: group.totalAmount,
+      commissionCount: group.count,
       error: error instanceof Error ? error.message : 'Unknown error',
     };
   }

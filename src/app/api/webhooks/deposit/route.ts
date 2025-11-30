@@ -2,6 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { WebhookSupplyData } from '@/types';
 import { buildSupplyOriginalString } from '@/lib/opm-api';
 import { verifySignature } from '@/lib/crypto';
+import {
+  getClabeAccountByClabe,
+  createTransaction,
+  getTransactionByTrackingKey,
+} from '@/lib/db';
 
 /**
  * POST /api/webhooks/deposit
@@ -65,12 +70,6 @@ export async function POST(request: NextRequest) {
       receivedAt: new Date(data.receivedTimestamp).toISOString(),
     });
 
-    // Here you would typically:
-    // 1. Validate the beneficiary account exists in your system
-    // 2. Check if the account can receive funds
-    // 3. Credit the funds to the internal account
-    // 4. Store the transaction in your database
-
     // Validate required payment data (return code 7 if invalid)
     if (!data.beneficiaryAccount || !data.amount || !data.trackingKey) {
       return NextResponse.json({
@@ -87,57 +86,71 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Example: Validate account exists
-    // TODO: Replace with actual database lookup for CLABE account
-    const accountExists = true; // Replace with actual validation
-    if (!accountExists) {
+    // 1. Validate the beneficiary account exists in our system
+    const clabeAccount = await getClabeAccountByClabe(data.beneficiaryAccount);
+    if (!clabeAccount) {
+      console.warn(`CLABE account not found: ${data.beneficiaryAccount}`);
       return NextResponse.json({
         returnCode: 6, // Cuenta no existente
-        errorDescription: 'Cuenta beneficiaria no encontrada',
+        errorDescription: 'Cuenta beneficiaria no encontrada en el sistema',
       });
     }
 
-    // Example: Check for duplicate tracking key
-    // TODO: Replace with actual duplicate check in database
-    const isDuplicate = false; // Replace with actual check
-    if (isDuplicate) {
+    // Check if CLABE account is active
+    if (!clabeAccount.is_active) {
+      return NextResponse.json({
+        returnCode: 6, // Cuenta no existente
+        errorDescription: 'Cuenta beneficiaria inactiva',
+      });
+    }
+
+    // 2. Check for duplicate tracking key
+    const existingTransaction = await getTransactionByTrackingKey(data.trackingKey);
+    if (existingTransaction) {
+      console.warn(`Duplicate tracking key: ${data.trackingKey}`);
       return NextResponse.json({
         returnCode: 12, // Operación duplicada
         errorDescription: 'Operación con clave de rastreo duplicada',
       });
     }
 
-    // Example: Check balance limits
-    // TODO: Replace with actual balance limit check
-    const exceedsLimit = false; // Replace with actual check
-    if (exceedsLimit) {
-      return NextResponse.json({
-        returnCode: 4, // Saldo excede límite
-        errorDescription: 'Excede límite de saldo permitido',
-      });
-    }
+    // 3. Store the transaction in the database
+    const transactionId = `tx_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
 
-    // Example: Beneficiary recognition check
-    // TODO: Implement if you need manual approval for certain transfers
-    const beneficiaryRecognizes = true;
-    if (!beneficiaryRecognizes) {
-      return NextResponse.json({
-        returnCode: 13, // Beneficiario no reconoce pago
-        errorDescription: 'Beneficiario no reconoce el pago',
+    try {
+      await createTransaction({
+        id: transactionId,
+        clabeAccountId: clabeAccount.id,
+        type: 'incoming',
+        status: 'scattered', // Incoming deposits are already settled
+        amount: data.amount,
+        concept: data.concept,
+        trackingKey: data.trackingKey,
+        numericalReference: data.numericalReference,
+        beneficiaryAccount: data.beneficiaryAccount,
+        beneficiaryBank: data.beneficiaryBank,
+        beneficiaryName: data.beneficiaryName,
+        beneficiaryUid: data.beneficiaryUid,
+        payerAccount: data.payerAccount,
+        payerBank: data.payerBank,
+        payerName: data.payerName,
+        payerUid: data.payerUid,
       });
+
+      console.log(`Transaction saved: ${transactionId} for CLABE ${clabeAccount.id}`);
+    } catch (dbError) {
+      console.error('Failed to save transaction:', dbError);
+      // Still accept the transaction even if DB save fails
+      // The deposit was received, we just failed to record it internally
     }
 
     // Accept the transaction
-    // You can optionally include CEP beneficiary data to override what shows on CEP
     return NextResponse.json({
       returnCode: 0, // Transacción aceptada
-      // Optional: Override CEP beneficiary data
-      // cepBeneficiaryName: 'CUSTOM NAME FOR CEP',
-      // cepBeneficiaryUid: 'RFC123456789',
-      // Optional: Store metadata (not sent to OPM, for internal use)
       metadata: {
         processedAt: Date.now(),
-        internalTxId: `TX-${Date.now()}`,
+        internalTxId: transactionId,
+        clabeAccountId: clabeAccount.id,
       },
     });
   } catch (error) {

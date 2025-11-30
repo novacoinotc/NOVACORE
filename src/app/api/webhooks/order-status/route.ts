@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { WebhookOrderStatusData } from '@/types';
 import { buildOrderStatusOriginalString } from '@/lib/opm-api';
 import { verifySignature } from '@/lib/crypto';
+import { updateTransactionStatus, getTransactionById } from '@/lib/db';
 
 /**
  * POST /api/webhooks/order-status
@@ -53,40 +54,50 @@ export async function POST(request: NextRequest) {
       timestamp: new Date().toISOString(),
     });
 
+    // Try to find and update the transaction in our database
+    // The order ID from OPM should be stored in our transactions table
+    let transactionUpdated = false;
+    try {
+      // Note: data.id is the OPM order ID
+      // We need to look up by opm_order_id or find another way to correlate
+      const transaction = await getTransactionById(data.id);
+      if (transaction) {
+        await updateTransactionStatus(data.id, data.status, data.detail);
+        transactionUpdated = true;
+        console.log(`Transaction ${data.id} status updated to ${data.status}`);
+      }
+    } catch (dbError) {
+      console.error('Failed to update transaction in database:', dbError);
+    }
+
     // Handle different status changes
     switch (data.status) {
       case 'pending':
         // Order is waiting for balance or in queue
         console.log(`Order ${data.id} is pending`);
-        // Update internal records
         break;
 
       case 'sent':
         // Order has been sent to SPEI
         console.log(`Order ${data.id} has been sent to SPEI`);
-        // Update internal records, maybe notify user
         break;
 
       case 'scattered':
         // Order successfully settled
         console.log(`Order ${data.id} successfully settled`);
-        // Update internal records, send confirmation to user
-        // Mark transaction as complete
+        // TODO: Send confirmation notification to user
         break;
 
       case 'canceled':
         // Order was canceled
         console.log(`Order ${data.id} was canceled: ${data.detail}`);
-        // Return funds to available balance
-        // Notify user
+        // TODO: Return funds to available balance, notify user
         break;
 
       case 'returned':
         // Order was rejected by recipient bank
         console.log(`Order ${data.id} was returned: ${data.detail}`);
-        // Return funds to available balance
-        // Log rejection reason
-        // Notify user
+        // TODO: Return funds to available balance, notify user
         break;
 
       default:

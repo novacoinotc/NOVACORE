@@ -18,8 +18,9 @@ import {
   UserCog,
   ChevronDown,
   ChevronUp,
+  Loader2,
 } from 'lucide-react';
-import { useAuth, useRequirePermission, getUsers, saveUser, deleteUser } from '@/context/AuthContext';
+import { useAuth, useRequirePermission } from '@/context/AuthContext';
 import {
   User,
   Permission,
@@ -65,6 +66,7 @@ export default function UsersPage() {
   const { isLoading, hasAccess } = useRequirePermission('users.view');
 
   const [users, setUsers] = useState<User[]>([]);
+  const [loadingUsers, setLoadingUsers] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
@@ -73,11 +75,28 @@ export default function UsersPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [expandedCategories, setExpandedCategories] = useState<string[]>(Object.keys(PERMISSION_CATEGORIES));
   const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  // Fetch users from API
+  const fetchUsers = async () => {
+    try {
+      setLoadingUsers(true);
+      const response = await fetch('/api/users');
+      if (response.ok) {
+        const data = await response.json();
+        setUsers(data);
+      }
+    } catch (error) {
+      console.error('Error fetching users:', error);
+    } finally {
+      setLoadingUsers(false);
+    }
+  };
 
   // Load users
   useEffect(() => {
     if (hasAccess) {
-      setUsers(getUsers());
+      fetchUsers();
     }
   }, [hasAccess]);
 
@@ -122,17 +141,33 @@ export default function UsersPage() {
   };
 
   // Confirm delete
-  const handleDeleteConfirm = () => {
+  const handleDeleteConfirm = async () => {
     if (selectedUser) {
-      deleteUser(selectedUser.id);
-      setUsers(getUsers());
-      setIsDeleteModalOpen(false);
-      setSelectedUser(null);
+      try {
+        setSaving(true);
+        const response = await fetch(`/api/users/${selectedUser.id}`, {
+          method: 'DELETE',
+        });
+
+        if (response.ok) {
+          await fetchUsers();
+          setIsDeleteModalOpen(false);
+          setSelectedUser(null);
+        } else {
+          const data = await response.json();
+          setError(data.error || 'Error al eliminar usuario');
+        }
+      } catch (error) {
+        console.error('Delete error:', error);
+        setError('Error al eliminar usuario');
+      } finally {
+        setSaving(false);
+      }
     }
   };
 
   // Save user (create or update)
-  const handleSave = () => {
+  const handleSave = async () => {
     // Validation
     if (!formData.email || !formData.name) {
       setError('Email y nombre son requeridos');
@@ -144,35 +179,51 @@ export default function UsersPage() {
       return;
     }
 
-    // Check for duplicate email
-    const existingUser = users.find(
-      (u) => u.email === formData.email && u.id !== formData.id
-    );
-    if (existingUser) {
-      setError('Ya existe un usuario con este email');
-      return;
+    try {
+      setSaving(true);
+      setError('');
+
+      const userData = {
+        email: formData.email,
+        name: formData.name,
+        role: formData.role,
+        permissions: formData.role === 'admin'
+          ? Object.keys(ALL_PERMISSIONS) as Permission[]
+          : formData.permissions,
+        isActive: formData.isActive,
+        ...(formData.password && { password: formData.password }),
+      };
+
+      let response;
+      if (selectedUser) {
+        // Update existing user
+        response = await fetch(`/api/users/${selectedUser.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(userData),
+        });
+      } else {
+        // Create new user
+        response = await fetch('/api/users', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(userData),
+        });
+      }
+
+      if (response.ok) {
+        await fetchUsers();
+        setIsModalOpen(false);
+      } else {
+        const data = await response.json();
+        setError(data.error || 'Error al guardar usuario');
+      }
+    } catch (error) {
+      console.error('Save error:', error);
+      setError('Error al guardar usuario');
+    } finally {
+      setSaving(false);
     }
-
-    const userData: User & { password?: string } = {
-      id: formData.id,
-      email: formData.email,
-      name: formData.name,
-      role: formData.role,
-      permissions: formData.role === 'admin'
-        ? Object.keys(ALL_PERMISSIONS) as Permission[]
-        : formData.permissions,
-      isActive: formData.isActive,
-      createdAt: selectedUser?.createdAt || Date.now(),
-      updatedAt: Date.now(),
-    };
-
-    if (formData.password) {
-      userData.password = formData.password;
-    }
-
-    saveUser(userData);
-    setUsers(getUsers());
-    setIsModalOpen(false);
   };
 
   // Toggle permission
@@ -666,11 +717,13 @@ export default function UsersPage() {
                   Cancelar
                 </button>
                 <motion.button
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
+                  whileHover={{ scale: saving ? 1 : 1.02 }}
+                  whileTap={{ scale: saving ? 1 : 0.98 }}
                   onClick={handleSave}
-                  className="px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-lg text-sm font-medium transition-colors"
+                  disabled={saving}
+                  className="px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                 >
+                  {saving && <Loader2 className="w-4 h-4 animate-spin" />}
                   {selectedUser ? 'Guardar cambios' : 'Crear usuario'}
                 </motion.button>
               </div>

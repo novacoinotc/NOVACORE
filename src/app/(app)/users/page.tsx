@@ -34,7 +34,7 @@ const PERMISSION_CATEGORIES = {
   'Dashboard': ['dashboard.view'],
   'Saldos': ['balance.view'],
   'Transferencias': ['orders.view', 'orders.create', 'orders.cancel', 'orders.cep', 'orders.notify'],
-  'Clientes': ['clients.view', 'clients.create', 'clients.update', 'clients.status'],
+  'Cuentas Guardadas': ['savedAccounts.view', 'savedAccounts.create', 'savedAccounts.update', 'savedAccounts.delete'],
   'Historial': ['history.view'],
   'Catálogos': ['banks.view', 'catalogs.view'],
   'Configuración': ['settings.view', 'settings.update'],
@@ -79,9 +79,15 @@ export default function UsersPage() {
 
   // Fetch users from API
   const fetchUsers = async () => {
+    if (!currentUser) return;
+
     try {
       setLoadingUsers(true);
-      const response = await fetch('/api/users');
+      const response = await fetch('/api/users', {
+        headers: {
+          'x-user-id': currentUser.id,
+        },
+      });
       if (response.ok) {
         const data = await response.json();
         setUsers(data);
@@ -95,10 +101,10 @@ export default function UsersPage() {
 
   // Load users
   useEffect(() => {
-    if (hasAccess) {
+    if (hasAccess && currentUser) {
       fetchUsers();
     }
-  }, [hasAccess]);
+  }, [hasAccess, currentUser]);
 
   // Filter users by search
   const filteredUsers = users.filter(
@@ -142,11 +148,14 @@ export default function UsersPage() {
 
   // Confirm delete
   const handleDeleteConfirm = async () => {
-    if (selectedUser) {
+    if (selectedUser && currentUser) {
       try {
         setSaving(true);
         const response = await fetch(`/api/users/${selectedUser.id}`, {
           method: 'DELETE',
+          headers: {
+            'x-user-id': currentUser.id,
+          },
         });
 
         if (response.ok) {
@@ -168,6 +177,8 @@ export default function UsersPage() {
 
   // Save user (create or update)
   const handleSave = async () => {
+    if (!currentUser) return;
+
     // Validation
     if (!formData.email || !formData.name) {
       setError('Email y nombre son requeridos');
@@ -179,11 +190,20 @@ export default function UsersPage() {
       return;
     }
 
+    // company_admin can only create users for their own company
+    // and cannot create super_admin
+    if (currentUser.role === 'company_admin') {
+      if (formData.role === 'super_admin') {
+        setError('No tienes permiso para crear super administradores');
+        return;
+      }
+    }
+
     try {
       setSaving(true);
       setError('');
 
-      const userData = {
+      const userData: any = {
         email: formData.email,
         name: formData.name,
         role: formData.role,
@@ -194,19 +214,33 @@ export default function UsersPage() {
         ...(formData.password && { password: formData.password }),
       };
 
+      // For company_admin, automatically assign their company to new users
+      if (currentUser.role === 'company_admin' && !selectedUser) {
+        userData.companyId = currentUser.companyId;
+      }
+
+      // For super_admin creating company_admin or user, they need to select a company
+      // This will be handled by the API validation
+
       let response;
       if (selectedUser) {
         // Update existing user
         response = await fetch(`/api/users/${selectedUser.id}`, {
           method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            'x-user-id': currentUser.id,
+          },
           body: JSON.stringify(userData),
         });
       } else {
         // Create new user
         response = await fetch('/api/users', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            'x-user-id': currentUser.id,
+          },
           body: JSON.stringify(userData),
         });
       }
@@ -554,7 +588,9 @@ export default function UsersPage() {
                     >
                       <option value="user" className="bg-[#0a0a1a]">Usuario</option>
                       <option value="company_admin" className="bg-[#0a0a1a]">Admin Empresa</option>
-                      <option value="super_admin" className="bg-[#0a0a1a]">Super Admin</option>
+                      {currentUser?.role === 'super_admin' && (
+                        <option value="super_admin" className="bg-[#0a0a1a]">Super Admin</option>
+                      )}
                     </select>
                   </div>
                 </div>

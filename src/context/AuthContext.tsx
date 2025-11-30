@@ -2,7 +2,10 @@
 
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
-import { User, Permission } from '@/types';
+import { User, Permission, UserRole } from '@/types';
+
+// Valid roles
+const VALID_ROLES: UserRole[] = ['super_admin', 'company_admin', 'user'];
 
 interface AuthContextType {
   user: User | null;
@@ -41,10 +44,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const sessionStr = localStorage.getItem('novacore_session');
         if (sessionStr) {
           const session = JSON.parse(sessionStr);
-          if (session.expiresAt > Date.now()) {
+          // Validate session has valid role (clear stale sessions with old role format)
+          if (session.expiresAt > Date.now() && session.user?.role && VALID_ROLES.includes(session.user.role)) {
             setUser(session.user);
           } else {
-            // Session expired
+            // Session expired or has invalid role format
             localStorage.removeItem('novacore_session');
           }
         }

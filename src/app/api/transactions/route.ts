@@ -40,89 +40,21 @@ export async function GET(request: NextRequest) {
     const payerBank = searchParams.get('payerBank');
     const search = searchParams.get('search');
     const page = parseInt(searchParams.get('page') || '1');
-    const itemsPerPage = parseInt(searchParams.get('itemsPerPage') || '50');
+    const itemsPerPage = Math.min(parseInt(searchParams.get('itemsPerPage') || '50'), 100);
     const offset = (page - 1) * itemsPerPage;
 
-    // Build WHERE conditions dynamically
-    const conditions: string[] = [];
-    const values: any[] = [];
-    let paramIndex = 1;
+    // Parse numeric/date filters
+    const fromDate = from ? new Date(parseInt(from)) : null;
+    const toDate = to ? new Date(parseInt(to)) : null;
+    const minAmountNum = minAmount ? parseFloat(minAmount) : null;
+    const maxAmountNum = maxAmount ? parseFloat(maxAmount) : null;
+    const searchPattern = search ? `%${search}%` : null;
+    const beneficiaryAccountPattern = beneficiaryAccount ? `%${beneficiaryAccount}%` : null;
+    const payerAccountPattern = payerAccount ? `%${payerAccount}%` : null;
 
-    if (type) {
-      conditions.push(`type = $${paramIndex++}`);
-      values.push(type);
-    }
-
-    if (status) {
-      conditions.push(`status = $${paramIndex++}`);
-      values.push(status);
-    }
-
-    if (clabeAccountId) {
-      conditions.push(`clabe_account_id = $${paramIndex++}`);
-      values.push(clabeAccountId);
-    }
-
-    if (from) {
-      conditions.push(`created_at >= to_timestamp($${paramIndex++}::bigint / 1000.0)`);
-      values.push(parseInt(from));
-    }
-
-    if (to) {
-      conditions.push(`created_at <= to_timestamp($${paramIndex++}::bigint / 1000.0)`);
-      values.push(parseInt(to));
-    }
-
-    if (minAmount) {
-      conditions.push(`amount >= $${paramIndex++}`);
-      values.push(parseFloat(minAmount));
-    }
-
-    if (maxAmount) {
-      conditions.push(`amount <= $${paramIndex++}`);
-      values.push(parseFloat(maxAmount));
-    }
-
-    if (beneficiaryAccount) {
-      conditions.push(`beneficiary_account LIKE $${paramIndex++}`);
-      values.push(`%${beneficiaryAccount}%`);
-    }
-
-    if (payerAccount) {
-      conditions.push(`payer_account LIKE $${paramIndex++}`);
-      values.push(`%${payerAccount}%`);
-    }
-
-    if (beneficiaryBank) {
-      conditions.push(`beneficiary_bank = $${paramIndex++}`);
-      values.push(beneficiaryBank);
-    }
-
-    if (payerBank) {
-      conditions.push(`payer_bank = $${paramIndex++}`);
-      values.push(payerBank);
-    }
-
-    if (search) {
-      conditions.push(`(
-        tracking_key ILIKE $${paramIndex} OR
-        beneficiary_name ILIKE $${paramIndex} OR
-        payer_name ILIKE $${paramIndex} OR
-        concept ILIKE $${paramIndex}
-      )`);
-      values.push(`%${search}%`);
-      paramIndex++;
-    }
-
-    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
-
-    // Get total count
-    const countQuery = `SELECT COUNT(*) as count FROM transactions ${whereClause}`;
-    const countResult = await sql.unsafe(countQuery, values);
-    const total = parseInt(countResult[0]?.count || '0');
-
-    // Get transactions with pagination
-    const dataQuery = `
+    // Build and execute query with all filters
+    // Using Neon's tagged template literals for safe parameterized queries
+    const transactions = await sql`
       SELECT
         id,
         clabe_account_id,
@@ -147,13 +79,80 @@ export async function GET(request: NextRequest) {
         updated_at,
         settled_at
       FROM transactions
-      ${whereClause}
+      WHERE 1=1
+        ${type ? sql`AND type = ${type}` : sql``}
+        ${status ? sql`AND status = ${status}` : sql``}
+        ${clabeAccountId ? sql`AND clabe_account_id = ${clabeAccountId}` : sql``}
+        ${fromDate ? sql`AND created_at >= ${fromDate}` : sql``}
+        ${toDate ? sql`AND created_at <= ${toDate}` : sql``}
+        ${minAmountNum !== null ? sql`AND amount >= ${minAmountNum}` : sql``}
+        ${maxAmountNum !== null ? sql`AND amount <= ${maxAmountNum}` : sql``}
+        ${beneficiaryAccountPattern ? sql`AND beneficiary_account LIKE ${beneficiaryAccountPattern}` : sql``}
+        ${payerAccountPattern ? sql`AND payer_account LIKE ${payerAccountPattern}` : sql``}
+        ${beneficiaryBank ? sql`AND beneficiary_bank = ${beneficiaryBank}` : sql``}
+        ${payerBank ? sql`AND payer_bank = ${payerBank}` : sql``}
+        ${searchPattern ? sql`AND (
+          tracking_key ILIKE ${searchPattern} OR
+          beneficiary_name ILIKE ${searchPattern} OR
+          payer_name ILIKE ${searchPattern} OR
+          concept ILIKE ${searchPattern}
+        )` : sql``}
       ORDER BY created_at DESC
-      LIMIT $${paramIndex++} OFFSET $${paramIndex}
+      LIMIT ${itemsPerPage} OFFSET ${offset}
     `;
-    values.push(itemsPerPage, offset);
 
-    const transactions = await sql.unsafe(dataQuery, values);
+    // Get total count with same filters
+    const countResult = await sql`
+      SELECT COUNT(*) as count
+      FROM transactions
+      WHERE 1=1
+        ${type ? sql`AND type = ${type}` : sql``}
+        ${status ? sql`AND status = ${status}` : sql``}
+        ${clabeAccountId ? sql`AND clabe_account_id = ${clabeAccountId}` : sql``}
+        ${fromDate ? sql`AND created_at >= ${fromDate}` : sql``}
+        ${toDate ? sql`AND created_at <= ${toDate}` : sql``}
+        ${minAmountNum !== null ? sql`AND amount >= ${minAmountNum}` : sql``}
+        ${maxAmountNum !== null ? sql`AND amount <= ${maxAmountNum}` : sql``}
+        ${beneficiaryAccountPattern ? sql`AND beneficiary_account LIKE ${beneficiaryAccountPattern}` : sql``}
+        ${payerAccountPattern ? sql`AND payer_account LIKE ${payerAccountPattern}` : sql``}
+        ${beneficiaryBank ? sql`AND beneficiary_bank = ${beneficiaryBank}` : sql``}
+        ${payerBank ? sql`AND payer_bank = ${payerBank}` : sql``}
+        ${searchPattern ? sql`AND (
+          tracking_key ILIKE ${searchPattern} OR
+          beneficiary_name ILIKE ${searchPattern} OR
+          payer_name ILIKE ${searchPattern} OR
+          concept ILIKE ${searchPattern}
+        )` : sql``}
+    `;
+    const total = parseInt(countResult[0]?.count || '0');
+
+    // Get stats with same filters
+    const statsResult = await sql`
+      SELECT
+        COUNT(*) as total_count,
+        COALESCE(SUM(CASE WHEN type = 'incoming' THEN amount ELSE 0 END), 0) as total_incoming,
+        COALESCE(SUM(CASE WHEN type = 'outgoing' THEN amount ELSE 0 END), 0) as total_outgoing,
+        COALESCE(SUM(CASE WHEN status = 'pending' OR status = 'sent' THEN amount ELSE 0 END), 0) as in_transit
+      FROM transactions
+      WHERE 1=1
+        ${type ? sql`AND type = ${type}` : sql``}
+        ${status ? sql`AND status = ${status}` : sql``}
+        ${clabeAccountId ? sql`AND clabe_account_id = ${clabeAccountId}` : sql``}
+        ${fromDate ? sql`AND created_at >= ${fromDate}` : sql``}
+        ${toDate ? sql`AND created_at <= ${toDate}` : sql``}
+        ${minAmountNum !== null ? sql`AND amount >= ${minAmountNum}` : sql``}
+        ${maxAmountNum !== null ? sql`AND amount <= ${maxAmountNum}` : sql``}
+        ${beneficiaryAccountPattern ? sql`AND beneficiary_account LIKE ${beneficiaryAccountPattern}` : sql``}
+        ${payerAccountPattern ? sql`AND payer_account LIKE ${payerAccountPattern}` : sql``}
+        ${beneficiaryBank ? sql`AND beneficiary_bank = ${beneficiaryBank}` : sql``}
+        ${payerBank ? sql`AND payer_bank = ${payerBank}` : sql``}
+        ${searchPattern ? sql`AND (
+          tracking_key ILIKE ${searchPattern} OR
+          beneficiary_name ILIKE ${searchPattern} OR
+          payer_name ILIKE ${searchPattern} OR
+          concept ILIKE ${searchPattern}
+        )` : sql``}
+    `;
 
     // Transform to frontend format
     const formattedTransactions = transactions.map((tx: any) => ({
@@ -180,18 +179,6 @@ export async function GET(request: NextRequest) {
       updatedAt: new Date(tx.updated_at).getTime(),
       settledAt: tx.settled_at ? new Date(tx.settled_at).getTime() : null,
     }));
-
-    // Calculate summary stats
-    const statsQuery = `
-      SELECT
-        COUNT(*) as total_count,
-        COALESCE(SUM(CASE WHEN type = 'incoming' THEN amount ELSE 0 END), 0) as total_incoming,
-        COALESCE(SUM(CASE WHEN type = 'outgoing' THEN amount ELSE 0 END), 0) as total_outgoing,
-        COALESCE(SUM(CASE WHEN status = 'pending' OR status = 'sent' THEN amount ELSE 0 END), 0) as in_transit
-      FROM transactions
-      ${whereClause}
-    `;
-    const statsResult = await sql.unsafe(statsQuery, values.slice(0, -2)); // Remove pagination params
 
     const stats = {
       totalCount: parseInt(statsResult[0]?.total_count || '0'),

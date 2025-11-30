@@ -289,6 +289,103 @@ export async function updateClientStatus(
   }, apiKey);
 }
 
+// ==================== VIRTUAL CLABE GENERATION ====================
+
+/**
+ * Create a virtual CLABE account via OPM API
+ *
+ * This function creates an indirect participant client in OPM, which
+ * automatically generates a virtual CLABE account number.
+ *
+ * Based on Especificacion api.pdf Section 4.14:
+ * - POST /api/1.0/indirectParticipantClients
+ * - If virtualAccountNumber is NOT provided, OPM auto-generates it
+ * - Response includes virtualAccount.accountNumber with the generated CLABE
+ *
+ * @param clientData - Client data for the virtual account
+ * @param apiKey - Optional API key
+ * @returns Created client with generated virtualAccountNumber (CLABE)
+ */
+export interface CreateVirtualClabeRequest {
+  name: string;              // Account holder name (person or company name)
+  lastName?: string;         // Person's last name (for individuals)
+  secondLastName?: string;   // Person's second last name (for individuals)
+  businessName?: string;     // Legal business name (for companies)
+  commercialActivity?: string; // Business activity description
+  rfc: string;               // RFC (tax ID)
+  curp?: string;             // CURP (for individuals, required by API)
+  address: string;           // Full address
+  email: string;             // Contact email
+  mobileNumber: string;      // Contact phone (10 digits)
+  birthDate?: string;        // Birth date YYYY-MM-DD (for individuals)
+  gender?: 'M' | 'F';        // Gender (for individuals)
+  state: string;             // Mexican state
+  country?: string;          // Country code (default: MX)
+  nationality?: string;      // Nationality (default: MX)
+  alias?: string;            // Friendly name for the CLABE (internal use)
+}
+
+export async function createVirtualClabe(
+  request: CreateVirtualClabeRequest,
+  apiKey?: string
+): Promise<ApiResponse<Client>> {
+  // Build client data for OPM API
+  // Note: We do NOT send virtualAccountNumber so OPM auto-generates the CLABE
+  const clientData: Client = {
+    name: request.name,
+    lastName: request.lastName || '',
+    secondLastName: request.secondLastName || '',
+    businessName: request.businessName || request.name,
+    commercialActivity: request.commercialActivity || 'Servicios financieros',
+    rfc: request.rfc,
+    curp: request.curp || 'XEXX010101HNEXXXA4', // Generic CURP for companies
+    address: request.address,
+    email: request.email,
+    mobileNumber: request.mobileNumber,
+    birthDate: request.birthDate || '1990-01-01',
+    gender: request.gender || 'M',
+    state: request.state,
+    country: request.country || 'MX',
+    nationality: request.nationality || 'MX',
+    status: 'ACTIVE',
+  };
+
+  return createClient(clientData, apiKey);
+}
+
+/**
+ * Create multiple virtual CLABE subaccounts for a company
+ *
+ * Useful for creating cost center accounts or departmental accounts
+ * that share the same company information but have unique CLABEs.
+ *
+ * @param baseData - Base company/client data
+ * @param count - Number of subaccounts to create
+ * @param aliasPrefix - Prefix for subaccount aliases (e.g., "Centro de Costos")
+ * @param apiKey - Optional API key
+ * @returns Array of created clients with their generated CLABEs
+ */
+export async function createVirtualClabeSubaccounts(
+  baseData: CreateVirtualClabeRequest,
+  count: number,
+  aliasPrefix: string = 'Subcuenta',
+  apiKey?: string
+): Promise<ApiResponse<Client>[]> {
+  const results: ApiResponse<Client>[] = [];
+
+  for (let i = 1; i <= count; i++) {
+    const subaccountData = {
+      ...baseData,
+      alias: `${aliasPrefix} ${i}`,
+    };
+
+    const result = await createVirtualClabe(subaccountData, apiKey);
+    results.push(result);
+  }
+
+  return results;
+}
+
 // ==================== SIGNATURE HELPERS ====================
 // Based on MI-OPM-2.5.pdf - Digital signature generation
 

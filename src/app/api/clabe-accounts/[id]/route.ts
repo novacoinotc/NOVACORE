@@ -1,5 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getClabeAccountById, updateClabeAccount, deleteClabeAccount, getCompanyById } from '@/lib/db';
+import { getClabeAccountById, updateClabeAccount, deleteClabeAccount, getCompanyById, getUserById } from '@/lib/db';
+
+// Helper to get current user from request headers
+async function getCurrentUser(request: NextRequest) {
+  const userId = request.headers.get('x-user-id');
+  if (!userId) return null;
+  return await getUserById(userId);
+}
 
 // GET /api/clabe-accounts/[id] - Get single CLABE account
 export async function GET(
@@ -61,6 +68,9 @@ export async function PUT(
     const body = await request.json();
     const { alias, description, isActive } = body;
 
+    // Get current user for authorization
+    const currentUser = await getCurrentUser(request);
+
     // Check if CLABE account exists
     const existingClabeAccount = await getClabeAccountById(params.id);
     if (!existingClabeAccount) {
@@ -68,6 +78,23 @@ export async function PUT(
         { error: 'Cuenta CLABE no encontrada' },
         { status: 404 }
       );
+    }
+
+    // Authorization: company_admin can only update CLABEs for their own company
+    if (currentUser) {
+      if (currentUser.role === 'company_admin') {
+        if (currentUser.company_id !== existingClabeAccount.company_id) {
+          return NextResponse.json(
+            { error: 'No tienes permiso para actualizar cuentas CLABE de otra empresa' },
+            { status: 403 }
+          );
+        }
+      } else if (currentUser.role !== 'super_admin') {
+        return NextResponse.json(
+          { error: 'No tienes permiso para actualizar cuentas CLABE' },
+          { status: 403 }
+        );
+      }
     }
 
     // Note: CLABE number and companyId cannot be changed once created
@@ -112,6 +139,9 @@ export async function DELETE(
   { params }: { params: { id: string } }
 ) {
   try {
+    // Get current user for authorization
+    const currentUser = await getCurrentUser(request);
+
     // Check if CLABE account exists
     const existingClabeAccount = await getClabeAccountById(params.id);
     if (!existingClabeAccount) {
@@ -119,6 +149,23 @@ export async function DELETE(
         { error: 'Cuenta CLABE no encontrada' },
         { status: 404 }
       );
+    }
+
+    // Authorization: company_admin can only delete CLABEs for their own company
+    if (currentUser) {
+      if (currentUser.role === 'company_admin') {
+        if (currentUser.company_id !== existingClabeAccount.company_id) {
+          return NextResponse.json(
+            { error: 'No tienes permiso para eliminar cuentas CLABE de otra empresa' },
+            { status: 403 }
+          );
+        }
+      } else if (currentUser.role !== 'super_admin') {
+        return NextResponse.json(
+          { error: 'No tienes permiso para eliminar cuentas CLABE' },
+          { status: 403 }
+        );
+      }
     }
 
     // Note: This will also cascade delete user_clabe_access entries

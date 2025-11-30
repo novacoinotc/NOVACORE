@@ -86,6 +86,44 @@ export async function initializeDatabase() {
       // Column might already exist
     }
 
+    // Create transactions table for tracking SPEI transfers
+    await sql`
+      CREATE TABLE IF NOT EXISTS transactions (
+        id TEXT PRIMARY KEY,
+        clabe_account_id TEXT REFERENCES clabe_accounts(id) ON DELETE SET NULL,
+        type TEXT NOT NULL CHECK (type IN ('incoming', 'outgoing')),
+        status TEXT NOT NULL DEFAULT 'pending',
+        amount DECIMAL(18, 2) NOT NULL,
+        concept TEXT,
+        tracking_key TEXT UNIQUE NOT NULL,
+        numerical_reference INTEGER,
+        beneficiary_account TEXT,
+        beneficiary_bank TEXT,
+        beneficiary_name TEXT,
+        beneficiary_uid TEXT,
+        payer_account TEXT,
+        payer_bank TEXT,
+        payer_name TEXT,
+        payer_uid TEXT,
+        opm_order_id TEXT,
+        error_detail TEXT,
+        cep_url TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        settled_at TIMESTAMP
+      )
+    `;
+
+    // Create index on tracking_key for faster lookups
+    await sql`
+      CREATE INDEX IF NOT EXISTS idx_transactions_tracking_key ON transactions(tracking_key)
+    `;
+
+    // Create index on clabe_account_id for faster lookups
+    await sql`
+      CREATE INDEX IF NOT EXISTS idx_transactions_clabe_account ON transactions(clabe_account_id)
+    `;
+
     console.log('Database initialized successfully');
   } catch (error) {
     console.error('Error initializing database:', error);
@@ -138,6 +176,31 @@ export interface DbUserClabeAccess {
   user_id: string;
   clabe_account_id: string;
   created_at: Date;
+}
+
+export interface DbTransaction {
+  id: string;
+  clabe_account_id: string | null;
+  type: 'incoming' | 'outgoing';
+  status: string;
+  amount: number;
+  concept: string | null;
+  tracking_key: string;
+  numerical_reference: number | null;
+  beneficiary_account: string | null;
+  beneficiary_bank: string | null;
+  beneficiary_name: string | null;
+  beneficiary_uid: string | null;
+  payer_account: string | null;
+  payer_bank: string | null;
+  payer_name: string | null;
+  payer_uid: string | null;
+  opm_order_id: string | null;
+  error_detail: string | null;
+  cep_url: string | null;
+  created_at: Date;
+  updated_at: Date;
+  settled_at: Date | null;
 }
 
 // ==================== COMPANY OPERATIONS ====================
@@ -498,4 +561,156 @@ export async function getUserWithRelations(id: string): Promise<{
   }
 
   return { user, company, clabeAccounts };
+}
+
+// ==================== TRANSACTION OPERATIONS ====================
+
+export async function createTransaction(transaction: {
+  id: string;
+  clabeAccountId?: string;
+  type: 'incoming' | 'outgoing';
+  status?: string;
+  amount: number;
+  concept?: string;
+  trackingKey: string;
+  numericalReference?: number;
+  beneficiaryAccount?: string;
+  beneficiaryBank?: string;
+  beneficiaryName?: string;
+  beneficiaryUid?: string;
+  payerAccount?: string;
+  payerBank?: string;
+  payerName?: string;
+  payerUid?: string;
+  opmOrderId?: string;
+}): Promise<DbTransaction> {
+  const result = await sql`
+    INSERT INTO transactions (
+      id, clabe_account_id, type, status, amount, concept, tracking_key,
+      numerical_reference, beneficiary_account, beneficiary_bank, beneficiary_name,
+      beneficiary_uid, payer_account, payer_bank, payer_name, payer_uid, opm_order_id
+    )
+    VALUES (
+      ${transaction.id},
+      ${transaction.clabeAccountId || null},
+      ${transaction.type},
+      ${transaction.status || 'pending'},
+      ${transaction.amount},
+      ${transaction.concept || null},
+      ${transaction.trackingKey},
+      ${transaction.numericalReference || null},
+      ${transaction.beneficiaryAccount || null},
+      ${transaction.beneficiaryBank || null},
+      ${transaction.beneficiaryName || null},
+      ${transaction.beneficiaryUid || null},
+      ${transaction.payerAccount || null},
+      ${transaction.payerBank || null},
+      ${transaction.payerName || null},
+      ${transaction.payerUid || null},
+      ${transaction.opmOrderId || null}
+    )
+    RETURNING *
+  `;
+  return result[0] as DbTransaction;
+}
+
+export async function getTransactionById(id: string): Promise<DbTransaction | null> {
+  const result = await sql`
+    SELECT * FROM transactions WHERE id = ${id}
+  `;
+  return result[0] as DbTransaction | null;
+}
+
+export async function getTransactionByTrackingKey(trackingKey: string): Promise<DbTransaction | null> {
+  const result = await sql`
+    SELECT * FROM transactions WHERE tracking_key = ${trackingKey}
+  `;
+  return result[0] as DbTransaction | null;
+}
+
+export async function getTransactionsByClabeAccount(clabeAccountId: string): Promise<DbTransaction[]> {
+  const result = await sql`
+    SELECT * FROM transactions WHERE clabe_account_id = ${clabeAccountId} ORDER BY created_at DESC
+  `;
+  return result as DbTransaction[];
+}
+
+export async function updateTransactionStatus(
+  id: string,
+  status: string,
+  errorDetail?: string
+): Promise<DbTransaction | null> {
+  const result = await sql`
+    UPDATE transactions
+    SET status = ${status},
+        error_detail = COALESCE(${errorDetail || null}, error_detail),
+        settled_at = CASE WHEN ${status} = 'scattered' THEN CURRENT_TIMESTAMP ELSE settled_at END,
+        updated_at = CURRENT_TIMESTAMP
+    WHERE id = ${id}
+    RETURNING *
+  `;
+  return result[0] as DbTransaction | null;
+}
+
+export async function updateTransactionByTrackingKey(
+  trackingKey: string,
+  updates: Partial<{
+    status: string;
+    errorDetail: string;
+    opmOrderId: string;
+    cepUrl: string;
+  }>
+): Promise<DbTransaction | null> {
+  const result = await sql`
+    UPDATE transactions
+    SET status = COALESCE(${updates.status}, status),
+        error_detail = COALESCE(${updates.errorDetail}, error_detail),
+        opm_order_id = COALESCE(${updates.opmOrderId}, opm_order_id),
+        cep_url = COALESCE(${updates.cepUrl}, cep_url),
+        settled_at = CASE WHEN ${updates.status} = 'scattered' THEN CURRENT_TIMESTAMP ELSE settled_at END,
+        updated_at = CURRENT_TIMESTAMP
+    WHERE tracking_key = ${trackingKey}
+    RETURNING *
+  `;
+  return result[0] as DbTransaction | null;
+}
+
+export async function listTransactions(params: {
+  type?: 'incoming' | 'outgoing';
+  status?: string;
+  clabeAccountId?: string;
+  from?: Date;
+  to?: Date;
+  page?: number;
+  itemsPerPage?: number;
+}): Promise<{ transactions: DbTransaction[]; total: number }> {
+  const page = params.page || 1;
+  const itemsPerPage = params.itemsPerPage || 50;
+  const offset = (page - 1) * itemsPerPage;
+
+  // Build query dynamically (simplified - in production use a query builder)
+  let whereConditions: string[] = [];
+
+  if (params.type) whereConditions.push(`type = '${params.type}'`);
+  if (params.status) whereConditions.push(`status = '${params.status}'`);
+  if (params.clabeAccountId) whereConditions.push(`clabe_account_id = '${params.clabeAccountId}'`);
+
+  const whereClause = whereConditions.length > 0 ? `WHERE ${whereConditions.join(' AND ')}` : '';
+
+  const countResult = await sql`
+    SELECT COUNT(*) as count FROM transactions ${sql.unsafe(whereClause)}
+  `;
+  const total = parseInt(countResult[0]?.count || '0');
+
+  const result = await sql`
+    SELECT * FROM transactions
+    ${sql.unsafe(whereClause)}
+    ORDER BY created_at DESC
+    LIMIT ${itemsPerPage} OFFSET ${offset}
+  `;
+
+  return {
+    transactions: result as DbTransaction[],
+    total,
+  };
 }

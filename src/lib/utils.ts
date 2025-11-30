@@ -175,6 +175,178 @@ export function maskAccount(account: string): string {
   return `****${account.slice(-4)}`;
 }
 
+// ==================== OPM API FIELD VALIDATIONS ====================
+// Based on OPM API Specification (Especificacion api.pdf)
+
+export interface ValidationError {
+  field: string;
+  message: string;
+  maxLength?: number;
+  actualLength?: number;
+}
+
+// Validate order fields according to OPM API specification
+export function validateOrderFields(order: {
+  concept?: string;
+  beneficiaryAccount?: string;
+  beneficiaryBank?: string;
+  beneficiaryName?: string;
+  beneficiaryUid?: string;
+  payerAccount?: string;
+  payerBank?: string;
+  payerName?: string;
+  payerUid?: string;
+  numericalReference?: number;
+  trackingKey?: string;
+  amount?: number;
+}): ValidationError[] {
+  const errors: ValidationError[] = [];
+
+  // concept: string<40> - max 40 characters
+  if (order.concept && order.concept.length > 40) {
+    errors.push({
+      field: 'concept',
+      message: 'Concepto excede 40 caracteres',
+      maxLength: 40,
+      actualLength: order.concept.length,
+    });
+  }
+
+  // beneficiaryAccount: string<18> - exactly 18 digits (CLABE)
+  if (order.beneficiaryAccount) {
+    if (!/^\d{18}$/.test(order.beneficiaryAccount)) {
+      errors.push({
+        field: 'beneficiaryAccount',
+        message: 'Cuenta beneficiario debe ser CLABE de 18 dígitos',
+        maxLength: 18,
+        actualLength: order.beneficiaryAccount.length,
+      });
+    } else if (!validateClabe(order.beneficiaryAccount)) {
+      errors.push({
+        field: 'beneficiaryAccount',
+        message: 'Dígito verificador de CLABE inválido',
+      });
+    }
+  }
+
+  // beneficiaryBank: string<5> - exactly 5 digits
+  if (order.beneficiaryBank && !/^\d{5}$/.test(order.beneficiaryBank)) {
+    errors.push({
+      field: 'beneficiaryBank',
+      message: 'Código de banco beneficiario debe ser 5 dígitos',
+      maxLength: 5,
+      actualLength: order.beneficiaryBank.length,
+    });
+  }
+
+  // beneficiaryName: string<40> - max 40 characters
+  if (order.beneficiaryName && order.beneficiaryName.length > 40) {
+    errors.push({
+      field: 'beneficiaryName',
+      message: 'Nombre beneficiario excede 40 caracteres',
+      maxLength: 40,
+      actualLength: order.beneficiaryName.length,
+    });
+  }
+
+  // beneficiaryUid: string<18> - max 18 characters (RFC/CURP)
+  if (order.beneficiaryUid && order.beneficiaryUid.length > 18) {
+    errors.push({
+      field: 'beneficiaryUid',
+      message: 'RFC/CURP beneficiario excede 18 caracteres',
+      maxLength: 18,
+      actualLength: order.beneficiaryUid.length,
+    });
+  }
+
+  // payerAccount: string<18> - exactly 18 digits (CLABE)
+  if (order.payerAccount && !/^\d{18}$/.test(order.payerAccount)) {
+    errors.push({
+      field: 'payerAccount',
+      message: 'Cuenta ordenante debe ser CLABE de 18 dígitos',
+      maxLength: 18,
+      actualLength: order.payerAccount.length,
+    });
+  }
+
+  // payerBank: string<5> - exactly 5 digits
+  if (order.payerBank && !/^\d{5}$/.test(order.payerBank)) {
+    errors.push({
+      field: 'payerBank',
+      message: 'Código de banco ordenante debe ser 5 dígitos',
+      maxLength: 5,
+      actualLength: order.payerBank.length,
+    });
+  }
+
+  // payerName: string<40> - max 40 characters
+  if (order.payerName && order.payerName.length > 40) {
+    errors.push({
+      field: 'payerName',
+      message: 'Nombre ordenante excede 40 caracteres',
+      maxLength: 40,
+      actualLength: order.payerName.length,
+    });
+  }
+
+  // payerUid: string<18> - max 18 characters (RFC/CURP) - optional
+  if (order.payerUid && order.payerUid.length > 18) {
+    errors.push({
+      field: 'payerUid',
+      message: 'RFC/CURP ordenante excede 18 caracteres',
+      maxLength: 18,
+      actualLength: order.payerUid.length,
+    });
+  }
+
+  // numericalReference: integer<7> - max 7 digits (1000000-9999999)
+  if (order.numericalReference !== undefined) {
+    if (order.numericalReference < 1000000 || order.numericalReference > 9999999) {
+      errors.push({
+        field: 'numericalReference',
+        message: 'Referencia numérica debe ser entre 1000000 y 9999999 (7 dígitos)',
+      });
+    }
+  }
+
+  // trackingKey: string<30> - max 30 characters
+  if (order.trackingKey && order.trackingKey.length > 30) {
+    errors.push({
+      field: 'trackingKey',
+      message: 'Clave de rastreo excede 30 caracteres',
+      maxLength: 30,
+      actualLength: order.trackingKey.length,
+    });
+  }
+
+  // amount: double<18,2> - must be positive with max 2 decimal places
+  if (order.amount !== undefined) {
+    if (order.amount <= 0) {
+      errors.push({
+        field: 'amount',
+        message: 'Monto debe ser mayor a 0',
+      });
+    }
+    // Check if amount has more than 2 decimal places
+    const amountStr = order.amount.toString();
+    const decimalPart = amountStr.split('.')[1];
+    if (decimalPart && decimalPart.length > 2) {
+      errors.push({
+        field: 'amount',
+        message: 'Monto no puede tener más de 2 decimales',
+      });
+    }
+  }
+
+  return errors;
+}
+
+// Truncate and sanitize text for SPEI (max length + remove special chars)
+export function prepareTextForSpei(text: string, maxLength: number): string {
+  const sanitized = sanitizeForSpei(text);
+  return sanitized.substring(0, maxLength);
+}
+
 // Format large numbers with K, M, B
 export function formatCompactNumber(num: number): string {
   if (num >= 1000000000) {

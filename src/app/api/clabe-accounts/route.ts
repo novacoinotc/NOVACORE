@@ -1,5 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getAllClabeAccounts, getClabeAccountsByCompanyId, createClabeAccount, getClabeAccountByClabe, getCompanyById } from '@/lib/db';
+import { getAllClabeAccounts, getClabeAccountsByCompanyId, createClabeAccount, getClabeAccountByClabe, getCompanyById, getUserById } from '@/lib/db';
+import { validateClabe } from '@/lib/utils';
+
+// Helper to get current user from request headers
+async function getCurrentUser(request: NextRequest) {
+  const userId = request.headers.get('x-user-id');
+  if (!userId) return null;
+  return await getUserById(userId);
+}
 
 // GET /api/clabe-accounts - List CLABE accounts (with optional companyId filter)
 export async function GET(request: NextRequest) {
@@ -43,6 +51,9 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { companyId, clabe, alias, description, isActive } = body;
 
+    // Get current user for authorization
+    const currentUser = await getCurrentUser(request);
+
     // Validation
     if (!companyId || !clabe || !alias) {
       return NextResponse.json(
@@ -51,11 +62,36 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Authorization: company_admin can only create CLABEs for their own company
+    if (currentUser) {
+      if (currentUser.role === 'company_admin') {
+        if (currentUser.company_id !== companyId) {
+          return NextResponse.json(
+            { error: 'No tienes permiso para crear cuentas CLABE para esta empresa' },
+            { status: 403 }
+          );
+        }
+      } else if (currentUser.role !== 'super_admin') {
+        return NextResponse.json(
+          { error: 'No tienes permiso para crear cuentas CLABE' },
+          { status: 403 }
+        );
+      }
+    }
+
     // Validate CLABE format (18 digits)
     const clabeRegex = /^[0-9]{18}$/;
     if (!clabeRegex.test(clabe)) {
       return NextResponse.json(
         { error: 'La CLABE debe tener exactamente 18 dígitos' },
+        { status: 400 }
+      );
+    }
+
+    // Validate CLABE check digit
+    if (!validateClabe(clabe)) {
+      return NextResponse.json(
+        { error: 'La CLABE tiene un dígito verificador inválido' },
         { status: 400 }
       );
     }

@@ -12,6 +12,7 @@ import {
   Check,
   AlertCircle,
   Loader2,
+  CheckCircle,
 } from 'lucide-react';
 import {
   Button,
@@ -22,14 +23,16 @@ import {
   Badge,
   Modal,
 } from '@/components/ui';
-import { cn, formatDate } from '@/lib/utils';
+import { cn, formatDate, validateClabe } from '@/lib/utils';
 import { SavedAccount, Bank } from '@/types';
 import { useAuth } from '@/context/AuthContext';
+import { getBankFromClabe, getAllBanks, BankInfo } from '@/lib/banks';
 
 export default function SavedAccountsPage() {
   const { user } = useAuth();
   const [savedAccounts, setSavedAccounts] = useState<SavedAccount[]>([]);
   const [banks, setBanks] = useState<Bank[]>([]);
+  const [localBanks, setLocalBanks] = useState<BankInfo[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedAccount, setSelectedAccount] = useState<SavedAccount | null>(null);
@@ -39,6 +42,7 @@ export default function SavedAccountsPage() {
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [detectedBank, setDetectedBank] = useState<BankInfo | null>(null);
 
   // Form state
   const [formData, setFormData] = useState({
@@ -75,7 +79,7 @@ export default function SavedAccountsPage() {
     }
   }, [user?.id]);
 
-  // Fetch banks
+  // Fetch banks from API
   const fetchBanks = useCallback(async () => {
     try {
       const response = await fetch('/api/banks');
@@ -88,12 +92,47 @@ export default function SavedAccountsPage() {
     }
   }, []);
 
+  // Load local bank list
+  useEffect(() => {
+    setLocalBanks(getAllBanks());
+  }, []);
+
   useEffect(() => {
     if (user?.id) {
       fetchSavedAccounts();
       fetchBanks();
     }
   }, [user?.id, fetchSavedAccounts, fetchBanks]);
+
+  // Auto-detect bank from CLABE
+  useEffect(() => {
+    if (formData.clabe.length >= 3) {
+      const bank = getBankFromClabe(formData.clabe);
+      setDetectedBank(bank);
+
+      // Auto-fill bank if detected and not already set
+      if (bank && !formData.bankCode) {
+        setFormData((prev) => ({
+          ...prev,
+          bankCode: bank.code,
+          bankName: bank.shortName,
+        }));
+      }
+    } else {
+      setDetectedBank(null);
+    }
+  }, [formData.clabe]);
+
+  // Handle CLABE input change with auto-detection
+  const handleClabeChange = (value: string) => {
+    const cleanValue = value.replace(/\D/g, '');
+    setFormData((prev) => ({ ...prev, clabe: cleanValue }));
+
+    // If CLABE is being cleared or changed significantly, reset bank
+    if (cleanValue.length < 3) {
+      setDetectedBank(null);
+    }
+  };
 
   // Filter accounts
   const filteredAccounts = savedAccounts.filter((account) => {
@@ -127,13 +166,25 @@ export default function SavedAccountsPage() {
     setError(null);
   };
 
-  // Handle bank selection
+  // Handle bank selection (manual)
   const handleBankChange = (bankCode: string) => {
-    const selectedBank = banks.find((b) => b.code === bankCode);
+    // First try to find in local banks (more complete list)
+    const localBank = localBanks.find((b) => b.code === bankCode);
+    if (localBank) {
+      setFormData((prev) => ({
+        ...prev,
+        bankCode: localBank.code,
+        bankName: localBank.shortName,
+      }));
+      return;
+    }
+
+    // Fallback to API banks
+    const apiBank = banks.find((b) => b.code === bankCode);
     setFormData((prev) => ({
       ...prev,
       bankCode,
-      bankName: selectedBank?.name || '',
+      bankName: apiBank?.name || '',
     }));
   };
 
@@ -466,28 +517,54 @@ export default function SavedAccountsPage() {
             onChange={(e) => setFormData({ ...formData, alias: e.target.value })}
           />
 
-          <Input
-            label="CLABE (18 digitos)"
-            placeholder="000000000000000000"
-            maxLength={18}
-            value={formData.clabe}
-            onChange={(e) =>
-              setFormData({ ...formData, clabe: e.target.value.replace(/\D/g, '') })
-            }
-          />
+          <div>
+            <Input
+              label="CLABE (18 digitos)"
+              placeholder="000000000000000000"
+              maxLength={18}
+              value={formData.clabe}
+              onChange={(e) => handleClabeChange(e.target.value)}
+            />
+            {formData.clabe.length === 18 && validateClabe(formData.clabe) && (
+              <p className="text-xs text-green-400/70 mt-1 flex items-center gap-1">
+                <CheckCircle className="w-3 h-3" />
+                CLABE valida
+              </p>
+            )}
+            {formData.clabe.length === 18 && !validateClabe(formData.clabe) && (
+              <p className="text-xs text-red-400/70 mt-1 flex items-center gap-1">
+                <AlertCircle className="w-3 h-3" />
+                Digito verificador invalido
+              </p>
+            )}
+            {detectedBank && formData.clabe.length >= 3 && (
+              <p className="text-xs text-blue-400/70 mt-1 flex items-center gap-1">
+                <Building2 className="w-3 h-3" />
+                Banco detectado: {detectedBank.shortName}
+              </p>
+            )}
+          </div>
 
-          <Select
-            label="Banco"
-            value={formData.bankCode}
-            onChange={(e) => handleBankChange(e.target.value)}
-            options={[
-              { value: '', label: 'Seleccionar banco...' },
-              ...banks.map((bank) => ({
-                value: bank.code,
-                label: `${bank.code} - ${bank.name}`,
-              })),
-            ]}
-          />
+          <div>
+            <Select
+              label="Banco"
+              value={formData.bankCode}
+              onChange={(e) => handleBankChange(e.target.value)}
+              options={[
+                { value: '', label: 'Seleccionar banco...' },
+                ...localBanks.map((bank) => ({
+                  value: bank.code,
+                  label: `${bank.code} - ${bank.shortName}`,
+                })),
+              ]}
+            />
+            {detectedBank && formData.bankCode === detectedBank.code && (
+              <p className="text-xs text-green-400/70 mt-1 flex items-center gap-1">
+                <CheckCircle className="w-3 h-3" />
+                Detectado automaticamente
+              </p>
+            )}
+          </div>
 
           <Input
             label="Nombre del Beneficiario"
@@ -522,6 +599,7 @@ export default function SavedAccountsPage() {
               onClick={() => {
                 setShowNewModal(false);
                 resetForm();
+                setDetectedBank(null);
               }}
             >
               Cancelar
@@ -555,6 +633,7 @@ export default function SavedAccountsPage() {
           setShowEditModal(false);
           resetForm();
           setSelectedAccount(null);
+          setDetectedBank(null);
         }}
         title="Editar Cuenta Guardada"
         size="md"
@@ -574,28 +653,54 @@ export default function SavedAccountsPage() {
             onChange={(e) => setFormData({ ...formData, alias: e.target.value })}
           />
 
-          <Input
-            label="CLABE (18 digitos)"
-            placeholder="000000000000000000"
-            maxLength={18}
-            value={formData.clabe}
-            onChange={(e) =>
-              setFormData({ ...formData, clabe: e.target.value.replace(/\D/g, '') })
-            }
-          />
+          <div>
+            <Input
+              label="CLABE (18 digitos)"
+              placeholder="000000000000000000"
+              maxLength={18}
+              value={formData.clabe}
+              onChange={(e) => handleClabeChange(e.target.value)}
+            />
+            {formData.clabe.length === 18 && validateClabe(formData.clabe) && (
+              <p className="text-xs text-green-400/70 mt-1 flex items-center gap-1">
+                <CheckCircle className="w-3 h-3" />
+                CLABE valida
+              </p>
+            )}
+            {formData.clabe.length === 18 && !validateClabe(formData.clabe) && (
+              <p className="text-xs text-red-400/70 mt-1 flex items-center gap-1">
+                <AlertCircle className="w-3 h-3" />
+                Digito verificador invalido
+              </p>
+            )}
+            {detectedBank && formData.clabe.length >= 3 && (
+              <p className="text-xs text-blue-400/70 mt-1 flex items-center gap-1">
+                <Building2 className="w-3 h-3" />
+                Banco detectado: {detectedBank.shortName}
+              </p>
+            )}
+          </div>
 
-          <Select
-            label="Banco"
-            value={formData.bankCode}
-            onChange={(e) => handleBankChange(e.target.value)}
-            options={[
-              { value: '', label: 'Seleccionar banco...' },
-              ...banks.map((bank) => ({
-                value: bank.code,
-                label: `${bank.code} - ${bank.name}`,
-              })),
-            ]}
-          />
+          <div>
+            <Select
+              label="Banco"
+              value={formData.bankCode}
+              onChange={(e) => handleBankChange(e.target.value)}
+              options={[
+                { value: '', label: 'Seleccionar banco...' },
+                ...localBanks.map((bank) => ({
+                  value: bank.code,
+                  label: `${bank.code} - ${bank.shortName}`,
+                })),
+              ]}
+            />
+            {detectedBank && formData.bankCode === detectedBank.code && (
+              <p className="text-xs text-green-400/70 mt-1 flex items-center gap-1">
+                <CheckCircle className="w-3 h-3" />
+                Detectado automaticamente
+              </p>
+            )}
+          </div>
 
           <Input
             label="Nombre del Beneficiario"
@@ -631,6 +736,7 @@ export default function SavedAccountsPage() {
                 setShowEditModal(false);
                 resetForm();
                 setSelectedAccount(null);
+                setDetectedBank(null);
               }}
             >
               Cancelar

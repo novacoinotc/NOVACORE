@@ -162,6 +162,47 @@ export async function initializeDatabase() {
       CREATE INDEX IF NOT EXISTS idx_saved_accounts_user ON saved_accounts(user_id)
     `;
 
+    // Create pending_commissions table for daily cutoff system
+    await sql`
+      CREATE TABLE IF NOT EXISTS pending_commissions (
+        id TEXT PRIMARY KEY,
+        company_id TEXT NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+        source_transaction_id TEXT NOT NULL REFERENCES transactions(id) ON DELETE CASCADE,
+        amount DECIMAL(18, 2) NOT NULL,
+        percentage DECIMAL(5, 4) NOT NULL,
+        status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'processed', 'failed')),
+        cutoff_id TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `;
+
+    // Create commission_cutoffs table to track daily cutoffs
+    await sql`
+      CREATE TABLE IF NOT EXISTS commission_cutoffs (
+        id TEXT PRIMARY KEY,
+        company_id TEXT NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+        target_clabe TEXT NOT NULL,
+        total_amount DECIMAL(18, 2) NOT NULL,
+        commission_count INTEGER NOT NULL,
+        status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'processing', 'sent', 'failed')),
+        transaction_id TEXT REFERENCES transactions(id),
+        tracking_key TEXT,
+        cutoff_date DATE NOT NULL,
+        processed_at TIMESTAMP,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        error_detail TEXT
+      )
+    `;
+
+    // Create indexes for pending_commissions
+    await sql`
+      CREATE INDEX IF NOT EXISTS idx_pending_commissions_company ON pending_commissions(company_id)
+    `;
+
+    await sql`
+      CREATE INDEX IF NOT EXISTS idx_pending_commissions_status ON pending_commissions(status)
+    `;
+
     console.log('Database initialized successfully');
   } catch (error) {
     console.error('Error initializing database:', error);
@@ -259,6 +300,32 @@ export interface DbSavedAccount {
   is_active: boolean;
   created_at: Date;
   updated_at: Date;
+}
+
+export interface DbPendingCommission {
+  id: string;
+  company_id: string;
+  source_transaction_id: string;
+  amount: number;
+  percentage: number;
+  status: 'pending' | 'processed' | 'failed';
+  cutoff_id: string | null;
+  created_at: Date;
+}
+
+export interface DbCommissionCutoff {
+  id: string;
+  company_id: string;
+  target_clabe: string;
+  total_amount: number;
+  commission_count: number;
+  status: 'pending' | 'processing' | 'sent' | 'failed';
+  transaction_id: string | null;
+  tracking_key: string | null;
+  cutoff_date: Date;
+  processed_at: Date | null;
+  created_at: Date;
+  error_detail: string | null;
 }
 
 // ==================== COMPANY OPERATIONS ====================
@@ -1112,4 +1179,163 @@ export async function getSavedAccountByUserAndClabe(userId: string, clabe: strin
     SELECT * FROM saved_accounts WHERE user_id = ${userId} AND clabe = ${clabe}
   `;
   return result[0] as DbSavedAccount | null;
+}
+
+// ==================== PENDING COMMISSION OPERATIONS ====================
+
+export async function createPendingCommission(commission: {
+  id: string;
+  companyId: string;
+  sourceTransactionId: string;
+  amount: number;
+  percentage: number;
+}): Promise<DbPendingCommission> {
+  const result = await sql`
+    INSERT INTO pending_commissions (id, company_id, source_transaction_id, amount, percentage)
+    VALUES (${commission.id}, ${commission.companyId}, ${commission.sourceTransactionId}, ${commission.amount}, ${commission.percentage})
+    RETURNING *
+  `;
+  return result[0] as DbPendingCommission;
+}
+
+export async function getPendingCommissionsByCompany(companyId: string): Promise<DbPendingCommission[]> {
+  const result = await sql`
+    SELECT * FROM pending_commissions
+    WHERE company_id = ${companyId} AND status = 'pending'
+    ORDER BY created_at ASC
+  `;
+  return result as DbPendingCommission[];
+}
+
+export async function getAllPendingCommissions(): Promise<DbPendingCommission[]> {
+  const result = await sql`
+    SELECT * FROM pending_commissions
+    WHERE status = 'pending'
+    ORDER BY company_id, created_at ASC
+  `;
+  return result as DbPendingCommission[];
+}
+
+export async function getPendingCommissionsGroupedByCompany(): Promise<{
+  companyId: string;
+  totalAmount: number;
+  count: number;
+  commissionIds: string[];
+}[]> {
+  // Get all pending commissions
+  const pendingCommissions = await getAllPendingCommissions();
+
+  // Group by company
+  const grouped = pendingCommissions.reduce((acc, commission) => {
+    if (!acc[commission.company_id]) {
+      acc[commission.company_id] = {
+        companyId: commission.company_id,
+        totalAmount: 0,
+        count: 0,
+        commissionIds: [],
+      };
+    }
+    acc[commission.company_id].totalAmount += parseFloat(commission.amount.toString());
+    acc[commission.company_id].count += 1;
+    acc[commission.company_id].commissionIds.push(commission.id);
+    return acc;
+  }, {} as Record<string, { companyId: string; totalAmount: number; count: number; commissionIds: string[] }>);
+
+  return Object.values(grouped);
+}
+
+export async function markCommissionsAsProcessed(commissionIds: string[], cutoffId: string): Promise<void> {
+  if (commissionIds.length === 0) return;
+
+  const idsPlaceholder = commissionIds.map(id => `'${id}'`).join(',');
+  await sql`
+    UPDATE pending_commissions
+    SET status = 'processed', cutoff_id = ${cutoffId}
+    WHERE id IN (${sql.unsafe(idsPlaceholder)})
+  `;
+}
+
+export async function markCommissionsAsFailed(commissionIds: string[]): Promise<void> {
+  if (commissionIds.length === 0) return;
+
+  const idsPlaceholder = commissionIds.map(id => `'${id}'`).join(',');
+  await sql`
+    UPDATE pending_commissions
+    SET status = 'failed'
+    WHERE id IN (${sql.unsafe(idsPlaceholder)})
+  `;
+}
+
+// ==================== COMMISSION CUTOFF OPERATIONS ====================
+
+export async function createCommissionCutoff(cutoff: {
+  id: string;
+  companyId: string;
+  targetClabe: string;
+  totalAmount: number;
+  commissionCount: number;
+  cutoffDate: Date;
+}): Promise<DbCommissionCutoff> {
+  const result = await sql`
+    INSERT INTO commission_cutoffs (id, company_id, target_clabe, total_amount, commission_count, cutoff_date)
+    VALUES (${cutoff.id}, ${cutoff.companyId}, ${cutoff.targetClabe}, ${cutoff.totalAmount}, ${cutoff.commissionCount}, ${cutoff.cutoffDate.toISOString().split('T')[0]})
+    RETURNING *
+  `;
+  return result[0] as DbCommissionCutoff;
+}
+
+export async function getCommissionCutoffById(id: string): Promise<DbCommissionCutoff | null> {
+  const result = await sql`
+    SELECT * FROM commission_cutoffs WHERE id = ${id}
+  `;
+  return result[0] as DbCommissionCutoff | null;
+}
+
+export async function updateCommissionCutoffStatus(
+  id: string,
+  status: 'pending' | 'processing' | 'sent' | 'failed',
+  updates?: {
+    transactionId?: string;
+    trackingKey?: string;
+    errorDetail?: string;
+  }
+): Promise<DbCommissionCutoff | null> {
+  const result = await sql`
+    UPDATE commission_cutoffs
+    SET status = ${status},
+        transaction_id = COALESCE(${updates?.transactionId || null}, transaction_id),
+        tracking_key = COALESCE(${updates?.trackingKey || null}, tracking_key),
+        error_detail = COALESCE(${updates?.errorDetail || null}, error_detail),
+        processed_at = CASE WHEN ${status} IN ('sent', 'failed') THEN CURRENT_TIMESTAMP ELSE processed_at END
+    WHERE id = ${id}
+    RETURNING *
+  `;
+  return result[0] as DbCommissionCutoff | null;
+}
+
+export async function getPendingCommissionCutoffs(): Promise<DbCommissionCutoff[]> {
+  const result = await sql`
+    SELECT * FROM commission_cutoffs
+    WHERE status IN ('pending', 'processing')
+    ORDER BY created_at ASC
+  `;
+  return result as DbCommissionCutoff[];
+}
+
+export async function getCommissionCutoffsByCompany(companyId: string): Promise<DbCommissionCutoff[]> {
+  const result = await sql`
+    SELECT * FROM commission_cutoffs
+    WHERE company_id = ${companyId}
+    ORDER BY cutoff_date DESC
+  `;
+  return result as DbCommissionCutoff[];
+}
+
+export async function getTodayCommissionCutoff(companyId: string): Promise<DbCommissionCutoff | null> {
+  const today = new Date().toISOString().split('T')[0];
+  const result = await sql`
+    SELECT * FROM commission_cutoffs
+    WHERE company_id = ${companyId} AND cutoff_date = ${today}
+  `;
+  return result[0] as DbCommissionCutoff | null;
 }

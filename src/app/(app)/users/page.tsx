@@ -19,6 +19,8 @@ import {
   ChevronDown,
   ChevronUp,
   Loader2,
+  Building2,
+  Hash,
 } from 'lucide-react';
 import { useAuth, useRequirePermission } from '@/context/AuthContext';
 import {
@@ -41,6 +43,14 @@ const PERMISSION_CATEGORIES = {
   'Usuarios': ['users.view', 'users.create', 'users.update', 'users.delete'],
 } as const;
 
+interface ClabeAccount {
+  id: string;
+  clabe: string;
+  alias: string;
+  description?: string;
+  isActive: boolean;
+}
+
 interface UserFormData {
   id: string;
   email: string;
@@ -49,6 +59,7 @@ interface UserFormData {
   role: UserRole;
   permissions: Permission[];
   isActive: boolean;
+  clabeAccountIds: string[];
 }
 
 const defaultFormData: UserFormData = {
@@ -59,6 +70,7 @@ const defaultFormData: UserFormData = {
   role: 'user',
   permissions: [...DEFAULT_ROLE_PERMISSIONS.user],
   isActive: true,
+  clabeAccountIds: [],
 };
 
 export default function UsersPage() {
@@ -76,6 +88,8 @@ export default function UsersPage() {
   const [expandedCategories, setExpandedCategories] = useState<string[]>(Object.keys(PERMISSION_CATEGORIES));
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
+  const [clabeAccounts, setClabeAccounts] = useState<ClabeAccount[]>([]);
+  const [loadingClabeAccounts, setLoadingClabeAccounts] = useState(false);
 
   // Fetch users from API
   const fetchUsers = async () => {
@@ -106,6 +120,35 @@ export default function UsersPage() {
     }
   }, [hasAccess, currentUser]);
 
+  // Fetch CLABE accounts for the company
+  const fetchClabeAccounts = async () => {
+    if (!currentUser) return;
+
+    try {
+      setLoadingClabeAccounts(true);
+      // For super_admin, fetch all; for company_admin, fetch for their company
+      let url = '/api/clabe-accounts';
+      if (currentUser.role === 'company_admin' && currentUser.companyId) {
+        url = `/api/clabe-accounts?companyId=${currentUser.companyId}`;
+      }
+
+      const response = await fetch(url, {
+        headers: {
+          'x-user-id': currentUser.id,
+        },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setClabeAccounts(data.filter((acc: ClabeAccount) => acc.isActive));
+      }
+    } catch (error) {
+      console.error('Error fetching CLABE accounts:', error);
+    } finally {
+      setLoadingClabeAccounts(false);
+    }
+  };
+
   // Filter users by search
   const filteredUsers = users.filter(
     (u) =>
@@ -121,6 +164,7 @@ export default function UsersPage() {
       id: `user_${Date.now()}`,
     });
     setError('');
+    fetchClabeAccounts(); // Load CLABE accounts
     setIsModalOpen(true);
   };
 
@@ -135,14 +179,17 @@ export default function UsersPage() {
       role: user.role,
       permissions: [...user.permissions],
       isActive: user.isActive,
+      clabeAccountIds: user.clabeAccountIds || [],
     });
     setError('');
+    fetchClabeAccounts(); // Load CLABE accounts
     setIsModalOpen(true);
   };
 
   // Open delete confirmation
   const handleDeleteClick = (user: User) => {
     setSelectedUser(user);
+    setError(''); // Clear any previous errors
     setIsDeleteModalOpen(true);
   };
 
@@ -211,6 +258,7 @@ export default function UsersPage() {
           ? Object.keys(ALL_PERMISSIONS) as Permission[]
           : formData.permissions,
         isActive: formData.isActive,
+        clabeAccountIds: formData.clabeAccountIds,
         ...(formData.password && { password: formData.password }),
       };
 
@@ -308,6 +356,30 @@ export default function UsersPage() {
         ? Object.keys(ALL_PERMISSIONS) as Permission[]
         : DEFAULT_ROLE_PERMISSIONS[role],
     }));
+  };
+
+  // Toggle CLABE account access
+  const toggleClabeAccess = (clabeAccountId: string) => {
+    setFormData((prev) => ({
+      ...prev,
+      clabeAccountIds: prev.clabeAccountIds.includes(clabeAccountId)
+        ? prev.clabeAccountIds.filter((id) => id !== clabeAccountId)
+        : [...prev.clabeAccountIds, clabeAccountId],
+    }));
+  };
+
+  // Toggle all CLABE accounts
+  const toggleAllClabeAccounts = () => {
+    if (formData.clabeAccountIds.length === clabeAccounts.length) {
+      // Deselect all
+      setFormData((prev) => ({ ...prev, clabeAccountIds: [] }));
+    } else {
+      // Select all
+      setFormData((prev) => ({
+        ...prev,
+        clabeAccountIds: clabeAccounts.map((acc) => acc.id),
+      }));
+    }
   };
 
   if (isLoading || !hasAccess) {
@@ -745,6 +817,127 @@ export default function UsersPage() {
                     })}
                   </div>
                 </div>
+
+                {/* CLABE Account Access - Only for non-super_admin users */}
+                {formData.role !== 'super_admin' && clabeAccounts.length > 0 && (
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-white font-medium flex items-center gap-2">
+                        <Hash className="w-4 h-4 text-purple-400" />
+                        Acceso a Cuentas CLABE
+                      </h3>
+                      <span className="text-white/40 text-xs">
+                        {formData.clabeAccountIds.length}/{clabeAccounts.length} seleccionadas
+                      </span>
+                    </div>
+
+                    <p className="text-white/40 text-xs">
+                      Selecciona las cuentas CLABE a las que el usuario tendrá acceso para ver transacciones
+                    </p>
+
+                    <div className="border border-white/[0.06] rounded-lg overflow-hidden">
+                      {/* Select All Header */}
+                      <div
+                        className="flex items-center justify-between px-4 py-3 bg-white/[0.02] border-b border-white/[0.06] cursor-pointer hover:bg-white/[0.04] transition-colors"
+                        onClick={toggleAllClabeAccounts}
+                      >
+                        <div className="flex items-center gap-3">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              toggleAllClabeAccounts();
+                            }}
+                            className={`w-5 h-5 rounded border flex items-center justify-center transition-colors ${
+                              formData.clabeAccountIds.length === clabeAccounts.length
+                                ? 'bg-purple-500 border-purple-500'
+                                : formData.clabeAccountIds.length > 0
+                                ? 'bg-purple-500/50 border-purple-500/50'
+                                : 'border-white/20 hover:border-white/40'
+                            }`}
+                          >
+                            {formData.clabeAccountIds.length === clabeAccounts.length && (
+                              <Check className="w-3 h-3 text-white" />
+                            )}
+                            {formData.clabeAccountIds.length > 0 && formData.clabeAccountIds.length < clabeAccounts.length && (
+                              <div className="w-2 h-0.5 bg-white rounded" />
+                            )}
+                          </button>
+                          <span className="text-white font-medium text-sm">
+                            Seleccionar todas
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* CLABE Accounts List */}
+                      {loadingClabeAccounts ? (
+                        <div className="px-4 py-6 text-center">
+                          <Loader2 className="w-5 h-5 text-purple-400 animate-spin mx-auto" />
+                        </div>
+                      ) : (
+                        <div className="max-h-48 overflow-y-auto">
+                          {clabeAccounts.map((account) => {
+                            const isSelected = formData.clabeAccountIds.includes(account.id);
+
+                            return (
+                              <label
+                                key={account.id}
+                                className="flex items-center gap-3 px-4 py-3 hover:bg-white/[0.02] cursor-pointer transition-colors border-b border-white/[0.04] last:border-b-0"
+                              >
+                                <button
+                                  type="button"
+                                  onClick={() => toggleClabeAccess(account.id)}
+                                  className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${
+                                    isSelected
+                                      ? 'bg-purple-500 border-purple-500'
+                                      : 'border-white/20 hover:border-white/40'
+                                  }`}
+                                >
+                                  {isSelected && (
+                                    <Check className="w-2.5 h-2.5 text-white" />
+                                  )}
+                                </button>
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-2">
+                                    <Building2 className="w-3.5 h-3.5 text-white/40" />
+                                    <span className="text-white/80 text-sm font-medium">
+                                      {account.alias}
+                                    </span>
+                                  </div>
+                                  <p className="text-white/40 text-xs font-mono mt-0.5">
+                                    {account.clabe}
+                                  </p>
+                                  {account.description && (
+                                    <p className="text-white/30 text-xs mt-0.5 truncate">
+                                      {account.description}
+                                    </p>
+                                  )}
+                                </div>
+                              </label>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+
+                    {formData.role === 'user' && formData.clabeAccountIds.length === 0 && (
+                      <p className="text-yellow-400/70 text-xs flex items-center gap-1">
+                        <AlertCircle className="w-3 h-3" />
+                        Los usuarios necesitan al menos una cuenta CLABE para ver transacciones
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {/* Note for company_admin */}
+                {formData.role === 'company_admin' && (
+                  <div className="p-3 rounded-lg bg-blue-500/5 border border-blue-500/10">
+                    <p className="text-blue-400/80 text-xs flex items-center gap-2">
+                      <Building2 className="w-3.5 h-3.5" />
+                      Los administradores de empresa tienen acceso a todas las cuentas CLABE de su empresa
+                    </p>
+                  </div>
+                )}
               </div>
 
               {/* Modal footer */}
@@ -798,25 +991,40 @@ export default function UsersPage() {
                 <h3 className="text-lg font-semibold text-white mb-2">
                   Eliminar usuario
                 </h3>
-                <p className="text-white/60 text-sm mb-6">
+                <p className="text-white/60 text-sm mb-4">
                   ¿Estás seguro de que deseas eliminar a{' '}
                   <span className="text-white font-medium">{selectedUser.name}</span>?
                   Esta acción no se puede deshacer.
                 </p>
+
+                {/* Error message in delete modal */}
+                {error && (
+                  <div className="p-3 mb-4 bg-red-500/10 border border-red-500/20 rounded-lg flex items-center gap-2 text-red-400 text-sm text-left">
+                    <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                    {error}
+                  </div>
+                )}
+
                 <div className="flex items-center justify-center gap-3">
                   <button
-                    onClick={() => setIsDeleteModalOpen(false)}
-                    className="px-4 py-2 text-white/60 hover:text-white transition-colors text-sm"
+                    onClick={() => {
+                      setIsDeleteModalOpen(false);
+                      setError('');
+                    }}
+                    disabled={saving}
+                    className="px-4 py-2 text-white/60 hover:text-white transition-colors text-sm disabled:opacity-50"
                   >
                     Cancelar
                   </button>
                   <motion.button
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
+                    whileHover={{ scale: saving ? 1 : 1.02 }}
+                    whileTap={{ scale: saving ? 1 : 0.98 }}
                     onClick={handleDeleteConfirm}
-                    className="px-4 py-2 bg-red-600 hover:bg-red-500 text-white rounded-lg text-sm font-medium transition-colors"
+                    disabled={saving}
+                    className="px-4 py-2 bg-red-600 hover:bg-red-500 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                   >
-                    Eliminar
+                    {saving && <Loader2 className="w-4 h-4 animate-spin" />}
+                    {saving ? 'Eliminando...' : 'Eliminar'}
                   </motion.button>
                 </div>
               </div>

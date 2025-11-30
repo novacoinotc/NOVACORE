@@ -1,27 +1,45 @@
 import { NextRequest, NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
-import { getAllUsers, createUser, getUserByEmail } from '@/lib/db';
-import { ALL_PERMISSIONS, Permission } from '@/types';
+import { getAllUsers, getUsersByCompanyId, createUser, getUserByEmail, getCompanyById, setUserClabeAccess, getUserClabeAccess } from '@/lib/db';
+import { ALL_PERMISSIONS, Permission, UserRole } from '@/types';
 
-// GET /api/users - List all users
-export async function GET() {
+// GET /api/users - List users (with optional companyId filter)
+export async function GET(request: NextRequest) {
   try {
-    const dbUsers = await getAllUsers();
+    const { searchParams } = new URL(request.url);
+    const companyId = searchParams.get('companyId');
+
+    let dbUsers;
+
+    if (companyId) {
+      dbUsers = await getUsersByCompanyId(companyId);
+    } else {
+      dbUsers = await getAllUsers();
+    }
 
     // Transform to frontend format (without passwords)
-    const users = dbUsers.map((u) => ({
-      id: u.id,
-      email: u.email,
-      name: u.name,
-      role: u.role as 'admin' | 'user',
-      permissions: u.role === 'admin'
-        ? Object.keys(ALL_PERMISSIONS) as Permission[]
-        : u.permissions as Permission[],
-      isActive: u.is_active,
-      createdAt: new Date(u.created_at).getTime(),
-      updatedAt: new Date(u.updated_at).getTime(),
-      lastLogin: u.last_login ? new Date(u.last_login).getTime() : undefined,
-    }));
+    const usersPromises = dbUsers.map(async (u) => {
+      // Get CLABE account access for each user
+      const clabeAccountIds = await getUserClabeAccess(u.id);
+
+      return {
+        id: u.id,
+        email: u.email,
+        name: u.name,
+        role: u.role as UserRole,
+        companyId: u.company_id,
+        permissions: u.role === 'super_admin'
+          ? Object.keys(ALL_PERMISSIONS) as Permission[]
+          : u.permissions as Permission[],
+        clabeAccountIds,
+        isActive: u.is_active,
+        createdAt: new Date(u.created_at).getTime(),
+        updatedAt: new Date(u.updated_at).getTime(),
+        lastLogin: u.last_login ? new Date(u.last_login).getTime() : undefined,
+      };
+    });
+
+    const users = await Promise.all(usersPromises);
 
     return NextResponse.json(users);
   } catch (error) {
@@ -37,14 +55,56 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { email, password, name, role, permissions, isActive } = body;
+    const { email, password, name, role, companyId, permissions, clabeAccountIds, isActive } = body;
 
     // Validation
-    if (!email || !password || !name) {
+    if (!email || !password || !name || !role) {
       return NextResponse.json(
-        { error: 'Email, contraseña y nombre son requeridos' },
+        { error: 'Email, contraseña, nombre y rol son requeridos' },
         { status: 400 }
       );
+    }
+
+    // Validate role
+    const validRoles: UserRole[] = ['super_admin', 'company_admin', 'user'];
+    if (!validRoles.includes(role)) {
+      return NextResponse.json(
+        { error: 'Rol inválido' },
+        { status: 400 }
+      );
+    }
+
+    // company_admin and user must have a companyId
+    if ((role === 'company_admin' || role === 'user') && !companyId) {
+      return NextResponse.json(
+        { error: 'Los usuarios con rol company_admin o user deben pertenecer a una empresa' },
+        { status: 400 }
+      );
+    }
+
+    // super_admin should not have a companyId
+    if (role === 'super_admin' && companyId) {
+      return NextResponse.json(
+        { error: 'Los super administradores no pueden pertenecer a una empresa' },
+        { status: 400 }
+      );
+    }
+
+    // If companyId provided, verify company exists and is active
+    if (companyId) {
+      const company = await getCompanyById(companyId);
+      if (!company) {
+        return NextResponse.json(
+          { error: 'Empresa no encontrada' },
+          { status: 404 }
+        );
+      }
+      if (!company.is_active) {
+        return NextResponse.json(
+          { error: 'No se pueden crear usuarios para empresas inactivas' },
+          { status: 400 }
+        );
+      }
     }
 
     // Check if email already exists
@@ -65,20 +125,28 @@ export async function POST(request: NextRequest) {
       email,
       password: hashedPassword,
       name,
-      role: role || 'user',
+      role,
+      companyId,
       permissions: permissions || [],
       isActive: isActive ?? true,
     });
+
+    // Set CLABE account access if provided
+    if (clabeAccountIds && clabeAccountIds.length > 0) {
+      await setUserClabeAccess(dbUser.id, clabeAccountIds);
+    }
 
     // Return user without password
     const user = {
       id: dbUser.id,
       email: dbUser.email,
       name: dbUser.name,
-      role: dbUser.role as 'admin' | 'user',
-      permissions: dbUser.role === 'admin'
+      role: dbUser.role as UserRole,
+      companyId: dbUser.company_id,
+      permissions: dbUser.role === 'super_admin'
         ? Object.keys(ALL_PERMISSIONS) as Permission[]
         : dbUser.permissions as Permission[],
+      clabeAccountIds: clabeAccountIds || [],
       isActive: dbUser.is_active,
       createdAt: new Date(dbUser.created_at).getTime(),
       updatedAt: new Date(dbUser.updated_at).getTime(),

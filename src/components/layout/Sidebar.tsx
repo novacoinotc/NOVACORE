@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
-import { X, LogOut } from 'lucide-react';
+import { X, LogOut, Building2, CreditCard } from 'lucide-react';
 import {
   LayoutDashboard,
   ArrowLeftRight,
@@ -12,8 +12,11 @@ import {
   Users,
   Settings,
   UserCog,
+  Shield,
+  ShieldCheck,
+  User,
 } from 'lucide-react';
-import { Permission } from '@/types';
+import { Permission, UserRole } from '@/types';
 
 interface NavItem {
   name: string;
@@ -24,12 +27,32 @@ interface NavItem {
 
 const navigation: NavItem[] = [
   { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard, permission: 'dashboard.view' },
+  { name: 'Empresas', href: '/companies', icon: Building2, permission: 'companies.view' },
+  { name: 'Cuentas CLABE', href: '/clabe-accounts', icon: CreditCard, permission: 'clabe.view' },
   { name: 'Transferencias', href: '/transfers', icon: ArrowLeftRight, permission: 'orders.view' },
   { name: 'Historial', href: '/history', icon: Clock, permission: 'history.view' },
   { name: 'Clientes', href: '/clients', icon: Users, permission: 'clients.view' },
   { name: 'Usuarios', href: '/users', icon: UserCog, permission: 'users.view' },
   { name: 'Configuracion', href: '/settings', icon: Settings, permission: 'settings.view' },
 ];
+
+const roleLabels: Record<UserRole, string> = {
+  super_admin: 'Super Admin',
+  company_admin: 'Admin Empresa',
+  user: 'Usuario',
+};
+
+const roleIcons: Record<UserRole, React.ComponentType<{ className?: string }>> = {
+  super_admin: ShieldCheck,
+  company_admin: Shield,
+  user: User,
+};
+
+const roleColors: Record<UserRole, string> = {
+  super_admin: 'text-purple-400 bg-purple-500/10 border-purple-500/20',
+  company_admin: 'text-blue-400 bg-blue-500/10 border-blue-500/20',
+  user: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20',
+};
 
 interface SidebarProps {
   isOpen?: boolean;
@@ -44,6 +67,8 @@ export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
   const filteredNavigation = navigation.filter(
     (item) => !item.permission || hasPermission(item.permission)
   );
+
+  const RoleIcon = user ? roleIcons[user.role] : User;
 
   return (
     <>
@@ -111,6 +136,25 @@ export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
                 <LogOut className="w-4 h-4" />
               </button>
             </div>
+
+            {/* Role badge */}
+            <div className="mt-3 flex items-center gap-2">
+              <span className={cn(
+                'inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-[10px] font-medium border',
+                roleColors[user.role]
+              )}>
+                <RoleIcon className="w-3 h-3" />
+                {roleLabels[user.role]}
+              </span>
+            </div>
+
+            {/* Company name for company_admin and user */}
+            {user.company && (
+              <div className="mt-2 flex items-center gap-1.5 text-white/40 text-xs">
+                <Building2 className="w-3 h-3" />
+                <span className="truncate">{user.company.name}</span>
+              </div>
+            )}
           </div>
         )}
 
@@ -137,6 +181,13 @@ export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
             );
           })}
         </nav>
+
+        {/* Footer with version */}
+        <div className="px-5 py-3 border-t border-white/[0.06]">
+          <p className="text-white/20 text-[10px] tracking-wider uppercase">
+            v1.0.0 - Multi-tenant
+          </p>
+        </div>
       </aside>
     </>
   );

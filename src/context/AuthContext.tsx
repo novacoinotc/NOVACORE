@@ -125,8 +125,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const hasPermission = useCallback(
     (permission: Permission): boolean => {
       if (!user) return false;
-      // Admin has all permissions
-      if (user.role === 'admin') return true;
+      // Super admin has all permissions
+      if (user.role === 'super_admin') return true;
       return user.permissions.includes(permission);
     },
     [user]
@@ -135,7 +135,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const hasAnyPermission = useCallback(
     (permissions: Permission[]): boolean => {
       if (!user) return false;
-      if (user.role === 'admin') return true;
+      if (user.role === 'super_admin') return true;
       return permissions.some((p) => user.permissions.includes(p));
     },
     [user]
@@ -144,7 +144,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const hasAllPermissions = useCallback(
     (permissions: Permission[]): boolean => {
       if (!user) return false;
-      if (user.role === 'admin') return true;
+      if (user.role === 'super_admin') return true;
       return permissions.every((p) => user.permissions.includes(p));
     },
     [user]

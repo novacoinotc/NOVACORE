@@ -2,7 +2,7 @@
 
 // ==================== AUTH TYPES ====================
 
-export type UserRole = 'admin' | 'user';
+export type UserRole = 'super_admin' | 'company_admin' | 'user';
 
 // All available permissions in the system
 export const ALL_PERMISSIONS = {
@@ -19,7 +19,7 @@ export const ALL_PERMISSIONS = {
   'orders.cep': 'Obtener CEP de transferencias',
   'orders.notify': 'Reenviar notificaciones webhook',
 
-  // Clients
+  // Clients (OPM indirect participants)
   'clients.view': 'Ver clientes',
   'clients.create': 'Crear clientes',
   'clients.update': 'Actualizar clientes',
@@ -36,42 +36,112 @@ export const ALL_PERMISSIONS = {
   'settings.view': 'Ver configuración',
   'settings.update': 'Modificar configuración',
 
-  // User Management (admin only)
+  // User Management
   'users.view': 'Ver usuarios',
   'users.create': 'Crear usuarios',
   'users.update': 'Actualizar usuarios',
   'users.delete': 'Eliminar usuarios',
+
+  // Company Management (super_admin only)
+  'companies.view': 'Ver empresas',
+  'companies.create': 'Crear empresas',
+  'companies.update': 'Actualizar empresas',
+  'companies.delete': 'Eliminar empresas',
+
+  // CLABE Account Management
+  'clabe.view': 'Ver cuentas CLABE',
+  'clabe.create': 'Crear cuentas CLABE',
+  'clabe.update': 'Actualizar cuentas CLABE',
+  'clabe.delete': 'Eliminar cuentas CLABE',
+  'clabe.assign': 'Asignar cuentas CLABE a usuarios',
 } as const;
 
 export type Permission = keyof typeof ALL_PERMISSIONS;
 
 // Default permissions for each role
 export const DEFAULT_ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
-  admin: Object.keys(ALL_PERMISSIONS) as Permission[],
-  user: [
+  super_admin: Object.keys(ALL_PERMISSIONS) as Permission[],
+  company_admin: [
     'dashboard.view',
     'balance.view',
     'orders.view',
     'orders.create',
+    'orders.cancel',
+    'orders.cep',
     'clients.view',
     'history.view',
     'banks.view',
     'catalogs.view',
     'settings.view',
+    'users.view',
+    'users.create',
+    'users.update',
+    'users.delete',
+    'clabe.view',
+    'clabe.create',
+    'clabe.update',
+    'clabe.assign',
+  ],
+  user: [
+    'dashboard.view',
+    'balance.view',
+    'orders.view',
+    'orders.create',
+    'history.view',
+    'banks.view',
+    'catalogs.view',
+    'clabe.view',
   ],
 };
+
+// ==================== COMPANY TYPES ====================
+
+export interface Company {
+  id: string;
+  name: string;              // Nombre comercial
+  businessName: string;      // Razón social
+  rfc: string;
+  email: string;
+  phone?: string;
+  address?: string;
+  isActive: boolean;
+  createdAt: number;
+  updatedAt: number;
+}
+
+// ==================== CLABE ACCOUNT TYPES ====================
+
+export interface ClabeAccount {
+  id: string;
+  companyId: string;
+  clabe: string;             // 18-digit CLABE number
+  alias: string;             // Friendly name (e.g., "Sucursal Norte")
+  description?: string;
+  isActive: boolean;
+  createdAt: number;
+  updatedAt: number;
+  // Populated fields
+  company?: Company;
+}
+
+// ==================== USER TYPES ====================
 
 export interface User {
   id: string;
   email: string;
   name: string;
   role: UserRole;
+  companyId?: string;        // null for super_admin
   permissions: Permission[];
+  clabeAccountIds?: string[]; // CLABE accounts user has access to (for role 'user')
   avatar?: string;
   createdAt: number;
   updatedAt: number;
   lastLogin?: number;
   isActive: boolean;
+  // Populated fields
+  company?: Company;
+  clabeAccounts?: ClabeAccount[];
 }
 
 export interface AuthState {
@@ -90,7 +160,9 @@ export interface CreateUserRequest {
   password: string;
   name: string;
   role: UserRole;
+  companyId?: string;
   permissions: Permission[];
+  clabeAccountIds?: string[];
 }
 
 export interface Order {

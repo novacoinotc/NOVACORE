@@ -19,10 +19,24 @@ export async function initializeDatabase() {
         phone TEXT,
         address TEXT,
         is_active BOOLEAN DEFAULT true,
+        spei_in_enabled BOOLEAN DEFAULT true,
+        spei_out_enabled BOOLEAN DEFAULT true,
+        commission_percentage DECIMAL(5, 4) DEFAULT 0,
+        parent_clabe TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `;
+
+    // Add new columns if they don't exist (migration)
+    try {
+      await sql`ALTER TABLE companies ADD COLUMN IF NOT EXISTS spei_in_enabled BOOLEAN DEFAULT true`;
+      await sql`ALTER TABLE companies ADD COLUMN IF NOT EXISTS spei_out_enabled BOOLEAN DEFAULT true`;
+      await sql`ALTER TABLE companies ADD COLUMN IF NOT EXISTS commission_percentage DECIMAL(5, 4) DEFAULT 0`;
+      await sql`ALTER TABLE companies ADD COLUMN IF NOT EXISTS parent_clabe TEXT`;
+    } catch (e) {
+      // Columns might already exist
+    }
 
     // Create clabe_accounts table
     await sql`
@@ -142,6 +156,10 @@ export interface DbCompany {
   phone: string | null;
   address: string | null;
   is_active: boolean;
+  spei_in_enabled: boolean;
+  spei_out_enabled: boolean;
+  commission_percentage: number;
+  parent_clabe: string | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -214,10 +232,14 @@ export async function createCompany(company: {
   phone?: string;
   address?: string;
   isActive?: boolean;
+  speiInEnabled?: boolean;
+  speiOutEnabled?: boolean;
+  commissionPercentage?: number;
+  parentClabe?: string;
 }): Promise<DbCompany> {
   const result = await sql`
-    INSERT INTO companies (id, name, business_name, rfc, email, phone, address, is_active)
-    VALUES (${company.id}, ${company.name}, ${company.businessName}, ${company.rfc}, ${company.email}, ${company.phone || null}, ${company.address || null}, ${company.isActive ?? true})
+    INSERT INTO companies (id, name, business_name, rfc, email, phone, address, is_active, spei_in_enabled, spei_out_enabled, commission_percentage, parent_clabe)
+    VALUES (${company.id}, ${company.name}, ${company.businessName}, ${company.rfc}, ${company.email}, ${company.phone || null}, ${company.address || null}, ${company.isActive ?? true}, ${company.speiInEnabled ?? true}, ${company.speiOutEnabled ?? true}, ${company.commissionPercentage ?? 0}, ${company.parentClabe || null})
     RETURNING *
   `;
   return result[0] as DbCompany;
@@ -254,6 +276,10 @@ export async function updateCompany(
     phone: string;
     address: string;
     isActive: boolean;
+    speiInEnabled: boolean;
+    speiOutEnabled: boolean;
+    commissionPercentage: number;
+    parentClabe: string;
   }>
 ): Promise<DbCompany | null> {
   const result = await sql`
@@ -265,6 +291,10 @@ export async function updateCompany(
         phone = COALESCE(${updates.phone}, phone),
         address = COALESCE(${updates.address}, address),
         is_active = COALESCE(${updates.isActive}, is_active),
+        spei_in_enabled = COALESCE(${updates.speiInEnabled}, spei_in_enabled),
+        spei_out_enabled = COALESCE(${updates.speiOutEnabled}, spei_out_enabled),
+        commission_percentage = COALESCE(${updates.commissionPercentage}, commission_percentage),
+        parent_clabe = COALESCE(${updates.parentClabe}, parent_clabe),
         updated_at = CURRENT_TIMESTAMP
     WHERE id = ${id}
     RETURNING *
@@ -713,4 +743,250 @@ export async function listTransactions(params: {
     transactions: result as DbTransaction[],
     total,
   };
+}
+
+// ==================== STATISTICS OPERATIONS ====================
+
+export interface DashboardStats {
+  totalIncoming: number;
+  totalOutgoing: number;
+  pendingCount: number;
+  clientsCount: number;
+  totalBalance: number;
+  incomingChange: number;
+  outgoingChange: number;
+  weeklyData: { name: string; incoming: number; outgoing: number }[];
+}
+
+export async function getDashboardStats(companyId?: string): Promise<DashboardStats> {
+  // Get total incoming/outgoing for current period (last 30 days)
+  const thirtyDaysAgo = new Date();
+  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+  const sixtyDaysAgo = new Date();
+  sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60);
+
+  let clabeFilter = '';
+  if (companyId) {
+    // Get all CLABE accounts for this company
+    const clabes = await getClabeAccountsByCompanyId(companyId);
+    if (clabes.length > 0) {
+      const clabeIds = clabes.map(c => `'${c.id}'`).join(',');
+      clabeFilter = `AND clabe_account_id IN (${clabeIds})`;
+    } else {
+      // No CLABE accounts, return empty stats
+      return {
+        totalIncoming: 0,
+        totalOutgoing: 0,
+        pendingCount: 0,
+        clientsCount: 0,
+        totalBalance: 0,
+        incomingChange: 0,
+        outgoingChange: 0,
+        weeklyData: [],
+      };
+    }
+  }
+
+  // Current period stats
+  const currentStatsResult = await sql`
+    SELECT
+      COALESCE(SUM(CASE WHEN type = 'incoming' AND status = 'scattered' THEN amount ELSE 0 END), 0) as incoming,
+      COALESCE(SUM(CASE WHEN type = 'outgoing' AND status IN ('sent', 'scattered') THEN amount ELSE 0 END), 0) as outgoing,
+      COUNT(CASE WHEN status = 'pending' THEN 1 END) as pending_count
+    FROM transactions
+    WHERE created_at >= ${thirtyDaysAgo.toISOString()}
+    ${sql.unsafe(clabeFilter)}
+  `;
+
+  // Previous period stats (for comparison)
+  const prevStatsResult = await sql`
+    SELECT
+      COALESCE(SUM(CASE WHEN type = 'incoming' AND status = 'scattered' THEN amount ELSE 0 END), 0) as incoming,
+      COALESCE(SUM(CASE WHEN type = 'outgoing' AND status IN ('sent', 'scattered') THEN amount ELSE 0 END), 0) as outgoing
+    FROM transactions
+    WHERE created_at >= ${sixtyDaysAgo.toISOString()} AND created_at < ${thirtyDaysAgo.toISOString()}
+    ${sql.unsafe(clabeFilter)}
+  `;
+
+  // Get unique clients count (unique payer names for incoming transactions)
+  const clientsResult = await sql`
+    SELECT COUNT(DISTINCT payer_name) as count
+    FROM transactions
+    WHERE type = 'incoming' AND payer_name IS NOT NULL
+    ${sql.unsafe(clabeFilter)}
+  `;
+
+  // Get weekly data for chart
+  const weeklyResult = await sql`
+    SELECT
+      TO_CHAR(DATE_TRUNC('day', created_at), 'Dy') as day_name,
+      EXTRACT(DOW FROM created_at) as day_num,
+      COALESCE(SUM(CASE WHEN type = 'incoming' AND status = 'scattered' THEN amount ELSE 0 END), 0) as incoming,
+      COALESCE(SUM(CASE WHEN type = 'outgoing' AND status IN ('sent', 'scattered') THEN amount ELSE 0 END), 0) as outgoing
+    FROM transactions
+    WHERE created_at >= ${new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()}
+    ${sql.unsafe(clabeFilter)}
+    GROUP BY DATE_TRUNC('day', created_at), EXTRACT(DOW FROM created_at)
+    ORDER BY DATE_TRUNC('day', created_at)
+  `;
+
+  const dayNames = ['D', 'L', 'M', 'X', 'J', 'V', 'S'];
+  const weeklyData = dayNames.map((name, idx) => {
+    const dayData = (weeklyResult as any[]).find((d: any) => parseInt(d.day_num) === idx);
+    return {
+      name,
+      incoming: parseFloat(dayData?.incoming || '0'),
+      outgoing: parseFloat(dayData?.outgoing || '0'),
+    };
+  });
+
+  const currentIncoming = parseFloat(currentStatsResult[0]?.incoming || '0');
+  const currentOutgoing = parseFloat(currentStatsResult[0]?.outgoing || '0');
+  const prevIncoming = parseFloat(prevStatsResult[0]?.incoming || '0');
+  const prevOutgoing = parseFloat(prevStatsResult[0]?.outgoing || '0');
+
+  // Calculate percentage change
+  const incomingChange = prevIncoming > 0 ? ((currentIncoming - prevIncoming) / prevIncoming) * 100 : 0;
+  const outgoingChange = prevOutgoing > 0 ? ((currentOutgoing - prevOutgoing) / prevOutgoing) * 100 : 0;
+
+  return {
+    totalIncoming: currentIncoming,
+    totalOutgoing: currentOutgoing,
+    pendingCount: parseInt(currentStatsResult[0]?.pending_count || '0'),
+    clientsCount: parseInt(clientsResult[0]?.count || '0'),
+    totalBalance: currentIncoming - currentOutgoing,
+    incomingChange: Math.round(incomingChange * 10) / 10,
+    outgoingChange: Math.round(outgoingChange * 10) / 10,
+    weeklyData,
+  };
+}
+
+// Get transactions for a specific company (through their CLABE accounts)
+export async function getTransactionsByCompanyId(
+  companyId: string,
+  params?: { page?: number; itemsPerPage?: number; type?: 'incoming' | 'outgoing'; status?: string }
+): Promise<{ transactions: DbTransaction[]; total: number }> {
+  const page = params?.page || 1;
+  const itemsPerPage = params?.itemsPerPage || 50;
+  const offset = (page - 1) * itemsPerPage;
+
+  // Get all CLABE accounts for this company
+  const clabes = await getClabeAccountsByCompanyId(companyId);
+  if (clabes.length === 0) {
+    return { transactions: [], total: 0 };
+  }
+
+  const clabeIds = clabes.map(c => `'${c.id}'`).join(',');
+
+  let whereConditions = [`clabe_account_id IN (${clabeIds})`];
+  if (params?.type) whereConditions.push(`type = '${params.type}'`);
+  if (params?.status) whereConditions.push(`status = '${params.status}'`);
+
+  const whereClause = `WHERE ${whereConditions.join(' AND ')}`;
+
+  const countResult = await sql`
+    SELECT COUNT(*) as count FROM transactions ${sql.unsafe(whereClause)}
+  `;
+  const total = parseInt(countResult[0]?.count || '0');
+
+  const result = await sql`
+    SELECT * FROM transactions
+    ${sql.unsafe(whereClause)}
+    ORDER BY created_at DESC
+    LIMIT ${itemsPerPage} OFFSET ${offset}
+  `;
+
+  return {
+    transactions: result as DbTransaction[],
+    total,
+  };
+}
+
+// Get detailed company info with stats
+export async function getCompanyWithDetails(companyId: string): Promise<{
+  company: DbCompany;
+  users: DbUser[];
+  clabeAccounts: DbClabeAccount[];
+  stats: {
+    totalIncoming: number;
+    totalOutgoing: number;
+    transactionCount: number;
+  };
+} | null> {
+  const company = await getCompanyById(companyId);
+  if (!company) return null;
+
+  const users = await getUsersByCompanyId(companyId);
+  const clabeAccounts = await getClabeAccountsByCompanyId(companyId);
+
+  // Get transaction stats for this company
+  const clabeIds = clabeAccounts.map(c => `'${c.id}'`).join(',');
+  let stats = { totalIncoming: 0, totalOutgoing: 0, transactionCount: 0 };
+
+  if (clabeAccounts.length > 0) {
+    const statsResult = await sql`
+      SELECT
+        COALESCE(SUM(CASE WHEN type = 'incoming' AND status = 'scattered' THEN amount ELSE 0 END), 0) as incoming,
+        COALESCE(SUM(CASE WHEN type = 'outgoing' AND status IN ('sent', 'scattered') THEN amount ELSE 0 END), 0) as outgoing,
+        COUNT(*) as count
+      FROM transactions
+      WHERE clabe_account_id IN (${sql.unsafe(clabeIds)})
+    `;
+
+    stats = {
+      totalIncoming: parseFloat(statsResult[0]?.incoming || '0'),
+      totalOutgoing: parseFloat(statsResult[0]?.outgoing || '0'),
+      transactionCount: parseInt(statsResult[0]?.count || '0'),
+    };
+  }
+
+  return { company, users, clabeAccounts, stats };
+}
+
+// Get recent transactions for dashboard
+export async function getRecentTransactions(
+  limit: number = 10,
+  companyId?: string
+): Promise<DbTransaction[]> {
+  let clabeFilter = '';
+  if (companyId) {
+    const clabes = await getClabeAccountsByCompanyId(companyId);
+    if (clabes.length > 0) {
+      const clabeIds = clabes.map(c => `'${c.id}'`).join(',');
+      clabeFilter = `WHERE clabe_account_id IN (${clabeIds})`;
+    } else {
+      return [];
+    }
+  }
+
+  const result = await sql`
+    SELECT * FROM transactions
+    ${sql.unsafe(clabeFilter)}
+    ORDER BY created_at DESC
+    LIMIT ${limit}
+  `;
+
+  return result as DbTransaction[];
+}
+
+// Create commission transaction
+export async function createCommissionTransaction(params: {
+  sourceTransaction: DbTransaction;
+  commissionAmount: number;
+  targetClabe: string;
+  companyId: string;
+}): Promise<DbTransaction> {
+  const trackingKey = `COM${Date.now()}${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
+
+  return createTransaction({
+    id: `tx_comm_${Date.now()}`,
+    type: 'outgoing',
+    status: 'pending',
+    amount: params.commissionAmount,
+    trackingKey,
+    concept: `Comisión por transacción ${params.sourceTransaction.tracking_key}`,
+    beneficiaryAccount: params.targetClabe,
+    beneficiaryName: 'NOVACORE INTEGRADORA',
+  });
 }

@@ -68,7 +68,12 @@ export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
     (item) => !item.permission || hasPermission(item.permission)
   );
 
-  const RoleIcon = user ? roleIcons[user.role] : User;
+  // Get role icon with fallback for invalid roles
+  const validRoles: UserRole[] = ['super_admin', 'company_admin', 'user'];
+  const userRole = user?.role && validRoles.includes(user.role as UserRole) ? user.role : 'user';
+  const RoleIcon = roleIcons[userRole] || User;
+  const roleLabel = roleLabels[userRole] || 'Usuario';
+  const roleColor = roleColors[userRole] || roleColors.user;
 
   return (
     <>
@@ -141,10 +146,10 @@ export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
             <div className="mt-3 flex items-center gap-2">
               <span className={cn(
                 'inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-[10px] font-medium border',
-                roleColors[user.role]
+                roleColor
               )}>
                 <RoleIcon className="w-3 h-3" />
-                {roleLabels[user.role]}
+                {roleLabel}
               </span>
             </div>
 

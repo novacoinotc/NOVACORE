@@ -92,19 +92,19 @@ export async function getOrderByTrackingKey(
   }, apiKey);
 }
 
-// List all orders with filters
+// List all orders with filters (from Especificacion api.pdf)
 export interface ListOrdersParams {
-  type: 0 | 1; // 0=outgoing, 1=incoming
-  itemsPerPage?: number;
-  page?: number;
-  from?: number;
-  to?: number;
-  hasSubProduct?: boolean;
-  productId?: string;
-  isSent?: boolean;
-  isScattered?: boolean;
-  isReturned?: boolean;
-  isCanceled?: boolean;
+  type: 0 | 1;           // 0=speiOut (outgoing), 1=speiIn (incoming)
+  itemsPerPage?: number; // Items per page (default varies)
+  page?: number;         // Page number
+  from?: number;         // Start date (epoch milliseconds)
+  to?: number;           // End date (epoch milliseconds)
+  hasSubProduct?: boolean; // Filter by subproduct presence
+  productId?: string;    // Filter by product ID
+  isSent?: boolean;      // Filter by sent status
+  isScattered?: boolean; // Filter by scattered/settled status
+  isReturned?: boolean;  // Filter by returned status
+  isCanceled?: boolean;  // Filter by canceled status
 }
 
 export async function listOrders(
@@ -290,8 +290,22 @@ export async function updateClientStatus(
 }
 
 // ==================== SIGNATURE HELPERS ====================
+// Based on MI-OPM-2.5.pdf - Digital signature generation
 
-// Build original string for signing payment orders
+/**
+ * Build original string for signing payment orders
+ *
+ * Format from MI-OPM-2.5.pdf:
+ * ||beneficiaryName|beneficiaryUid|beneficiaryBank|beneficiaryAccount|beneficiaryAccountType|
+ * payerAccount|numericalReference|paymentDay|paymentType|concept|amount||
+ *
+ * Example:
+ * ||OPMTEST|XAXX010101000|40684|6846010000000001|40|6846010000000002|1234567|2021-12-31|1|CONCEPTO|1.00||
+ *
+ * Notes:
+ * - paymentDay must be formatted as YYYY-MM-DD
+ * - amount must have exactly 2 decimal places
+ */
 export function buildOrderOriginalString(order: {
   beneficiaryName: string;
   beneficiaryUid: string;
@@ -306,13 +320,17 @@ export function buildOrderOriginalString(order: {
   amount: number;
 }): string {
   const date = new Date(order.paymentDay);
-  const dateStr = date.toISOString().split('T')[0]; // YYYY-MM-DD
-  const amountStr = order.amount.toFixed(2);
+  const dateStr = date.toISOString().split('T')[0]; // YYYY-MM-DD format
+  const amountStr = order.amount.toFixed(2); // Always 2 decimal places
 
   return `||${order.beneficiaryName}|${order.beneficiaryUid}|${order.beneficiaryBank}|${order.beneficiaryAccount}|${order.beneficiaryAccountType}|${order.payerAccount}|${order.numericalReference}|${dateStr}|${order.paymentType}|${order.concept}|${amountStr}||`;
 }
 
-// Build original string for client signature
+/**
+ * Build original string for client (indirect participant) signature
+ *
+ * Format for indirect participant client registration
+ */
 export function buildClientOriginalString(client: {
   name: string;
   businessName?: string;
@@ -327,7 +345,12 @@ export function buildClientOriginalString(client: {
   return `||${client.name}|${client.businessName || ''}|${client.commercialActivity || ''}|${client.rfc}|${client.curp}|${client.address}|${client.email}|${client.mobileNumber}|${client.birthDate}||`;
 }
 
-// Build original string for webhook supply verification
+/**
+ * Build original string for webhook supply (incoming deposit) verification
+ *
+ * This is used to verify the signature on incoming deposit webhooks from OPM.
+ * The original string format should match what OPM uses to sign the webhook.
+ */
 export function buildSupplyOriginalString(data: {
   beneficiaryName: string;
   beneficiaryUid: string;
@@ -347,7 +370,11 @@ export function buildSupplyOriginalString(data: {
   return `||${data.beneficiaryName}|${data.beneficiaryUid}|${data.beneficiaryAccount}|${data.beneficiaryBank}|${data.beneficiaryAccountType}|${data.payerName}|${data.payerUid}|${data.payerAccount}|${data.payerBank}|${data.payerAccountType}|${data.amount}|${data.concept}|${data.trackingKey}|${data.numericalReference}||`;
 }
 
-// Build original string for order status webhook verification
+/**
+ * Build original string for order status webhook verification
+ *
+ * This is used to verify the signature on order status webhooks from OPM.
+ */
 export function buildOrderStatusOriginalString(data: {
   id: string;
   status: string;

@@ -165,66 +165,89 @@ export interface CreateUserRequest {
   clabeAccountIds?: string[];
 }
 
+/**
+ * Order interface - based on OPM API Specification (Especificacion api.pdf)
+ *
+ * Field specifications:
+ * - concept: string<40> - max 40 characters
+ * - beneficiaryAccount: string<18> - CLABE 18 digits
+ * - beneficiaryBank: string<5> - 5 digit bank code
+ * - beneficiaryName: string<40> - max 40 characters
+ * - beneficiaryUid: string<18> - RFC/CURP max 18 chars
+ * - payerAccount: string<18> - CLABE 18 digits
+ * - payerBank: string<5> - 5 digit bank code
+ * - payerName: string<40> - max 40 characters
+ * - payerUid: string<18> - RFC/CURP max 18 chars
+ * - amount: double<18,2> - max 2 decimal places
+ * - numericalReference: integer<7> - 7 digits (1000000-9999999)
+ * - paymentDay: integer<32> - epoch milliseconds
+ * - trackingKey: string<30> - max 30 characters
+ */
 export interface Order {
   id: string;
   productId: string;
   subProductId: string;
-  concept: string;
-  trackingKey: string;
-  beneficiaryAccount: string;
-  beneficiaryBank: string;
-  beneficiaryName: string;
-  beneficiaryUid: string;
-  beneficiaryAccountType: number;
-  payerAccount: string;
-  payerBank: string;
-  payerName: string;
-  payerUid: string;
-  payerAccountType: number;
-  amount: number;
-  numericalReference: number;
-  paymentDay: number;
-  paymentType: number;
+  concept: string;                  // string<40>
+  trackingKey: string;              // string<30>
+  beneficiaryAccount: string;       // string<18> - CLABE
+  beneficiaryBank: string;          // string<5>
+  beneficiaryName: string;          // string<40>
+  beneficiaryUid: string;           // string<18> - RFC/CURP
+  beneficiaryAccountType: number;   // Account type code
+  payerAccount: string;             // string<18> - CLABE
+  payerBank: string;                // string<5>
+  payerName: string;                // string<40>
+  payerUid: string;                 // string<18> - RFC/CURP
+  payerAccountType: number;         // Account type code
+  amount: number;                   // double<18,2>
+  numericalReference: number;       // integer<7>
+  paymentDay: number;               // epoch milliseconds
+  paymentType: number;              // Payment type code
   createdAt: number;
   queuedAt: number;
   sentAt: number;
   settlementDate: number;
   updatedAt: number;
   sent: boolean;
-  scattered: boolean;
-  returned: boolean;
+  scattered: boolean;               // liquidada/settled
+  returned: boolean;                // devuelta/rejected
   canceled: boolean;
   canceledAt: number;
   errorDetail: string;
   accountBalance: number;
-  type: number; // 0=credit, 1=debit
+  type: number;                     // 0=speiOut (credit), 1=speiIn (debit)
   fraudulent: boolean;
   fraudulentReason: string;
   refundTrackingKey?: string;
   refundCause?: string;
 }
 
+/**
+ * CreateOrderRequest - Request payload for creating SPEI orders
+ * Based on OPM API Specification (Especificacion api.pdf) - POST /api/1.0/orders/
+ */
 export interface CreateOrderRequest {
-  concept: string;
-  beneficiaryAccount: string;
-  beneficiaryBank: string;
-  beneficiaryName: string;
-  beneficiaryUid: string;
-  beneficiaryAccountType: number;
-  payerAccount: string;
-  payerBank: string;
-  payerName: string;
-  payerUid?: string;
-  payerAccountType: number;
-  amount: number;
-  numericalReference: number;
-  paymentDay: number;
-  paymentType: number;
-  sign: string;
-  trackingKey?: string;
-  cepPayerName?: string;
-  cepPayerUid?: string;
-  cepPayerAccount?: string;
+  concept: string;                  // string<40> - Transaction concept
+  beneficiaryAccount: string;       // string<18> - CLABE 18 digits
+  beneficiaryBank: string;          // string<5> - Bank code
+  beneficiaryName: string;          // string<40> - Beneficiary name
+  beneficiaryUid: string;           // string<18> - RFC/CURP
+  beneficiaryAccountType: number;   // integer<32> - Account type code
+  payerAccount: string;             // string<18> - CLABE 18 digits
+  payerBank: string;                // string<5> - Bank code
+  payerName: string;                // string<40> - Payer name
+  payerUid?: string;                // string<18> - RFC/CURP (optional)
+  payerAccountType: number;         // integer<32> - Account type code
+  amount: number;                   // double<18,2> - Amount with 2 decimals
+  numericalReference: number;       // integer<7> - 7 digits (1000000-9999999)
+  paymentDay: number;               // integer<32> - Epoch milliseconds
+  paymentType: number;              // integer<32> - Payment type code
+  sign: string;                     // string<1000> - RSA-SHA256 signature
+  trackingKey?: string;             // string<30> - Optional tracking key
+  // Optional CEP override fields
+  cepPayerName?: string;            // Override payer name on CEP
+  cepPayerUid?: string;             // Override payer RFC/CURP on CEP
+  cepPayerAccount?: string;         // Override payer account on CEP
 }
 
 export interface Balance {
@@ -281,37 +304,61 @@ export interface Client {
   updatedAt?: number;
 }
 
+/**
+ * WebhookSupplyData - Incoming SPEI deposit notification
+ * Based on MI-OPM-2.5.pdf - Webhook for incoming transfers (supply)
+ *
+ * Response codes:
+ * - 0: Transacción aceptada
+ * - 4: Saldo de cuenta excede límite permitido
+ * - 6: Cuenta no existente
+ * - 7: Error en datos de pago
+ * - 12: Operación duplicada
+ * - 13: Beneficiario no reconoce pago
+ * - 99: Error interno del sistema
+ */
 export interface WebhookSupplyData {
   type: 'supply';
   data: {
-    beneficiaryName: string;
-    beneficiaryUid: string;
-    beneficiaryAccount: string;
-    beneficiaryBank: string;
+    beneficiaryName: string;        // string<40>
+    beneficiaryUid: string;         // string<18> - RFC/CURP
+    beneficiaryAccount: string;     // string<18> - CLABE
+    beneficiaryBank: string;        // string<5>
     beneficiaryAccountType: number;
-    payerName: string;
-    payerUid: string;
-    payerAccount: string;
-    payerBank: string;
+    payerName: string;              // string<40>
+    payerUid: string;               // string<18> - RFC/CURP
+    payerAccount: string;           // string<18> - CLABE
+    payerBank: string;              // string<5>
     payerAccountType: number;
-    amount: number;
-    concept: string;
-    trackingKey: string;
-    numericalReference: number;
-    operationDate: string;
-    receivedTimestamp: number;
-    sign: string;
+    amount: number;                 // double<18,2>
+    concept: string;                // string<40>
+    trackingKey: string;            // string<30>
+    numericalReference: number;     // integer<7>
+    operationDate: string;          // ISO date string
+    receivedTimestamp: number;      // epoch milliseconds
+    sign: string;                   // RSA-SHA256 signature for verification
   };
 }
 
+/**
+ * WebhookOrderStatusData - Order status change notification
+ * Based on MI-OPM-2.5.pdf - Webhook for outgoing order status updates
+ *
+ * Status values:
+ * - pending: Order queued, waiting for balance
+ * - sent: Order sent to SPEI, awaiting response
+ * - scattered: Successfully settled/liquidated
+ * - canceled: Order was canceled
+ * - returned: Order was rejected by recipient bank
+ */
 export interface WebhookOrderStatusData {
   type: 'orderStatus';
   data: {
-    id: string;
+    id: string;                     // Order ID
     status: 'pending' | 'sent' | 'scattered' | 'canceled' | 'returned';
-    detail?: string;
+    detail?: string;                // Error/status detail message
   };
-  sign: string;
+  sign: string;                     // RSA-SHA256 signature for verification
 }
 
 export interface ApiResponse<T> {

@@ -9,7 +9,7 @@ import {
   LayoutDashboard,
   ArrowLeftRight,
   Clock,
-  Users,
+  Wallet,
   Settings,
   UserCog,
   Shield,
@@ -31,7 +31,7 @@ const navigation: NavItem[] = [
   { name: 'Cuentas CLABE', href: '/clabe-accounts', icon: CreditCard, permission: 'clabe.view' },
   { name: 'Transferencias', href: '/transfers', icon: ArrowLeftRight, permission: 'orders.view' },
   { name: 'Historial', href: '/history', icon: Clock, permission: 'history.view' },
-  { name: 'Clientes', href: '/clients', icon: Users, permission: 'clients.view' },
+  { name: 'Cuentas Guardadas', href: '/saved-accounts', icon: Wallet, permission: 'savedAccounts.view' },
   { name: 'Usuarios', href: '/users', icon: UserCog, permission: 'users.view' },
   { name: 'Configuracion', href: '/settings', icon: Settings, permission: 'settings.view' },
 ];

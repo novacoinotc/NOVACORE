@@ -19,11 +19,11 @@ export const ALL_PERMISSIONS = {
   'orders.cep': 'Obtener CEP de transferencias',
   'orders.notify': 'Reenviar notificaciones webhook',
 
-  // Clients (OPM indirect participants)
-  'clients.view': 'Ver clientes',
-  'clients.create': 'Crear clientes',
-  'clients.update': 'Actualizar clientes',
-  'clients.status': 'Cambiar estado de clientes',
+  // Saved Accounts (user's saved third-party accounts for transfers)
+  'savedAccounts.view': 'Ver cuentas guardadas',
+  'savedAccounts.create': 'Crear cuentas guardadas',
+  'savedAccounts.update': 'Actualizar cuentas guardadas',
+  'savedAccounts.delete': 'Eliminar cuentas guardadas',
 
   // History
   'history.view': 'Ver historial de transacciones',
@@ -68,7 +68,10 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
     'orders.create',
     'orders.cancel',
     'orders.cep',
-    'clients.view',
+    'savedAccounts.view',
+    'savedAccounts.create',
+    'savedAccounts.update',
+    'savedAccounts.delete',
     'history.view',
     'banks.view',
     'catalogs.view',
@@ -87,6 +90,10 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
     'balance.view',
     'orders.view',
     'orders.create',
+    'savedAccounts.view',
+    'savedAccounts.create',
+    'savedAccounts.update',
+    'savedAccounts.delete',
     'history.view',
     'banks.view',
     'catalogs.view',
@@ -281,6 +288,24 @@ export interface PaymentType {
   active: boolean;
 }
 
+// SavedAccount - Third-party accounts saved by users for frequent transfers
+export interface SavedAccount {
+  id: string;
+  userId: string;
+  alias: string;                  // Friendly name (e.g., "Mi proveedor")
+  clabe: string;                  // 18-digit CLABE
+  bankCode: string;               // Bank code
+  bankName: string;               // Bank name
+  beneficiaryName: string;        // Name of the account holder
+  beneficiaryRfc?: string;        // RFC of the account holder
+  accountType: number;            // Account type (default: 40 for CLABE)
+  notes?: string;                 // Optional notes
+  isActive: boolean;
+  createdAt: number;
+  updatedAt: number;
+}
+
+// Legacy Client interface for OPM API compatibility (if needed)
 export interface Client {
   id?: string;
   virtualAccountNumber?: string;

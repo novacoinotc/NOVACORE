@@ -138,6 +138,30 @@ export async function initializeDatabase() {
       CREATE INDEX IF NOT EXISTS idx_transactions_clabe_account ON transactions(clabe_account_id)
     `;
 
+    // Create saved_accounts table - each user has their own saved accounts (third-party accounts for frequent transfers)
+    await sql`
+      CREATE TABLE IF NOT EXISTS saved_accounts (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        alias TEXT NOT NULL,
+        clabe TEXT NOT NULL,
+        bank_code TEXT NOT NULL,
+        bank_name TEXT NOT NULL,
+        beneficiary_name TEXT NOT NULL,
+        beneficiary_rfc TEXT,
+        account_type INTEGER DEFAULT 40,
+        notes TEXT,
+        is_active BOOLEAN DEFAULT true,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `;
+
+    // Create index on user_id for faster lookups
+    await sql`
+      CREATE INDEX IF NOT EXISTS idx_saved_accounts_user ON saved_accounts(user_id)
+    `;
+
     console.log('Database initialized successfully');
   } catch (error) {
     console.error('Error initializing database:', error);
@@ -219,6 +243,22 @@ export interface DbTransaction {
   created_at: Date;
   updated_at: Date;
   settled_at: Date | null;
+}
+
+export interface DbSavedAccount {
+  id: string;
+  user_id: string;
+  alias: string;
+  clabe: string;
+  bank_code: string;
+  bank_name: string;
+  beneficiary_name: string;
+  beneficiary_rfc: string | null;
+  account_type: number;
+  notes: string | null;
+  is_active: boolean;
+  created_at: Date;
+  updated_at: Date;
 }
 
 // ==================== COMPANY OPERATIONS ====================
@@ -989,4 +1029,87 @@ export async function createCommissionTransaction(params: {
     beneficiaryAccount: params.targetClabe,
     beneficiaryName: 'NOVACORE INTEGRADORA',
   });
+}
+
+// ==================== SAVED ACCOUNTS OPERATIONS ====================
+
+export async function createSavedAccount(savedAccount: {
+  id: string;
+  userId: string;
+  alias: string;
+  clabe: string;
+  bankCode: string;
+  bankName: string;
+  beneficiaryName: string;
+  beneficiaryRfc?: string;
+  accountType?: number;
+  notes?: string;
+  isActive?: boolean;
+}): Promise<DbSavedAccount> {
+  const result = await sql`
+    INSERT INTO saved_accounts (id, user_id, alias, clabe, bank_code, bank_name, beneficiary_name, beneficiary_rfc, account_type, notes, is_active)
+    VALUES (${savedAccount.id}, ${savedAccount.userId}, ${savedAccount.alias}, ${savedAccount.clabe}, ${savedAccount.bankCode}, ${savedAccount.bankName}, ${savedAccount.beneficiaryName}, ${savedAccount.beneficiaryRfc || null}, ${savedAccount.accountType || 40}, ${savedAccount.notes || null}, ${savedAccount.isActive ?? true})
+    RETURNING *
+  `;
+  return result[0] as DbSavedAccount;
+}
+
+export async function getSavedAccountById(id: string): Promise<DbSavedAccount | null> {
+  const result = await sql`
+    SELECT * FROM saved_accounts WHERE id = ${id}
+  `;
+  return result[0] as DbSavedAccount | null;
+}
+
+export async function getSavedAccountsByUserId(userId: string): Promise<DbSavedAccount[]> {
+  const result = await sql`
+    SELECT * FROM saved_accounts WHERE user_id = ${userId} ORDER BY created_at DESC
+  `;
+  return result as DbSavedAccount[];
+}
+
+export async function updateSavedAccount(
+  id: string,
+  updates: Partial<{
+    alias: string;
+    clabe: string;
+    bankCode: string;
+    bankName: string;
+    beneficiaryName: string;
+    beneficiaryRfc: string;
+    accountType: number;
+    notes: string;
+    isActive: boolean;
+  }>
+): Promise<DbSavedAccount | null> {
+  const result = await sql`
+    UPDATE saved_accounts
+    SET alias = COALESCE(${updates.alias}, alias),
+        clabe = COALESCE(${updates.clabe}, clabe),
+        bank_code = COALESCE(${updates.bankCode}, bank_code),
+        bank_name = COALESCE(${updates.bankName}, bank_name),
+        beneficiary_name = COALESCE(${updates.beneficiaryName}, beneficiary_name),
+        beneficiary_rfc = COALESCE(${updates.beneficiaryRfc}, beneficiary_rfc),
+        account_type = COALESCE(${updates.accountType}, account_type),
+        notes = COALESCE(${updates.notes}, notes),
+        is_active = COALESCE(${updates.isActive}, is_active),
+        updated_at = CURRENT_TIMESTAMP
+    WHERE id = ${id}
+    RETURNING *
+  `;
+  return result[0] as DbSavedAccount | null;
+}
+
+export async function deleteSavedAccount(id: string): Promise<boolean> {
+  await sql`
+    DELETE FROM saved_accounts WHERE id = ${id}
+  `;
+  return true;
+}
+
+export async function getSavedAccountByUserAndClabe(userId: string, clabe: string): Promise<DbSavedAccount | null> {
+  const result = await sql`
+    SELECT * FROM saved_accounts WHERE user_id = ${userId} AND clabe = ${clabe}
+  `;
+  return result[0] as DbSavedAccount | null;
 }

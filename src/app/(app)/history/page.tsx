@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   History,
   Search,
@@ -9,8 +9,15 @@ import {
   ArrowDownLeft,
   Calendar,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   Copy,
   Eye,
+  X,
+  Filter,
+  Building2,
+  DollarSign,
+  RefreshCw,
 } from 'lucide-react';
 import {
   Button,
@@ -26,83 +33,49 @@ import {
   TableCell,
   Modal,
 } from '@/components/ui';
-import { formatCurrency, formatDate, getStatusText, cn } from '@/lib/utils';
-import { Transaction } from '@/types';
+import { formatCurrency, formatDate, getStatusText, cn, formatClabe } from '@/lib/utils';
+import { getBankFromSpeiCode, getBankSelectOptions } from '@/lib/banks';
 
-const demoTransactions: Transaction[] = [
-  {
-    id: '1',
-    type: 'incoming',
-    amount: 150000,
-    status: 'scattered',
-    beneficiaryName: 'NOVACORE SA DE CV',
-    payerName: 'CRYPTO EXCHANGE MX SA DE CV',
-    concept: 'DEPOSITO FONDOS CRIPTO',
-    trackingKey: 'NC2024112900001',
-    date: new Date(Date.now() - 1000 * 60 * 30),
-    bank: 'BBVA',
-  },
-  {
-    id: '2',
-    type: 'outgoing',
-    amount: 85000,
-    status: 'scattered',
-    beneficiaryName: 'JUAN PEREZ MARTINEZ',
-    payerName: 'NOVACORE SA DE CV',
-    concept: 'DISPERSION NOMINA NOV24',
-    trackingKey: 'NC2024112900002',
-    date: new Date(Date.now() - 1000 * 60 * 60 * 2),
-    bank: 'SANTANDER',
-  },
-  {
-    id: '3',
-    type: 'outgoing',
-    amount: 45000,
-    status: 'sent',
-    beneficiaryName: 'MARIA GARCIA LOPEZ',
-    payerName: 'NOVACORE SA DE CV',
-    concept: 'PAGO PROVEEDOR',
-    trackingKey: 'NC2024112900003',
-    date: new Date(Date.now() - 1000 * 60 * 60 * 5),
-    bank: 'BANORTE',
-  },
-  {
-    id: '4',
-    type: 'incoming',
-    amount: 25000,
-    status: 'scattered',
-    beneficiaryName: 'NOVACORE SA DE CV',
-    payerName: 'CLIENTE DEMO SA',
-    concept: 'PAGO SERVICIOS',
-    trackingKey: 'NC2024112900004',
-    date: new Date(Date.now() - 1000 * 60 * 60 * 8),
-    bank: 'HSBC',
-  },
-  {
-    id: '5',
-    type: 'outgoing',
-    amount: 12500,
-    status: 'pending',
-    beneficiaryName: 'PROVEEDOR TECH',
-    payerName: 'NOVACORE SA DE CV',
-    concept: 'FACTURA 2024-001234',
-    trackingKey: 'NC2024112900005',
-    date: new Date(Date.now() - 1000 * 60 * 60 * 12),
-    bank: 'BANAMEX',
-  },
-  {
-    id: '6',
-    type: 'incoming',
-    amount: 5000,
-    status: 'returned',
-    beneficiaryName: 'NOVACORE SA DE CV',
-    payerName: 'CUENTA INEXISTENTE',
-    concept: 'DEVOLUCION AUTOMATICA',
-    trackingKey: 'NC2024112900006',
-    date: new Date(Date.now() - 1000 * 60 * 60 * 24),
-    bank: 'NU MEXICO',
-  },
-];
+interface Transaction {
+  id: string;
+  clabeAccountId: string | null;
+  type: 'incoming' | 'outgoing';
+  status: string;
+  amount: number;
+  concept: string | null;
+  trackingKey: string;
+  numericalReference: number | null;
+  beneficiaryAccount: string | null;
+  beneficiaryBank: string | null;
+  beneficiaryName: string | null;
+  beneficiaryUid: string | null;
+  payerAccount: string | null;
+  payerBank: string | null;
+  payerName: string | null;
+  payerUid: string | null;
+  opmOrderId: string | null;
+  errorDetail: string | null;
+  cepUrl: string | null;
+  createdAt: number;
+  updatedAt: number;
+  settledAt: number | null;
+}
+
+interface TransactionResponse {
+  transactions: Transaction[];
+  pagination: {
+    page: number;
+    itemsPerPage: number;
+    total: number;
+    totalPages: number;
+  };
+  stats: {
+    totalCount: number;
+    totalIncoming: number;
+    totalOutgoing: number;
+    inTransit: number;
+  };
+}
 
 const statusOptions = [
   { value: '', label: 'Todos los estados' },
@@ -120,29 +93,118 @@ const typeOptions = [
 ];
 
 export default function HistoryPage() {
+  // State
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [stats, setStats] = useState({ totalCount: 0, totalIncoming: 0, totalOutgoing: 0, inTransit: 0 });
+  const [pagination, setPagination] = useState({ page: 1, itemsPerPage: 50, total: 0, totalPages: 0 });
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // Filters
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [typeFilter, setTypeFilter] = useState('');
+  const [bankFilter, setBankFilter] = useState('');
+  const [minAmount, setMinAmount] = useState('');
+  const [maxAmount, setMaxAmount] = useState('');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+  const [clabeFilter, setClabeFilter] = useState('');
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
+
+  // Modal state
   const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
 
-  const filteredTransactions = demoTransactions.filter((tx) => {
-    const matchesSearch =
-      tx.trackingKey.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      tx.beneficiaryName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      tx.payerName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      tx.concept.toLowerCase().includes(searchQuery.toLowerCase());
+  // Fetch transactions from API
+  const fetchTransactions = useCallback(async () => {
+    setIsLoading(true);
+    setError(null);
 
-    const matchesStatus = !statusFilter || tx.status === statusFilter;
-    const matchesType = !typeFilter || tx.type === typeFilter;
+    try {
+      const params = new URLSearchParams();
+      params.append('page', pagination.page.toString());
+      params.append('itemsPerPage', pagination.itemsPerPage.toString());
 
-    return matchesSearch && matchesStatus && matchesType;
-  });
+      if (searchQuery) params.append('search', searchQuery);
+      if (statusFilter) params.append('status', statusFilter);
+      if (typeFilter) params.append('type', typeFilter);
+      if (bankFilter) {
+        // Apply to both beneficiary and payer bank
+        params.append('beneficiaryBank', bankFilter);
+      }
+      if (minAmount) params.append('minAmount', minAmount);
+      if (maxAmount) params.append('maxAmount', maxAmount);
+      if (dateFrom) params.append('from', new Date(dateFrom).getTime().toString());
+      if (dateTo) params.append('to', new Date(dateTo + 'T23:59:59').getTime().toString());
+      if (clabeFilter) {
+        params.append('beneficiaryAccount', clabeFilter);
+        params.append('payerAccount', clabeFilter);
+      }
 
+      const response = await fetch(`/api/transactions?${params}`);
+      if (!response.ok) {
+        throw new Error('Error al cargar transacciones');
+      }
+
+      const data: TransactionResponse = await response.json();
+      setTransactions(data.transactions);
+      setStats(data.stats);
+      setPagination(data.pagination);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Error desconocido');
+    } finally {
+      setIsLoading(false);
+    }
+  }, [pagination.page, pagination.itemsPerPage, searchQuery, statusFilter, typeFilter, bankFilter, minAmount, maxAmount, dateFrom, dateTo, clabeFilter]);
+
+  // Initial fetch
+  useEffect(() => {
+    fetchTransactions();
+  }, [fetchTransactions]);
+
+  // Reset to page 1 when filters change
+  const handleFilterChange = useCallback(() => {
+    setPagination(prev => ({ ...prev, page: 1 }));
+  }, []);
+
+  // Clear all filters
+  const clearFilters = () => {
+    setSearchQuery('');
+    setStatusFilter('');
+    setTypeFilter('');
+    setBankFilter('');
+    setMinAmount('');
+    setMaxAmount('');
+    setDateFrom('');
+    setDateTo('');
+    setClabeFilter('');
+    handleFilterChange();
+  };
+
+  // Has active filters?
+  const hasActiveFilters = searchQuery || statusFilter || typeFilter || bankFilter || minAmount || maxAmount || dateFrom || dateTo || clabeFilter;
+
+  // Open detail modal
   const openDetail = (tx: Transaction) => {
     setSelectedTransaction(tx);
     setShowDetailModal(true);
   };
+
+  // Get bank name from code
+  const getBankName = (bankCode: string | null): string => {
+    if (!bankCode) return '-';
+    const bank = getBankFromSpeiCode(bankCode);
+    return bank?.shortName || bankCode;
+  };
+
+  // Copy to clipboard
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text);
+  };
+
+  // Bank options
+  const bankOptions = [{ value: '', label: 'Todos los bancos' }, ...getBankSelectOptions()];
 
   return (
     <div className="space-y-6 max-w-6xl">
@@ -152,18 +214,28 @@ export default function HistoryPage() {
           <h1 className="text-xl font-medium text-white/90">Historial</h1>
           <p className="text-sm text-white/40 mt-1">Consulta todas tus operaciones</p>
         </div>
-        <Button variant="secondary" leftIcon={<Download className="w-4 h-4" />}>
-          Exportar
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={fetchTransactions}
+            leftIcon={<RefreshCw className={cn('w-4 h-4', isLoading && 'animate-spin')} />}
+          >
+            Actualizar
+          </Button>
+          <Button variant="secondary" leftIcon={<Download className="w-4 h-4" />}>
+            Exportar
+          </Button>
+        </div>
       </div>
 
       {/* Stats Summary */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-px bg-white/[0.04] rounded-lg overflow-hidden">
         {[
-          { label: 'Transacciones', value: '1,248' },
-          { label: 'Entradas', value: formatCurrency(2500000), isPositive: true },
-          { label: 'Salidas', value: formatCurrency(1800000) },
-          { label: 'En Transito', value: formatCurrency(85000), isWarning: true },
+          { label: 'Transacciones', value: stats.totalCount.toLocaleString() },
+          { label: 'Entradas', value: formatCurrency(stats.totalIncoming), isPositive: true },
+          { label: 'Salidas', value: formatCurrency(stats.totalOutgoing) },
+          { label: 'En Transito', value: formatCurrency(stats.inTransit), isWarning: true },
         ].map((stat) => (
           <div key={stat.label} className="bg-black/40 p-4">
             <p className="text-xs text-white/30">{stat.label}</p>
@@ -179,121 +251,257 @@ export default function HistoryPage() {
 
       {/* Filters */}
       <Card>
-        <div className="flex flex-wrap items-center gap-4">
-          <div className="flex-1 min-w-[200px]">
-            <Input
-              placeholder="Buscar por clave, nombre, concepto..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              leftIcon={<Search className="w-4 h-4" />}
+        <div className="space-y-4">
+          {/* Main filters row */}
+          <div className="flex flex-wrap items-center gap-4">
+            <div className="flex-1 min-w-[200px]">
+              <Input
+                placeholder="Buscar por clave, nombre, concepto..."
+                value={searchQuery}
+                onChange={(e) => { setSearchQuery(e.target.value); handleFilterChange(); }}
+                leftIcon={<Search className="w-4 h-4" />}
+              />
+            </div>
+            <Select
+              options={typeOptions}
+              value={typeFilter}
+              onChange={(e) => { setTypeFilter(e.target.value); handleFilterChange(); }}
             />
+            <Select
+              options={statusOptions}
+              value={statusFilter}
+              onChange={(e) => { setStatusFilter(e.target.value); handleFilterChange(); }}
+            />
+            <Button
+              variant={showAdvancedFilters ? 'secondary' : 'ghost'}
+              leftIcon={<Filter className="w-4 h-4" />}
+              onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
+            >
+              Filtros
+              <ChevronDown className={cn('w-4 h-4 ml-1 transition-transform', showAdvancedFilters && 'rotate-180')} />
+            </Button>
+            {hasActiveFilters && (
+              <Button variant="ghost" size="sm" onClick={clearFilters} leftIcon={<X className="w-4 h-4" />}>
+                Limpiar
+              </Button>
+            )}
           </div>
-          <Select
-            options={typeOptions}
-            value={typeFilter}
-            onChange={(e) => setTypeFilter(e.target.value)}
-          />
-          <Select
-            options={statusOptions}
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-          />
-          <Button variant="ghost" leftIcon={<Calendar className="w-4 h-4" />}>
-            Fecha
-            <ChevronDown className="w-4 h-4 ml-1" />
-          </Button>
+
+          {/* Advanced filters */}
+          {showAdvancedFilters && (
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 pt-4 border-t border-white/[0.06]">
+              {/* Date range */}
+              <div>
+                <label className="block text-xs text-white/40 mb-1.5">Desde</label>
+                <Input
+                  type="date"
+                  value={dateFrom}
+                  onChange={(e) => { setDateFrom(e.target.value); handleFilterChange(); }}
+                  leftIcon={<Calendar className="w-4 h-4" />}
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-white/40 mb-1.5">Hasta</label>
+                <Input
+                  type="date"
+                  value={dateTo}
+                  onChange={(e) => { setDateTo(e.target.value); handleFilterChange(); }}
+                  leftIcon={<Calendar className="w-4 h-4" />}
+                />
+              </div>
+
+              {/* Amount range */}
+              <div>
+                <label className="block text-xs text-white/40 mb-1.5">Monto minimo</label>
+                <Input
+                  type="number"
+                  placeholder="0.00"
+                  value={minAmount}
+                  onChange={(e) => { setMinAmount(e.target.value); handleFilterChange(); }}
+                  leftIcon={<DollarSign className="w-4 h-4" />}
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-white/40 mb-1.5">Monto maximo</label>
+                <Input
+                  type="number"
+                  placeholder="999,999.99"
+                  value={maxAmount}
+                  onChange={(e) => { setMaxAmount(e.target.value); handleFilterChange(); }}
+                  leftIcon={<DollarSign className="w-4 h-4" />}
+                />
+              </div>
+
+              {/* Bank filter */}
+              <div>
+                <label className="block text-xs text-white/40 mb-1.5">Banco</label>
+                <Select
+                  options={bankOptions}
+                  value={bankFilter}
+                  onChange={(e) => { setBankFilter(e.target.value); handleFilterChange(); }}
+                />
+              </div>
+
+              {/* CLABE filter */}
+              <div className="md:col-span-3">
+                <label className="block text-xs text-white/40 mb-1.5">Cuenta CLABE</label>
+                <Input
+                  placeholder="Buscar por CLABE (parcial o completa)"
+                  value={clabeFilter}
+                  onChange={(e) => { setClabeFilter(e.target.value); handleFilterChange(); }}
+                  leftIcon={<Building2 className="w-4 h-4" />}
+                />
+              </div>
+            </div>
+          )}
         </div>
       </Card>
 
-      {/* Transactions Table */}
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Tipo</TableHead>
-            <TableHead>Clave de Rastreo</TableHead>
-            <TableHead>Beneficiario / Ordenante</TableHead>
-            <TableHead>Concepto</TableHead>
-            <TableHead>Monto</TableHead>
-            <TableHead>Estado</TableHead>
-            <TableHead>Fecha</TableHead>
-            <TableHead></TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {filteredTransactions.map((tx) => (
-            <TableRow key={tx.id} className="cursor-pointer" onClick={() => openDetail(tx)}>
-              <TableCell>
-                <div
-                  className={cn(
-                    'w-8 h-8 rounded-md flex items-center justify-center',
-                    tx.type === 'incoming'
-                      ? 'bg-green-500/10 text-green-400/80'
-                      : 'bg-red-500/10 text-red-400/80'
-                  )}
-                >
-                  {tx.type === 'incoming' ? (
-                    <ArrowDownLeft className="w-4 h-4" />
-                  ) : (
-                    <ArrowUpRight className="w-4 h-4" />
-                  )}
-                </div>
-              </TableCell>
-              <TableCell>
-                <span className="font-mono text-sm text-white/60">{tx.trackingKey}</span>
-              </TableCell>
-              <TableCell>
-                <div>
-                  <p className="text-sm text-white/80">
-                    {tx.type === 'incoming' ? tx.payerName : tx.beneficiaryName}
-                  </p>
-                  <p className="text-xs text-white/30">{tx.bank}</p>
-                </div>
-              </TableCell>
-              <TableCell>
-                <span className="text-sm text-white/50">{tx.concept}</span>
-              </TableCell>
-              <TableCell>
-                <span
-                  className={cn(
-                    'font-mono text-sm',
-                    tx.type === 'incoming' ? 'text-green-400/80' : 'text-white/80'
-                  )}
-                >
-                  {tx.type === 'incoming' ? '+' : '-'} {formatCurrency(tx.amount)}
-                </span>
-              </TableCell>
-              <TableCell>
-                <Badge
-                  variant={
-                    tx.status === 'scattered'
-                      ? 'success'
-                      : tx.status === 'pending' || tx.status === 'sent'
-                      ? 'warning'
-                      : tx.status === 'returned'
-                      ? 'danger'
-                      : 'default'
-                  }
-                >
-                  {getStatusText(tx.status)}
-                </Badge>
-              </TableCell>
-              <TableCell>
-                <span className="text-xs text-white/40">{formatDate(tx.date.getTime())}</span>
-              </TableCell>
-              <TableCell>
-                <Button variant="ghost" size="sm">
-                  <Eye className="w-4 h-4" />
-                </Button>
-              </TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
+      {/* Error message */}
+      {error && (
+        <div className="p-4 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-sm">
+          {error}
+        </div>
+      )}
 
-      {filteredTransactions.length === 0 && (
+      {/* Loading state */}
+      {isLoading && (
+        <div className="text-center py-12">
+          <RefreshCw className="w-8 h-8 mx-auto text-white/20 animate-spin mb-3" />
+          <p className="text-white/40 text-sm">Cargando transacciones...</p>
+        </div>
+      )}
+
+      {/* Transactions Table */}
+      {!isLoading && transactions.length > 0 && (
+        <>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Tipo</TableHead>
+                <TableHead>Clave de Rastreo</TableHead>
+                <TableHead>Beneficiario / Ordenante</TableHead>
+                <TableHead>Concepto</TableHead>
+                <TableHead>Monto</TableHead>
+                <TableHead>Estado</TableHead>
+                <TableHead>Fecha</TableHead>
+                <TableHead></TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {transactions.map((tx) => (
+                <TableRow key={tx.id} className="cursor-pointer" onClick={() => openDetail(tx)}>
+                  <TableCell>
+                    <div
+                      className={cn(
+                        'w-8 h-8 rounded-md flex items-center justify-center',
+                        tx.type === 'incoming'
+                          ? 'bg-green-500/10 text-green-400/80'
+                          : 'bg-red-500/10 text-red-400/80'
+                      )}
+                    >
+                      {tx.type === 'incoming' ? (
+                        <ArrowDownLeft className="w-4 h-4" />
+                      ) : (
+                        <ArrowUpRight className="w-4 h-4" />
+                      )}
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <span className="font-mono text-sm text-white/60">{tx.trackingKey}</span>
+                  </TableCell>
+                  <TableCell>
+                    <div>
+                      <p className="text-sm text-white/80">
+                        {tx.type === 'incoming' ? tx.payerName : tx.beneficiaryName}
+                      </p>
+                      <p className="text-xs text-white/30">
+                        {getBankName(tx.type === 'incoming' ? tx.payerBank : tx.beneficiaryBank)}
+                      </p>
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <span className="text-sm text-white/50">{tx.concept || '-'}</span>
+                  </TableCell>
+                  <TableCell>
+                    <span
+                      className={cn(
+                        'font-mono text-sm',
+                        tx.type === 'incoming' ? 'text-green-400/80' : 'text-white/80'
+                      )}
+                    >
+                      {tx.type === 'incoming' ? '+' : '-'} {formatCurrency(tx.amount)}
+                    </span>
+                  </TableCell>
+                  <TableCell>
+                    <Badge
+                      variant={
+                        tx.status === 'scattered'
+                          ? 'success'
+                          : tx.status === 'pending' || tx.status === 'sent'
+                          ? 'warning'
+                          : tx.status === 'returned'
+                          ? 'danger'
+                          : 'default'
+                      }
+                    >
+                      {getStatusText(tx.status)}
+                    </Badge>
+                  </TableCell>
+                  <TableCell>
+                    <span className="text-xs text-white/40">{formatDate(tx.createdAt)}</span>
+                  </TableCell>
+                  <TableCell>
+                    <Button variant="ghost" size="sm">
+                      <Eye className="w-4 h-4" />
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+
+          {/* Pagination */}
+          <div className="flex items-center justify-between">
+            <p className="text-sm text-white/40">
+              Mostrando {((pagination.page - 1) * pagination.itemsPerPage) + 1} - {Math.min(pagination.page * pagination.itemsPerPage, pagination.total)} de {pagination.total}
+            </p>
+            <div className="flex gap-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                disabled={pagination.page <= 1}
+                onClick={() => setPagination(prev => ({ ...prev, page: prev.page - 1 }))}
+                leftIcon={<ChevronLeft className="w-4 h-4" />}
+              >
+                Anterior
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                disabled={pagination.page >= pagination.totalPages}
+                onClick={() => setPagination(prev => ({ ...prev, page: prev.page + 1 }))}
+                rightIcon={<ChevronRight className="w-4 h-4" />}
+              >
+                Siguiente
+              </Button>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Empty state */}
+      {!isLoading && transactions.length === 0 && (
         <div className="text-center py-12">
           <History className="w-10 h-10 mx-auto text-white/20 mb-3" />
-          <p className="text-white/40 text-sm">No se encontraron transacciones</p>
+          <p className="text-white/40 text-sm">
+            {hasActiveFilters ? 'No se encontraron transacciones con los filtros aplicados' : 'No hay transacciones aun'}
+          </p>
+          {hasActiveFilters && (
+            <Button variant="ghost" size="sm" className="mt-4" onClick={clearFilters}>
+              Limpiar filtros
+            </Button>
+          )}
         </div>
       )}
 
@@ -368,30 +576,92 @@ export default function HistoryPage() {
                 <p className="text-xs text-white/30 mb-1">Clave de Rastreo</p>
                 <div className="flex items-center gap-2">
                   <p className="font-mono text-sm text-white/70">{selectedTransaction.trackingKey}</p>
-                  <button className="p-1 hover:bg-white/5 rounded">
+                  <button
+                    className="p-1 hover:bg-white/5 rounded"
+                    onClick={() => copyToClipboard(selectedTransaction.trackingKey)}
+                  >
                     <Copy className="w-3 h-3 text-white/30" />
                   </button>
                 </div>
               </div>
               <div className="p-3 rounded-md bg-white/[0.02] border border-white/[0.06]">
                 <p className="text-xs text-white/30 mb-1">Fecha y Hora</p>
-                <p className="text-sm text-white/70">{formatDate(selectedTransaction.date.getTime())}</p>
+                <p className="text-sm text-white/70">{formatDate(selectedTransaction.createdAt)}</p>
               </div>
               <div className="p-3 rounded-md bg-white/[0.02] border border-white/[0.06]">
-                <p className="text-xs text-white/30 mb-1">Banco</p>
-                <p className="text-sm text-white/70">{selectedTransaction.bank}</p>
+                <p className="text-xs text-white/30 mb-1">Banco {selectedTransaction.type === 'incoming' ? 'Ordenante' : 'Beneficiario'}</p>
+                <p className="text-sm text-white/70">
+                  {getBankName(selectedTransaction.type === 'incoming' ? selectedTransaction.payerBank : selectedTransaction.beneficiaryBank)}
+                </p>
               </div>
               <div className="p-3 rounded-md bg-white/[0.02] border border-white/[0.06]">
                 <p className="text-xs text-white/30 mb-1">Concepto</p>
-                <p className="text-sm text-white/70">{selectedTransaction.concept}</p>
+                <p className="text-sm text-white/70">{selectedTransaction.concept || '-'}</p>
               </div>
+              {selectedTransaction.beneficiaryAccount && (
+                <div className="col-span-2 p-3 rounded-md bg-white/[0.02] border border-white/[0.06]">
+                  <p className="text-xs text-white/30 mb-1">CLABE Beneficiario</p>
+                  <div className="flex items-center gap-2">
+                    <p className="font-mono text-sm text-white/70">{formatClabe(selectedTransaction.beneficiaryAccount)}</p>
+                    <button
+                      className="p-1 hover:bg-white/5 rounded"
+                      onClick={() => copyToClipboard(selectedTransaction.beneficiaryAccount!)}
+                    >
+                      <Copy className="w-3 h-3 text-white/30" />
+                    </button>
+                  </div>
+                </div>
+              )}
+              {selectedTransaction.payerAccount && (
+                <div className="col-span-2 p-3 rounded-md bg-white/[0.02] border border-white/[0.06]">
+                  <p className="text-xs text-white/30 mb-1">CLABE Ordenante</p>
+                  <div className="flex items-center gap-2">
+                    <p className="font-mono text-sm text-white/70">{formatClabe(selectedTransaction.payerAccount)}</p>
+                    <button
+                      className="p-1 hover:bg-white/5 rounded"
+                      onClick={() => copyToClipboard(selectedTransaction.payerAccount!)}
+                    >
+                      <Copy className="w-3 h-3 text-white/30" />
+                    </button>
+                  </div>
+                </div>
+              )}
+              {selectedTransaction.numericalReference && (
+                <div className="p-3 rounded-md bg-white/[0.02] border border-white/[0.06]">
+                  <p className="text-xs text-white/30 mb-1">Referencia Numerica</p>
+                  <p className="font-mono text-sm text-white/70">{selectedTransaction.numericalReference}</p>
+                </div>
+              )}
+              {selectedTransaction.errorDetail && (
+                <div className="col-span-2 p-3 rounded-md bg-red-500/10 border border-red-500/20">
+                  <p className="text-xs text-red-400/70 mb-1">Detalle de Error</p>
+                  <p className="text-sm text-red-400/90">{selectedTransaction.errorDetail}</p>
+                </div>
+              )}
             </div>
 
             {/* Actions */}
             <div className="flex gap-3 pt-4 border-t border-white/[0.06]">
-              <Button variant="secondary" className="flex-1" leftIcon={<Copy className="w-4 h-4" />}>
+              <Button
+                variant="secondary"
+                className="flex-1"
+                leftIcon={<Copy className="w-4 h-4" />}
+                onClick={() => {
+                  const data = `Clave: ${selectedTransaction.trackingKey}\nMonto: ${formatCurrency(selectedTransaction.amount)}\nBeneficiario: ${selectedTransaction.beneficiaryName}`;
+                  copyToClipboard(data);
+                }}
+              >
                 Copiar Datos
               </Button>
+              {selectedTransaction.cepUrl && (
+                <Button
+                  variant="primary"
+                  className="flex-1"
+                  onClick={() => window.open(selectedTransaction.cepUrl!, '_blank')}
+                >
+                  Ver CEP
+                </Button>
+              )}
             </div>
           </div>
         )}

@@ -1,6 +1,6 @@
 # NOVACORE - Core Bancario Futurista
 
-Sistema bancario moderno con integracion SPEI (Sistema de Pagos Electronicos Interbancarios) de Mexico, disenado con estetica crypto/web3.
+Sistema bancario moderno con integracion SPEI (Sistema de Pagos Electronicos Interbancarios) de Mexico.
 
 **Dominio**: https://novacorp.mx
 
@@ -11,7 +11,7 @@ Sistema bancario moderno con integracion SPEI (Sistema de Pagos Electronicos Int
 - Gestion de clientes (Participantes Indirectos)
 - Historial de transacciones con filtros avanzados
 - Webhooks para notificaciones automaticas
-- Interfaz futurista con animaciones web3
+- Interfaz futurista con animaciones modernas
 - Colores neon y efectos glassmorphism
 
 ## Tecnologias

@@ -132,7 +132,7 @@ export default function LoginPage() {
               transition={{ delay: 0.3 }}
               className="text-white/30 text-xs tracking-[0.3em] mt-2 uppercase"
             >
-              crypto banking core
+              banking core
             </motion.p>
           </div>
 
@@ -223,7 +223,7 @@ export default function LoginPage() {
 
           {/* Footer */}
           <p className="text-white/20 text-[10px] text-center mt-6 tracking-wider">
-            in crypto we trust
+            secure banking solutions
           </p>
         </div>
       </motion.div>

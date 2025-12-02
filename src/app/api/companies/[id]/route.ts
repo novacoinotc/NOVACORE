@@ -21,14 +21,12 @@ export async function GET(
     // Get current user for authorization
     const currentUser = await getCurrentUser(request);
 
-    // Authorization: company_admin can only view their own company
-    if (currentUser && currentUser.role === 'company_admin') {
-      if (params.id !== currentUser.company_id) {
-        return NextResponse.json(
-          { error: 'No tienes permiso para ver esta empresa' },
-          { status: 403 }
-        );
-      }
+    // Authorization: only super_admin can view companies
+    if (currentUser && currentUser.role !== 'super_admin') {
+      return NextResponse.json(
+        { error: 'No tienes permiso para ver esta empresa' },
+        { status: 403 }
+      );
     }
 
     if (includeDetails) {
@@ -157,29 +155,12 @@ export async function PUT(
     // Get current user for authorization
     const currentUser = await getCurrentUser(request);
 
-    // Authorization: only super_admin can modify company settings
+    // Authorization: only super_admin can modify companies
     if (currentUser && currentUser.role !== 'super_admin') {
-      // company_admin can only update basic info of their own company
-      if (currentUser.role === 'company_admin') {
-        if (params.id !== currentUser.company_id) {
-          return NextResponse.json(
-            { error: 'No tienes permiso para modificar esta empresa' },
-            { status: 403 }
-          );
-        }
-        // company_admin cannot change SPEI settings or commission
-        if (speiInEnabled !== undefined || speiOutEnabled !== undefined || commissionPercentage !== undefined || parentClabe !== undefined) {
-          return NextResponse.json(
-            { error: 'No tienes permiso para modificar la configuración de SPEI o comisiones' },
-            { status: 403 }
-          );
-        }
-      } else {
-        return NextResponse.json(
-          { error: 'No tienes permiso para modificar empresas' },
-          { status: 403 }
-        );
-      }
+      return NextResponse.json(
+        { error: 'No tienes permiso para modificar empresas' },
+        { status: 403 }
+      );
     }
 
     // Check if company exists

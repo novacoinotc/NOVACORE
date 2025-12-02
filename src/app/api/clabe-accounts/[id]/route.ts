@@ -80,21 +80,12 @@ export async function PUT(
       );
     }
 
-    // Authorization: company_admin can only update CLABEs for their own company
-    if (currentUser) {
-      if (currentUser.role === 'company_admin') {
-        if (currentUser.company_id !== existingClabeAccount.company_id) {
-          return NextResponse.json(
-            { error: 'No tienes permiso para actualizar cuentas CLABE de otra empresa' },
-            { status: 403 }
-          );
-        }
-      } else if (currentUser.role !== 'super_admin') {
-        return NextResponse.json(
-          { error: 'No tienes permiso para actualizar cuentas CLABE' },
-          { status: 403 }
-        );
-      }
+    // Authorization: only super_admin can update CLABE accounts
+    if (currentUser && currentUser.role !== 'super_admin') {
+      return NextResponse.json(
+        { error: 'No tienes permiso para actualizar cuentas CLABE' },
+        { status: 403 }
+      );
     }
 
     // Note: CLABE number and companyId cannot be changed once created
@@ -151,21 +142,12 @@ export async function DELETE(
       );
     }
 
-    // Authorization: company_admin can only delete CLABEs for their own company
-    if (currentUser) {
-      if (currentUser.role === 'company_admin') {
-        if (currentUser.company_id !== existingClabeAccount.company_id) {
-          return NextResponse.json(
-            { error: 'No tienes permiso para eliminar cuentas CLABE de otra empresa' },
-            { status: 403 }
-          );
-        }
-      } else if (currentUser.role !== 'super_admin') {
-        return NextResponse.json(
-          { error: 'No tienes permiso para eliminar cuentas CLABE' },
-          { status: 403 }
-        );
-      }
+    // Authorization: only super_admin can delete CLABE accounts
+    if (currentUser && currentUser.role !== 'super_admin') {
+      return NextResponse.json(
+        { error: 'No tienes permiso para eliminar cuentas CLABE' },
+        { status: 403 }
+      );
     }
 
     // Note: This will also cascade delete user_clabe_access entries

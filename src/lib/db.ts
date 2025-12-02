@@ -587,7 +587,7 @@ export async function getClabeAccountsForUser(userId: string): Promise<DbClabeAc
 }
 
 // ==================== USER OPERATIONS ====================
-// Note: Prisma maps camelCase fields to snake_case columns via @map
+// Note: Database uses camelCase columns (Prisma default)
 
 export async function createUser(user: {
   id: string;
@@ -600,41 +600,30 @@ export async function createUser(user: {
 }): Promise<DbUser> {
   const now = new Date();
   const result = await sql`
-    INSERT INTO users (id, email, password, name, role, permissions, is_active, created_at, updated_at)
+    INSERT INTO users (id, email, password, name, role, permissions, "isActive", "createdAt", "updatedAt")
     VALUES (${user.id}, ${user.email}, ${user.password}, ${user.name}, ${user.role}, ${user.permissions}, ${user.isActive ?? true}, ${now}, ${now})
-    RETURNING id, email, password, name, role, permissions, avatar,
-              is_active as "isActive", created_at as "createdAt",
-              updated_at as "updatedAt", last_login as "lastLogin"
+    RETURNING *
   `;
   return result[0] as DbUser;
 }
 
 export async function getUserByEmail(email: string): Promise<DbUser | null> {
   const result = await sql`
-    SELECT id, email, password, name, role, permissions, avatar,
-           is_active as "isActive", created_at as "createdAt",
-           updated_at as "updatedAt", last_login as "lastLogin"
-    FROM users WHERE email = ${email}
+    SELECT * FROM users WHERE email = ${email}
   `;
   return result[0] as DbUser | null;
 }
 
 export async function getUserById(id: string): Promise<DbUser | null> {
   const result = await sql`
-    SELECT id, email, password, name, role, permissions, avatar,
-           is_active as "isActive", created_at as "createdAt",
-           updated_at as "updatedAt", last_login as "lastLogin"
-    FROM users WHERE id = ${id}
+    SELECT * FROM users WHERE id = ${id}
   `;
   return result[0] as DbUser | null;
 }
 
 export async function getAllUsers(): Promise<DbUser[]> {
   const result = await sql`
-    SELECT id, email, password, name, role, permissions, avatar,
-           is_active as "isActive", created_at as "createdAt",
-           updated_at as "updatedAt", last_login as "lastLogin"
-    FROM users ORDER BY created_at DESC
+    SELECT * FROM users ORDER BY "createdAt" DESC
   `;
   return result as DbUser[];
 }
@@ -659,13 +648,11 @@ export async function updateUser(
         name = COALESCE(${updates.name}, name),
         role = COALESCE(${updates.role}, role),
         permissions = COALESCE(${updates.permissions}, permissions),
-        is_active = COALESCE(${updates.isActive}, is_active),
-        last_login = COALESCE(${updates.lastLogin}, last_login),
-        updated_at = ${now}
+        "isActive" = COALESCE(${updates.isActive}, "isActive"),
+        "lastLogin" = COALESCE(${updates.lastLogin}, "lastLogin"),
+        "updatedAt" = ${now}
     WHERE id = ${id}
-    RETURNING id, email, password, name, role, permissions, avatar,
-              is_active as "isActive", created_at as "createdAt",
-              updated_at as "updatedAt", last_login as "lastLogin"
+    RETURNING *
   `;
 
   return result[0] as DbUser | null;
@@ -680,12 +667,12 @@ export async function deleteUser(id: string): Promise<boolean> {
 
 export async function updateLastLogin(id: string): Promise<void> {
   await sql`
-    UPDATE users SET last_login = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ${id}
+    UPDATE users SET "lastLogin" = CURRENT_TIMESTAMP, "updatedAt" = CURRENT_TIMESTAMP WHERE id = ${id}
   `;
 }
 
 // ==================== SESSION OPERATIONS ====================
-// Note: Prisma maps camelCase fields to snake_case columns via @map
+// Note: Database uses camelCase columns (Prisma default)
 
 export async function createSession(session: {
   id: string;
@@ -695,7 +682,7 @@ export async function createSession(session: {
 }): Promise<void> {
   const now = new Date();
   await sql`
-    INSERT INTO sessions (id, user_id, token, expires_at, created_at)
+    INSERT INTO sessions (id, "userId", token, "expiresAt", "createdAt")
     VALUES (${session.id}, ${session.userId}, ${session.token}, ${session.expiresAt}, ${now})
   `;
 }
@@ -707,8 +694,7 @@ export async function getSessionByToken(token: string): Promise<{
   expiresAt: Date;
 } | null> {
   const result = await sql`
-    SELECT id, user_id as "userId", token, expires_at as "expiresAt"
-    FROM sessions WHERE token = ${token} AND expires_at > CURRENT_TIMESTAMP
+    SELECT * FROM sessions WHERE token = ${token} AND "expiresAt" > CURRENT_TIMESTAMP
   `;
   return result[0] as any || null;
 }
@@ -721,7 +707,7 @@ export async function deleteSession(token: string): Promise<void> {
 
 export async function deleteExpiredSessions(): Promise<void> {
   await sql`
-    DELETE FROM sessions WHERE expires_at < CURRENT_TIMESTAMP
+    DELETE FROM sessions WHERE "expiresAt" < CURRENT_TIMESTAMP
   `;
 }
 

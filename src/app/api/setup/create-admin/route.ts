@@ -25,14 +25,14 @@ export async function POST(request: NextRequest) {
     `;
 
     if (existingUsers.length > 0) {
-      // Update existing user - using snake_case column names
+      // Update existing user - using camelCase column names (Prisma default)
       await sql`
         UPDATE users
         SET password = ${hashedPassword},
             role = 'super_admin',
             permissions = ${permissions},
-            is_active = true,
-            updated_at = ${now}
+            "isActive" = true,
+            "updatedAt" = ${now}
         WHERE email = ${email}
       `;
 
@@ -44,9 +44,9 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Create new super admin user - using snake_case column names
+    // Create new super admin user - using camelCase column names (Prisma default)
     await sql`
-      INSERT INTO users (id, email, password, name, role, permissions, is_active, created_at, updated_at)
+      INSERT INTO users (id, email, password, name, role, permissions, "isActive", "createdAt", "updatedAt")
       VALUES (${userId}, ${email}, ${hashedPassword}, ${name}, 'super_admin', ${permissions}, true, ${now}, ${now})
     `;
 

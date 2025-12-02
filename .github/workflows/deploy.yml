@@ -8,11 +8,11 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
-      
+
       - name: Deploy to EC2
         uses: appleboy/ssh-action@v1.0.0
         with:
@@ -22,31 +22,33 @@ jobs:
           script: |
             set -e
             echo "🚀 Starting deployment of NOVACORE..."
-            
+
             cd /home/ubuntu/NOVACORE
-            
+
             echo "📦 Saving local changes..."
             git add -A
             git stash
-            
+
             echo "⬇️  Fetching latest changes from GitHub..."
             git fetch origin main
-            
+
             echo "🔄 Resetting to match GitHub (force sync)..."
             git reset --hard origin/main
-            
+
             echo "📚 Installing dependencies..."
             npm install
-            
-            echo "🗄️  Updating database schema..."
+
+            echo "🗄️  Generating Prisma client..."
             npx prisma generate
-            npx prisma db push
-            
+
+            # Note: Skipping 'prisma db push' since we use raw SQL queries in db.ts
+            # The database schema is managed manually or through SQL migrations
+
             echo "🔨 Building application..."
             npm run build
-            
+
             echo "🔄 Restarting PM2..."
             pm2 restart novacore
-            
+
             echo "✅ Deployment completed successfully!"
             pm2 status

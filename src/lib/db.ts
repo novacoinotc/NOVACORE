@@ -289,19 +289,19 @@ export interface DbClabeAccount {
   updated_at: Date;
 }
 
+// DbUser matches Prisma schema (camelCase columns)
 export interface DbUser {
   id: string;
   email: string;
   password: string;
   name: string;
   role: string;
-  company_id: string | null;
   permissions: string[];
   avatar: string | null;
-  is_active: boolean;
-  created_at: Date;
-  updated_at: Date;
-  last_login: Date | null;
+  isActive: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+  lastLogin: Date | null;
 }
 
 export interface DbUserClabeAccess {
@@ -587,6 +587,7 @@ export async function getClabeAccountsForUser(userId: string): Promise<DbClabeAc
 }
 
 // ==================== USER OPERATIONS ====================
+// Note: Users table uses camelCase columns (Prisma schema)
 
 export async function createUser(user: {
   id: string;
@@ -594,13 +595,13 @@ export async function createUser(user: {
   password: string;
   name: string;
   role: string;
-  companyId?: string;
   permissions: string[];
   isActive?: boolean;
 }): Promise<DbUser> {
+  const now = new Date();
   const result = await sql`
-    INSERT INTO users (id, email, password, name, role, company_id, permissions, is_active)
-    VALUES (${user.id}, ${user.email}, ${user.password}, ${user.name}, ${user.role}, ${user.companyId || null}, ${user.permissions}, ${user.isActive ?? true})
+    INSERT INTO users (id, email, password, name, role, permissions, "isActive", "createdAt", "updatedAt")
+    VALUES (${user.id}, ${user.email}, ${user.password}, ${user.name}, ${user.role}, ${user.permissions}, ${user.isActive ?? true}, ${now}, ${now})
     RETURNING *
   `;
   return result[0] as DbUser;
@@ -622,14 +623,7 @@ export async function getUserById(id: string): Promise<DbUser | null> {
 
 export async function getAllUsers(): Promise<DbUser[]> {
   const result = await sql`
-    SELECT * FROM users ORDER BY created_at DESC
-  `;
-  return result as DbUser[];
-}
-
-export async function getUsersByCompanyId(companyId: string): Promise<DbUser[]> {
-  const result = await sql`
-    SELECT * FROM users WHERE company_id = ${companyId} ORDER BY created_at DESC
+    SELECT * FROM users ORDER BY "createdAt" DESC
   `;
   return result as DbUser[];
 }
@@ -641,23 +635,22 @@ export async function updateUser(
     password: string;
     name: string;
     role: string;
-    companyId: string | null;
     permissions: string[];
     isActive: boolean;
     lastLogin: Date;
   }>
 ): Promise<DbUser | null> {
+  const now = new Date();
   const result = await sql`
     UPDATE users
     SET email = COALESCE(${updates.email}, email),
         password = COALESCE(${updates.password}, password),
         name = COALESCE(${updates.name}, name),
         role = COALESCE(${updates.role}, role),
-        company_id = COALESCE(${updates.companyId}, company_id),
         permissions = COALESCE(${updates.permissions}, permissions),
-        is_active = COALESCE(${updates.isActive}, is_active),
-        last_login = COALESCE(${updates.lastLogin}, last_login),
-        updated_at = CURRENT_TIMESTAMP
+        "isActive" = COALESCE(${updates.isActive}, "isActive"),
+        "lastLogin" = COALESCE(${updates.lastLogin}, "lastLogin"),
+        "updatedAt" = ${now}
     WHERE id = ${id}
     RETURNING *
   `;
@@ -674,11 +667,12 @@ export async function deleteUser(id: string): Promise<boolean> {
 
 export async function updateLastLogin(id: string): Promise<void> {
   await sql`
-    UPDATE users SET last_login = CURRENT_TIMESTAMP WHERE id = ${id}
+    UPDATE users SET "lastLogin" = CURRENT_TIMESTAMP, "updatedAt" = CURRENT_TIMESTAMP WHERE id = ${id}
   `;
 }
 
 // ==================== SESSION OPERATIONS ====================
+// Note: Sessions table uses camelCase columns (Prisma schema)
 
 export async function createSession(session: {
   id: string;
@@ -686,20 +680,21 @@ export async function createSession(session: {
   token: string;
   expiresAt: Date;
 }): Promise<void> {
+  const now = new Date();
   await sql`
-    INSERT INTO sessions (id, user_id, token, expires_at)
-    VALUES (${session.id}, ${session.userId}, ${session.token}, ${session.expiresAt})
+    INSERT INTO sessions (id, "userId", token, "expiresAt", "createdAt")
+    VALUES (${session.id}, ${session.userId}, ${session.token}, ${session.expiresAt}, ${now})
   `;
 }
 
 export async function getSessionByToken(token: string): Promise<{
   id: string;
-  user_id: string;
+  userId: string;
   token: string;
-  expires_at: Date;
+  expiresAt: Date;
 } | null> {
   const result = await sql`
-    SELECT * FROM sessions WHERE token = ${token} AND expires_at > CURRENT_TIMESTAMP
+    SELECT * FROM sessions WHERE token = ${token} AND "expiresAt" > CURRENT_TIMESTAMP
   `;
   return result[0] as any || null;
 }
@@ -712,41 +707,43 @@ export async function deleteSession(token: string): Promise<void> {
 
 export async function deleteExpiredSessions(): Promise<void> {
   await sql`
-    DELETE FROM sessions WHERE expires_at < CURRENT_TIMESTAMP
+    DELETE FROM sessions WHERE "expiresAt" < CURRENT_TIMESTAMP
   `;
 }
 
 // ==================== HELPER FUNCTIONS ====================
 
-// Get user with company and clabe accounts populated
+// Get user with clabe accounts populated
+// Note: Users table doesn't have company_id in Prisma schema
 export async function getUserWithRelations(id: string): Promise<{
   user: DbUser;
-  company: DbCompany | null;
   clabeAccounts: DbClabeAccount[];
 } | null> {
   const user = await getUserById(id);
   if (!user) return null;
 
-  let company: DbCompany | null = null;
   let clabeAccounts: DbClabeAccount[] = [];
-
-  if (user.company_id) {
-    company = await getCompanyById(user.company_id);
-  }
 
   // Get CLABE accounts based on role
   if (user.role === 'super_admin') {
     // Super admin has access to all CLABE accounts
-    clabeAccounts = await getAllClabeAccounts();
-  } else if (user.role === 'company_admin' && user.company_id) {
-    // Company admin has access to all CLABE accounts in their company
-    clabeAccounts = await getClabeAccountsByCompanyId(user.company_id);
+    try {
+      clabeAccounts = await getAllClabeAccounts();
+    } catch (e) {
+      // Table might not exist yet
+      clabeAccounts = [];
+    }
   } else {
-    // Regular user has access only to assigned CLABE accounts
-    clabeAccounts = await getClabeAccountsForUser(id);
+    // Regular users have access only to assigned CLABE accounts
+    try {
+      clabeAccounts = await getClabeAccountsForUser(id);
+    } catch (e) {
+      // Table might not exist yet
+      clabeAccounts = [];
+    }
   }
 
-  return { user, company, clabeAccounts };
+  return { user, clabeAccounts };
 }
 
 // ==================== TRANSACTION OPERATIONS ====================

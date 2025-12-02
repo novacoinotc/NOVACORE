@@ -1070,7 +1070,9 @@ export async function getCompanyWithDetails(companyId: string): Promise<{
   const company = await getCompanyById(companyId);
   if (!company) return null;
 
-  const users = await getUsersByCompanyId(companyId);
+  // Note: Users are no longer associated with companies via company_id
+  // Return empty array for backwards compatibility
+  const users: DbUser[] = [];
   const clabeAccounts = await getClabeAccountsByCompanyId(companyId);
 
   // Get transaction stats for this company

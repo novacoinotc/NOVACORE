@@ -7,7 +7,7 @@ import { DEFAULT_ROLE_PERMISSIONS } from '@/types';
  * POST /api/setup/create-admin
  *
  * One-time endpoint to create super admin user
- * Should be disabled or removed after use in production
+ * Database uses camelCase columns (Prisma schema)
  */
 export async function POST(request: NextRequest) {
   try {
@@ -17,13 +17,7 @@ export async function POST(request: NextRequest) {
     const hashedPassword = await bcrypt.hash(password, 10);
     const userId = 'super_admin_' + Date.now();
     const permissions = DEFAULT_ROLE_PERMISSIONS.super_admin;
-
-    // First, try to ensure the users table has all required columns
-    try {
-      await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT true`;
-    } catch (e) {
-      console.log('Could not add is_active column (may already exist or different schema)');
-    }
+    const now = new Date();
 
     // Check if user already exists
     const existingUsers = await sql`
@@ -31,33 +25,16 @@ export async function POST(request: NextRequest) {
     `;
 
     if (existingUsers.length > 0) {
-      // Update existing user - use dynamic approach to handle different schemas
-      try {
-        // Try with is_active first
-        await sql`
-          UPDATE users
-          SET password = ${hashedPassword},
-              role = 'super_admin',
-              permissions = ${permissions},
-              is_active = true,
-              updated_at = CURRENT_TIMESTAMP
-          WHERE email = ${email}
-        `;
-      } catch (updateError: any) {
-        // If is_active doesn't exist, try without it
-        if (updateError.message?.includes('is_active')) {
-          await sql`
-            UPDATE users
-            SET password = ${hashedPassword},
-                role = 'super_admin',
-                permissions = ${permissions},
-                updated_at = CURRENT_TIMESTAMP
-            WHERE email = ${email}
-          `;
-        } else {
-          throw updateError;
-        }
-      }
+      // Update existing user - using camelCase column names
+      await sql`
+        UPDATE users
+        SET password = ${hashedPassword},
+            role = 'super_admin',
+            permissions = ${permissions},
+            "isActive" = true,
+            "updatedAt" = ${now}
+        WHERE email = ${email}
+      `;
 
       return NextResponse.json({
         success: true,
@@ -67,24 +44,11 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Create new super admin user - try different column combinations
-    try {
-      // Try with all columns including is_active
-      await sql`
-        INSERT INTO users (id, email, password, name, role, permissions, is_active)
-        VALUES (${userId}, ${email}, ${hashedPassword}, ${name}, 'super_admin', ${permissions}, true)
-      `;
-    } catch (insertError: any) {
-      // If is_active doesn't exist, try without it
-      if (insertError.message?.includes('is_active')) {
-        await sql`
-          INSERT INTO users (id, email, password, name, role, permissions)
-          VALUES (${userId}, ${email}, ${hashedPassword}, ${name}, 'super_admin', ${permissions})
-        `;
-      } else {
-        throw insertError;
-      }
-    }
+    // Create new super admin user - using camelCase column names
+    await sql`
+      INSERT INTO users (id, email, password, name, role, permissions, "isActive", "createdAt", "updatedAt")
+      VALUES (${userId}, ${email}, ${hashedPassword}, ${name}, 'super_admin', ${permissions}, true, ${now}, ${now})
+    `;
 
     return NextResponse.json({
       success: true,
@@ -107,7 +71,7 @@ export async function GET() {
   try {
     // Get table columns to help debug
     const columns = await sql`
-      SELECT column_name, data_type
+      SELECT column_name, data_type, is_nullable
       FROM information_schema.columns
       WHERE table_name = 'users'
       ORDER BY ordinal_position

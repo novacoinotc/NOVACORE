@@ -48,7 +48,11 @@ jobs:
             npm run build
 
             echo "🔄 Restarting PM2..."
-            pm2 restart novacorp
+            # Handle transition from old name (novacore) to new name (novacorp)
+            pm2 delete novacore 2>/dev/null || true
+            # Try restart first, if it fails (process doesn't exist), start fresh
+            pm2 restart novacorp 2>/dev/null || pm2 start ecosystem.config.js
 
             echo "✅ Deployment completed successfully!"
             pm2 status
+            pm2 save

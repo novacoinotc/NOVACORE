@@ -1,11 +1,58 @@
-import { neon } from '@neondatabase/serverless';
+import { Pool, QueryResult } from 'pg';
 
-// Create a SQL client for PostgreSQL (AWS RDS)
-// Note: The @neondatabase/serverless package is compatible with any PostgreSQL database
-// including AWS RDS. Consider migrating to 'pg' package for better RDS optimization.
-const sql = neon(process.env.DATABASE_URL!);
+// Create PostgreSQL connection pool for AWS RDS
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: {
+    rejectUnauthorized: false, // Required for AWS RDS
+  },
+  max: 20, // Maximum number of clients in the pool
+  idleTimeoutMillis: 30000,
+  connectionTimeoutMillis: 10000,
+});
 
-export { sql };
+// Log connection status
+pool.on('connect', () => {
+  console.log('Connected to PostgreSQL database');
+});
+
+pool.on('error', (err) => {
+  console.error('Unexpected PostgreSQL pool error:', err);
+});
+
+// Tagged template literal helper that mimics neon's API
+interface SqlFunction {
+  (strings: TemplateStringsArray, ...values: any[]): Promise<any[]>;
+  unsafe: (rawSql: string) => { __raw: string };
+}
+
+function createSqlQuery(strings: TemplateStringsArray, ...values: any[]): Promise<any[]> {
+  let text = '';
+  let paramIndex = 1;
+  const params: any[] = [];
+
+  for (let i = 0; i < strings.length; i++) {
+    text += strings[i];
+    if (i < values.length) {
+      const value = values[i];
+      // Check if this is a raw SQL fragment from sql.unsafe()
+      if (value && typeof value === 'object' && '__raw' in value) {
+        text += value.__raw;
+      } else {
+        text += `$${paramIndex++}`;
+        params.push(value);
+      }
+    }
+  }
+
+  return pool.query(text, params).then((res: QueryResult) => res.rows);
+}
+
+const sql: SqlFunction = Object.assign(createSqlQuery, {
+  unsafe: (rawSql: string) => ({ __raw: rawSql }),
+});
+
+export { sql, pool };
 
 // Initialize database schema
 export async function initializeDatabase() {

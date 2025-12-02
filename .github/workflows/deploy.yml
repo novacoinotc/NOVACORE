@@ -36,7 +36,7 @@ jobs:
             git reset --hard origin/main
             
             echo "📚 Installing dependencies..."
-            npm install --production
+            npm install
             
             echo "🗄️  Updating database schema..."
             npx prisma generate

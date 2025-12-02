@@ -2,12 +2,14 @@
 
 Sistema bancario moderno con integracion SPEI (Sistema de Pagos Electronicos Interbancarios) de Mexico, disenado con estetica crypto/web3.
 
+**Dominio**: https://novacorp.mx
+
 ## Caracteristicas
 
 - Dashboard interactivo con estadisticas en tiempo real
 - Transferencias SPEI de entrada y salida
 - Gestion de clientes (Participantes Indirectos)
-- Historial de transacciones con filtros avanzadosll
+- Historial de transacciones con filtros avanzados
 - Webhooks para notificaciones automaticas
 - Interfaz futurista con animaciones web3
 - Colores neon y efectos glassmorphism
@@ -20,7 +22,8 @@ Sistema bancario moderno con integracion SPEI (Sistema de Pagos Electronicos Int
 - **Animaciones**: Framer Motion
 - **Graficos**: Recharts
 - **Estado**: Zustand
-- **Deploy**: Vercel
+- **Deploy**: AWS EC2 (Ubuntu) + PM2 + Nginx
+- **Base de datos**: AWS RDS PostgreSQL
 
 ## Integracion API OPM/Transfer
 
@@ -103,11 +106,38 @@ src/
 └── types/                 # Tipos TypeScript
 \`\`\`
 
-## Deploy en Vercel
+## Deploy en AWS EC2
 
-1. Conecta tu repositorio a Vercel
-2. Configura las variables de entorno
-3. Deploy automatico en cada push
+El sistema esta desplegado en AWS EC2 con la siguiente configuracion:
+
+- **Servidor**: AWS EC2 (Ubuntu)
+- **Base de datos**: AWS RDS PostgreSQL
+- **Process Manager**: PM2
+- **Reverse Proxy**: Nginx
+- **Dominio**: novacorp.mx (IP: 18.116.134.188)
+
+### Comandos utiles
+
+```bash
+# Ver logs de la aplicacion
+pm2 logs novacore
+
+# Reiniciar aplicacion
+pm2 restart novacore
+
+# Ver estado
+pm2 status
+
+# Rebuild y restart
+cd /home/ubuntu/NOVACORE && npm run build && pm2 restart novacore
+```
+
+### Logs de Webhooks
+
+Los webhooks loguean toda la informacion recibida. Para ver los logs:
+```bash
+pm2 logs novacore --lines 100
+```
 
 ## Seguridad
 

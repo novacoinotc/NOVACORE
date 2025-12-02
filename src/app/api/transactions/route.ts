@@ -53,7 +53,7 @@ export async function GET(request: NextRequest) {
     const payerAccountPattern = payerAccount ? `%${payerAccount}%` : null;
 
     // Build and execute query with all filters
-    // Using Neon's tagged template literals for safe parameterized queries
+    // Using tagged template literals for safe parameterized queries
     const transactions = await sql`
       SELECT
         id,

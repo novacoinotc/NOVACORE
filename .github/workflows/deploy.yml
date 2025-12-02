@@ -25,11 +25,15 @@ jobs:
             
             cd /home/ubuntu/NOVACORE
             
-            echo "📦 Stashing local changes..."
+            echo "📦 Saving local changes..."
+            git add -A
             git stash
             
-            echo "⬇️  Pulling latest changes from GitHub..."
-            git pull origin main
+            echo "⬇️  Fetching latest changes from GitHub..."
+            git fetch origin main
+            
+            echo "🔄 Resetting to match GitHub (force sync)..."
+            git reset --hard origin/main
             
             echo "📚 Installing dependencies..."
             npm install --production

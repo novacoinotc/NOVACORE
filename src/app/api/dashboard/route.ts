@@ -15,14 +15,9 @@ export async function GET(request: NextRequest) {
     // Get current user for authorization
     const currentUser = await getCurrentUser(request);
 
-    // Determine company filter based on user role
-    let companyId: string | undefined;
-    if (currentUser) {
-      if (currentUser.role === 'company_admin' || currentUser.role === 'user') {
-        companyId = currentUser.company_id || undefined;
-      }
-      // super_admin sees all data (no filter)
-    }
+    // Note: Users don't have company_id in this system
+    // All authenticated users see all dashboard data (authorization via CLABE access)
+    const companyId: string | undefined = undefined;
 
     // Get dashboard stats
     const stats = await getDashboardStats(companyId);

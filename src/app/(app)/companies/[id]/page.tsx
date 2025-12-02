@@ -83,7 +83,7 @@ export default function CompanyDetailPage() {
   const getHeaders = () => {
     const headers: HeadersInit = { 'Content-Type': 'application/json' };
     try {
-      const sessionStr = localStorage.getItem('novacore_session');
+      const sessionStr = localStorage.getItem('novacorp_session');
       if (sessionStr) {
         const session = JSON.parse(sessionStr);
         if (session.user?.id) {

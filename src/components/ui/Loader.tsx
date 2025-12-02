@@ -138,7 +138,7 @@ export function PageLoader() {
             animate={{ opacity: [0.5, 1, 0.5] }}
             transition={{ duration: 1.5, repeat: Infinity }}
           >
-            Cargando NOVACORE...
+            Cargando NOVACORP...
           </motion.p>
         </div>
       </motion.div>

@@ -143,7 +143,7 @@ export const useStore = create<AppState>()(
       clearNotifications: () => set({ notifications: [] }),
     }),
     {
-      name: 'novacore-storage',
+      name: 'novacorp-storage',
       partialize: (state) => ({
         apiKey: state.apiKey,
         payerAccount: state.payerAccount,

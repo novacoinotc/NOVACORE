@@ -124,7 +124,7 @@ export default function LoginPage() {
                 WebkitBackgroundClip: 'text',
               }}
             >
-              NOVACORE
+              NOVACORP
             </motion.h1>
             <motion.p
               initial={{ opacity: 0 }}
@@ -164,7 +164,7 @@ export default function LoginPage() {
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="usuario@novacore.mx"
+                  placeholder="usuario@novacorp.mx"
                   className="w-full bg-white/[0.03] border border-white/[0.08] rounded-lg py-3 pl-10 pr-4 text-white placeholder:text-white/20 focus:outline-none focus:border-purple-500/50 focus:ring-1 focus:ring-purple-500/30 transition-all"
                   required
                   disabled={isLoading}

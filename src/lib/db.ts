@@ -1142,7 +1142,7 @@ export async function createCommissionTransaction(params: {
     trackingKey,
     concept: `Comisión por transacción ${params.sourceTransaction.tracking_key}`,
     beneficiaryAccount: params.targetClabe,
-    beneficiaryName: 'NOVACORE INTEGRADORA',
+    beneficiaryName: 'NOVACORP INTEGRADORA',
   });
 }
 

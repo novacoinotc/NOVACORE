@@ -3,10 +3,10 @@ import { AuthProvider } from '@/context/AuthContext';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'NOVACORE - Core Bancario',
+  title: 'NOVACORP - Core Bancario',
   description: 'Sistema bancario futurista con integración SPEI',
   keywords: ['banking', 'SPEI', 'fintech', 'Mexico'],
-  authors: [{ name: 'NOVACORE' }],
+  authors: [{ name: 'NOVACORP' }],
 };
 
 export const viewport: Viewport = {

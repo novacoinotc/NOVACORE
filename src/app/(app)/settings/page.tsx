@@ -228,7 +228,7 @@ export default function SettingsPage() {
 
               <Input
                 label="Nombre Ordenante"
-                placeholder="NOVACORE SA DE CV"
+                placeholder="NOVACORP SA DE CV"
                 hint="Sin acentos ni caracteres especiales"
               />
 

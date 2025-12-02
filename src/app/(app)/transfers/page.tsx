@@ -656,7 +656,7 @@ export default function TransfersPage() {
                 </div>
                 <div className="p-3 rounded-md bg-white/[0.02] border border-white/[0.06]">
                   <p className="text-xs text-white/30">Titular</p>
-                  <p className="text-sm text-white/80">NOVACORE SA DE CV</p>
+                  <p className="text-sm text-white/80">NOVACORP SA DE CV</p>
                 </div>
               </div>
 

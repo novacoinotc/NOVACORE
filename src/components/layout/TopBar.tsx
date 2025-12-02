@@ -26,7 +26,7 @@ export function TopBar({ onMenuClick }: TopBarProps) {
           className="text-sm font-bold tracking-wider text-white/80"
           style={{ fontFamily: "'Orbitron', sans-serif" }}
         >
-          NOVACORE
+          NOVACORP
         </span>
       </div>
 

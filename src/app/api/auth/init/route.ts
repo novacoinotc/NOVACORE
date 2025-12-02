@@ -9,14 +9,14 @@ export async function POST() {
     await initializeDatabase();
 
     // Check if super admin exists
-    const existingSuperAdmin = await getUserByEmail('admin@novacore.mx');
+    const existingSuperAdmin = await getUserByEmail('admin@novacorp.mx');
 
     if (!existingSuperAdmin) {
       // Create super admin user (no company association)
       const hashedPassword = await bcrypt.hash('admin123', 10);
       await createUser({
         id: 'super_admin_' + Date.now(),
-        email: 'admin@novacore.mx',
+        email: 'admin@novacorp.mx',
         password: hashedPassword,
         name: 'Super Administrador',
         role: 'super_admin',

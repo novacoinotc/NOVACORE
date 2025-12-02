@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
-import { getUserByEmail, updateLastLogin, getCompanyById, getClabeAccountsByCompanyId, getClabeAccountsForUser, getAllClabeAccounts } from '@/lib/db';
+import { getUserByEmail, updateLastLogin, getClabeAccountsForUser, getAllClabeAccounts } from '@/lib/db';
 import { ALL_PERMISSIONS, Permission, UserRole } from '@/types';
 
 export async function POST(request: NextRequest) {
@@ -25,7 +25,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if user is active
-    if (!dbUser.is_active) {
+    if (!dbUser.isActive) {
       return NextResponse.json(
         { error: 'Usuario desactivado' },
         { status: 401 }
@@ -45,72 +45,43 @@ export async function POST(request: NextRequest) {
     // Update last login
     await updateLastLogin(dbUser.id);
 
-    // Get company info if user has a company
-    let company = null;
-    if (dbUser.company_id) {
-      const dbCompany = await getCompanyById(dbUser.company_id);
-      if (dbCompany) {
-        company = {
-          id: dbCompany.id,
-          name: dbCompany.name,
-          businessName: dbCompany.business_name,
-          rfc: dbCompany.rfc,
-          email: dbCompany.email,
-          phone: dbCompany.phone,
-          address: dbCompany.address,
-          isActive: dbCompany.is_active,
-          createdAt: new Date(dbCompany.created_at).getTime(),
-          updatedAt: new Date(dbCompany.updated_at).getTime(),
-        };
-      }
-    }
-
     // Get CLABE accounts based on role
     let clabeAccounts: any[] = [];
     let clabeAccountIds: string[] = [];
 
-    if (dbUser.role === 'super_admin') {
-      // Super admin has access to all CLABE accounts
-      const dbClabeAccounts = await getAllClabeAccounts();
-      clabeAccounts = dbClabeAccounts.map(ca => ({
-        id: ca.id,
-        companyId: ca.company_id,
-        clabe: ca.clabe,
-        alias: ca.alias,
-        description: ca.description,
-        isActive: ca.is_active,
-        createdAt: new Date(ca.created_at).getTime(),
-        updatedAt: new Date(ca.updated_at).getTime(),
-      }));
-      clabeAccountIds = clabeAccounts.map(ca => ca.id);
-    } else if (dbUser.role === 'company_admin' && dbUser.company_id) {
-      // Company admin has access to all CLABE accounts in their company
-      const dbClabeAccounts = await getClabeAccountsByCompanyId(dbUser.company_id);
-      clabeAccounts = dbClabeAccounts.map(ca => ({
-        id: ca.id,
-        companyId: ca.company_id,
-        clabe: ca.clabe,
-        alias: ca.alias,
-        description: ca.description,
-        isActive: ca.is_active,
-        createdAt: new Date(ca.created_at).getTime(),
-        updatedAt: new Date(ca.updated_at).getTime(),
-      }));
-      clabeAccountIds = clabeAccounts.map(ca => ca.id);
-    } else {
-      // Regular user has access only to assigned CLABE accounts
-      const dbClabeAccounts = await getClabeAccountsForUser(dbUser.id);
-      clabeAccounts = dbClabeAccounts.map(ca => ({
-        id: ca.id,
-        companyId: ca.company_id,
-        clabe: ca.clabe,
-        alias: ca.alias,
-        description: ca.description,
-        isActive: ca.is_active,
-        createdAt: new Date(ca.created_at).getTime(),
-        updatedAt: new Date(ca.updated_at).getTime(),
-      }));
-      clabeAccountIds = clabeAccounts.map(ca => ca.id);
+    try {
+      if (dbUser.role === 'super_admin') {
+        // Super admin has access to all CLABE accounts
+        const dbClabeAccounts = await getAllClabeAccounts();
+        clabeAccounts = dbClabeAccounts.map(ca => ({
+          id: ca.id,
+          companyId: ca.company_id,
+          clabe: ca.clabe,
+          alias: ca.alias,
+          description: ca.description,
+          isActive: ca.is_active,
+          createdAt: new Date(ca.created_at).getTime(),
+          updatedAt: new Date(ca.updated_at).getTime(),
+        }));
+        clabeAccountIds = clabeAccounts.map(ca => ca.id);
+      } else {
+        // Regular user has access only to assigned CLABE accounts
+        const dbClabeAccounts = await getClabeAccountsForUser(dbUser.id);
+        clabeAccounts = dbClabeAccounts.map(ca => ({
+          id: ca.id,
+          companyId: ca.company_id,
+          clabe: ca.clabe,
+          alias: ca.alias,
+          description: ca.description,
+          isActive: ca.is_active,
+          createdAt: new Date(ca.created_at).getTime(),
+          updatedAt: new Date(ca.updated_at).getTime(),
+        }));
+        clabeAccountIds = clabeAccounts.map(ca => ca.id);
+      }
+    } catch (e) {
+      // CLABE tables might not exist yet
+      console.log('Could not fetch CLABE accounts:', e);
     }
 
     // Create session token
@@ -133,14 +104,12 @@ export async function POST(request: NextRequest) {
       email: dbUser.email,
       name: dbUser.name,
       role: role,
-      companyId: dbUser.company_id,
       permissions: permissions,
       clabeAccountIds: clabeAccountIds,
-      isActive: dbUser.is_active,
-      createdAt: new Date(dbUser.created_at).getTime(),
-      updatedAt: new Date(dbUser.updated_at).getTime(),
+      isActive: dbUser.isActive,
+      createdAt: dbUser.createdAt ? new Date(dbUser.createdAt).getTime() : Date.now(),
+      updatedAt: dbUser.updatedAt ? new Date(dbUser.updatedAt).getTime() : Date.now(),
       lastLogin: Date.now(),
-      company: company,
       clabeAccounts: clabeAccounts,
     };
 

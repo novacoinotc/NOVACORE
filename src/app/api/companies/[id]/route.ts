@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCompanyById, updateCompany, deleteCompany, getCompanyByRfc, getUsersByCompanyId, getCompanyWithDetails, getTransactionsByCompanyId, getUserById } from '@/lib/db';
+import { getCompanyById, updateCompany, deleteCompany, getCompanyByRfc, getCompanyWithDetails, getTransactionsByCompanyId, getUserById } from '@/lib/db';
 import { getBankName } from '@/lib/banks';
 
 // Helper to get current user from request headers
@@ -67,9 +67,9 @@ export async function GET(
         email: u.email,
         name: u.name,
         role: u.role,
-        isActive: u.is_active,
-        lastLogin: u.last_login ? new Date(u.last_login).getTime() : null,
-        createdAt: new Date(u.created_at).getTime(),
+        isActive: u.isActive,
+        lastLogin: u.lastLogin ? new Date(u.lastLogin).getTime() : null,
+        createdAt: u.createdAt ? new Date(u.createdAt).getTime() : Date.now(),
       }));
 
       const clabeAccounts = details.clabeAccounts.map((c) => ({
@@ -284,14 +284,7 @@ export async function DELETE(
       );
     }
 
-    // Check if company has users
-    const companyUsers = await getUsersByCompanyId(params.id);
-    if (companyUsers.length > 0) {
-      return NextResponse.json(
-        { error: 'No se puede eliminar una empresa con usuarios asociados' },
-        { status: 400 }
-      );
-    }
+    // Note: Users no longer have company_id, so we don't check for associated users
 
     await deleteCompany(params.id);
 

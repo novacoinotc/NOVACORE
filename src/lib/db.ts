@@ -1,6 +1,8 @@
 import { neon } from '@neondatabase/serverless';
 
-// Create a SQL client
+// Create a SQL client for PostgreSQL (AWS RDS)
+// Note: The @neondatabase/serverless package is compatible with any PostgreSQL database
+// including AWS RDS. Consider migrating to 'pg' package for better RDS optimization.
 const sql = neon(process.env.DATABASE_URL!);
 
 export { sql };

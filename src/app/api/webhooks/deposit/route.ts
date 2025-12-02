@@ -169,7 +169,7 @@ interface DepositData {
   payerName?: string;
   payerUid?: string;
   concept?: string;
-  numericalReference?: string;
+  numericalReference?: string | number;
   receivedTimestamp?: number | string;
 }
 
@@ -249,6 +249,11 @@ async function processDeposit(data: DepositData): Promise<ProcessResult> {
     const transactionId = `tx_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
 
     try {
+      // Convert numericalReference to number if it's a string
+      const numRef = data.numericalReference
+        ? parseInt(String(data.numericalReference), 10)
+        : undefined;
+
       const savedTransaction = await createTransaction({
         id: transactionId,
         clabeAccountId: clabeAccount.id,
@@ -257,7 +262,7 @@ async function processDeposit(data: DepositData): Promise<ProcessResult> {
         amount: data.amount,
         concept: data.concept,
         trackingKey: data.trackingKey,
-        numericalReference: data.numericalReference,
+        numericalReference: isNaN(numRef as number) ? undefined : numRef,
         beneficiaryAccount: data.beneficiaryAccount,
         beneficiaryBank: data.beneficiaryBank,
         beneficiaryName: data.beneficiaryName,

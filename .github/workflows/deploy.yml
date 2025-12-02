@@ -21,7 +21,7 @@ jobs:
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
             set -e
-            echo "🚀 Starting deployment of NOVACORE..."
+            echo "🚀 Starting deployment of NOVACORP..."
 
             cd /home/ubuntu/NOVACORE
 
@@ -48,7 +48,7 @@ jobs:
             npm run build
 
             echo "🔄 Restarting PM2..."
-            pm2 restart novacore
+            pm2 restart novacorp
 
             echo "✅ Deployment completed successfully!"
             pm2 status

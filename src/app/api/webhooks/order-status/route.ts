@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { updateTransactionStatus, getTransactionById } from '@/lib/db';
+import { verifySignature } from '@/lib/crypto';
+import { buildOrderStatusOriginalString } from '@/lib/opm-api';
 
 /**
  * POST /api/webhooks/order-status
@@ -43,6 +45,27 @@ export async function POST(request: NextRequest) {
       console.warn('Webhook secret mismatch - logging but continuing');
       // Don't reject, just log the mismatch
     }
+
+    // MANDATORY: Validate RSA signature from OPM
+    const signatureValid = await validateOpmSignature(body);
+    if (!signatureValid) {
+      console.error('=== ORDER STATUS WEBHOOK SIGNATURE VALIDATION FAILED ===');
+      console.error('Timestamp:', timestamp);
+      console.error('Body:', JSON.stringify(body, null, 2));
+      console.error('Sign field:', body?.sign || body?.data?.sign || 'NOT PROVIDED');
+      console.error('=======================================================');
+
+      return NextResponse.json({
+        received: true,
+        timestamp,
+        processed: false,
+        returnCode: 99,
+        errorDescription: 'Invalid signature',
+        message: 'RSA signature validation failed',
+      });
+    }
+
+    console.log('RSA signature validated successfully');
 
     // Try to extract order status data from various possible payload structures
     const orderData = extractOrderStatusData(body);
@@ -154,6 +177,68 @@ function extractOrderStatusData(body: any): OrderStatusData | null {
   } catch (error) {
     console.error('Error extracting order status data:', error);
     return null;
+  }
+}
+
+/**
+ * Validate OPM RSA signature on incoming order status webhook
+ *
+ * OPM signs all webhooks with their private key. We verify using their public key.
+ * The original string format for orderStatus webhooks is:
+ * ||id|status|detail||
+ */
+async function validateOpmSignature(body: any): Promise<boolean> {
+  try {
+    const publicKey = process.env.OPM_PUBLIC_KEY;
+
+    if (!publicKey) {
+      console.error('OPM_PUBLIC_KEY not configured - cannot validate signature');
+      return false;
+    }
+
+    // Extract signature from payload (can be at root level or in data)
+    const signature = body?.sign || body?.data?.sign;
+
+    if (!signature) {
+      console.error('No signature (sign field) found in webhook payload');
+      return false;
+    }
+
+    // Extract data for building original string
+    // Handle both nested (type: 'orderStatus', data: {...}) and flat structures
+    const data = body?.type === 'orderStatus' && body?.data ? body.data : body;
+
+    // Validate required fields for signature verification
+    const orderId = data?.id || data?.orderId;
+    const status = data?.status;
+
+    if (!orderId || !status) {
+      console.error('Missing required fields (id/orderId, status) for signature verification');
+      return false;
+    }
+
+    // Build the original string that OPM signed
+    const originalString = buildOrderStatusOriginalString({
+      id: orderId,
+      status: status,
+      detail: data?.detail || '',
+    });
+
+    console.log('Original string for signature verification:', originalString);
+
+    // Verify the signature using OPM's public key
+    const isValid = await verifySignature(originalString, signature, publicKey);
+
+    if (!isValid) {
+      console.error('RSA signature verification failed');
+      console.error('Expected signature for original string:', originalString);
+      console.error('Received signature:', signature);
+    }
+
+    return isValid;
+  } catch (error) {
+    console.error('Error during signature validation:', error);
+    return false;
   }
 }
 

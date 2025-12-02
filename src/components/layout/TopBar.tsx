@@ -1,8 +1,6 @@
 'use client';
 
 import { Search, Menu, Shield, ShieldCheck } from 'lucide-react';
-import { useEffect, useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '@/context/AuthContext';
 
 interface TopBarProps {
@@ -11,46 +9,6 @@ interface TopBarProps {
 
 export function TopBar({ onMenuClick }: TopBarProps) {
   const { user } = useAuth();
-  const [btcPrice, setBtcPrice] = useState<number | null>(null);
-  const [priceChange, setPriceChange] = useState<number>(0);
-  const [priceKey, setPriceKey] = useState(0);
-
-  useEffect(() => {
-    const fetchBtcPrice = async () => {
-      try {
-        const response = await fetch(
-          'https://api.binance.com/api/v3/ticker/24hr?symbol=BTCUSDT'
-        );
-        const data = await response.json();
-
-        const forexResponse = await fetch(
-          'https://api.exchangerate-api.com/v4/latest/USD'
-        );
-        const forexData = await forexResponse.json();
-        const usdToMxn = forexData.rates?.MXN || 17.5;
-
-        const priceInMxn = parseFloat(data.lastPrice) * usdToMxn;
-        setBtcPrice(priceInMxn);
-        setPriceChange(parseFloat(data.priceChangePercent));
-        setPriceKey(prev => prev + 1);
-      } catch (error) {
-        console.error('Error fetching BTC price:', error);
-      }
-    };
-
-    fetchBtcPrice();
-    const interval = setInterval(fetchBtcPrice, 5000);
-    return () => clearInterval(interval);
-  }, []);
-
-  const formatPrice = (price: number) => {
-    return new Intl.NumberFormat('es-MX', {
-      style: 'currency',
-      currency: 'MXN',
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
-    }).format(price);
-  };
 
   return (
     <header className="h-14 flex items-center justify-between px-4 lg:px-6 border-b border-white/[0.06]">
@@ -62,38 +20,14 @@ export function TopBar({ onMenuClick }: TopBarProps) {
         <Menu className="w-5 h-5" />
       </button>
 
-      {/* Center section - BTC Price (mobile only) */}
+      {/* Center section - Logo (mobile only) */}
       <div className="lg:hidden flex flex-col items-center">
         <span
-          className="text-[7px] tracking-[0.2em] text-white/30 uppercase mb-0.5"
-          style={{ fontFamily: "'JetBrains Mono', monospace" }}
+          className="text-sm font-bold tracking-wider text-white/80"
+          style={{ fontFamily: "'Orbitron', sans-serif" }}
         >
-          in crypto we trust
+          NOVACORP
         </span>
-        {btcPrice && (
-          <div className="flex items-center gap-1.5">
-            <span className="text-orange-400 text-xs font-bold">₿</span>
-            <AnimatePresence mode="wait">
-              <motion.span
-                key={priceKey}
-                initial={{ opacity: 0, y: -3 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: 3 }}
-                transition={{ duration: 0.15 }}
-                className="text-xs font-mono text-white/90"
-              >
-                {formatPrice(btcPrice)}
-              </motion.span>
-            </AnimatePresence>
-            <span
-              className={`text-[9px] font-mono ${
-                priceChange >= 0 ? 'text-green-400' : 'text-red-400'
-              }`}
-            >
-              {priceChange >= 0 ? '↑' : '↓'}{Math.abs(priceChange).toFixed(1)}%
-            </span>
-          </div>
-        )}
       </div>
 
       {/* Search - desktop only */}

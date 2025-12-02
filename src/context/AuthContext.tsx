@@ -41,7 +41,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     const checkSession = () => {
       try {
-        const sessionStr = localStorage.getItem('novacore_session');
+        const sessionStr = localStorage.getItem('novacorp_session');
         if (sessionStr) {
           const session = JSON.parse(sessionStr);
           // Validate session has valid role (clear stale sessions with old role format)
@@ -49,13 +49,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             setUser(session.user);
           } else {
             // Session expired or has invalid role format
-            localStorage.removeItem('novacore_session');
+            localStorage.removeItem('novacorp_session');
           }
         }
       } catch (error) {
         console.error('Error checking session:', error);
         try {
-          localStorage.removeItem('novacore_session');
+          localStorage.removeItem('novacorp_session');
         } catch {
           // Ignore
         }
@@ -103,7 +103,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       };
 
       try {
-        localStorage.setItem('novacore_session', JSON.stringify(session));
+        localStorage.setItem('novacorp_session', JSON.stringify(session));
       } catch {
         // Ignore storage errors
       }
@@ -118,7 +118,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const logout = useCallback(() => {
     try {
-      localStorage.removeItem('novacore_session');
+      localStorage.removeItem('novacorp_session');
     } catch {
       // Ignore
     }

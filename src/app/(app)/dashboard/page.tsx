@@ -37,7 +37,7 @@ export default function DashboardPage() {
         setError(null);
 
         // Get session for user ID
-        const sessionStr = localStorage.getItem('novacore_session');
+        const sessionStr = localStorage.getItem('novacorp_session');
         let headers: HeadersInit = { 'Content-Type': 'application/json' };
 
         if (sessionStr) {

@@ -235,7 +235,7 @@ async function processCompanyCutoff(group: {
       concept: `CORTE COMISIONES ${today} (${group.count} ops)`,
       trackingKey,
       beneficiaryAccount: company.parent_clabe,
-      beneficiaryName: 'NOVACORE INTEGRADORA',
+      beneficiaryName: 'NOVACORP INTEGRADORA',
     });
 
     // Update cutoff with transaction info
@@ -262,7 +262,7 @@ async function processCompanyCutoff(group: {
     //     concept: `CORTE COMISIONES ${today}`,
     //     beneficiaryAccount: company.parent_clabe,
     //     beneficiaryBank: company.parent_clabe.substring(0, 3),
-    //     beneficiaryName: 'NOVACORE INTEGRADORA',
+    //     beneficiaryName: 'NOVACORP INTEGRADORA',
     //     amount: roundedAmount,
     //     trackingKey,
     //   });

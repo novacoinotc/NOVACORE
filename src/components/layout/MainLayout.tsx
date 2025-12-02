@@ -5,7 +5,6 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useEffect, useState, useMemo } from 'react';
 import { Sidebar } from './Sidebar';
 import { TopBar } from './TopBar';
-import { BitcoinPrice } from './BitcoinPrice';
 
 interface MainLayoutProps {
   children: React.ReactNode;
@@ -159,10 +158,6 @@ export function MainLayout({ children }: MainLayoutProps) {
         </div>
       </div>
 
-      {/* Bitcoin Price - Bottom Left (desktop only, mobile shows in TopBar) */}
-      <div className="hidden lg:block">
-        <BitcoinPrice />
-      </div>
     </div>
   );
 }

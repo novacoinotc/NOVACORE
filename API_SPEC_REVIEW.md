@@ -1,4 +1,4 @@
-# OPM API Specification Review - NOVACORE
+# OPM API Specification Review - NOVACORP
 
 **Review Date:** November 30, 2025
 **Specification Version:** API v1.15 (Especificacion api.pdf, April 2025)
@@ -8,7 +8,7 @@
 
 ## Executive Summary
 
-The NOVACORE implementation has been reviewed against the official OPM API specification. The implementation demonstrates **excellent compliance** with the specification, covering all major endpoints, field validations, signature generation, and webhook handling.
+The NOVACORP implementation has been reviewed against the official OPM API specification. The implementation demonstrates **excellent compliance** with the specification, covering all major endpoints, field validations, signature generation, and webhook handling.
 
 **Overall Compliance Score: 95%**
 

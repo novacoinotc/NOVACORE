@@ -1,6 +1,6 @@
-# NOVACORE - Core Bancario Futurista
+# NOVACORP - Core Bancario Futurista
 
-Sistema bancario moderno con integracion SPEI (Sistema de Pagos Electronicos Interbancarios) de Mexico, disenado con estetica crypto/web3.
+Sistema bancario moderno con integracion SPEI (Sistema de Pagos Electronicos Interbancarios) de Mexico.
 
 **Dominio**: https://novacorp.mx
 
@@ -11,7 +11,7 @@ Sistema bancario moderno con integracion SPEI (Sistema de Pagos Electronicos Int
 - Gestion de clientes (Participantes Indirectos)
 - Historial de transacciones con filtros avanzados
 - Webhooks para notificaciones automaticas
-- Interfaz futurista con animaciones web3
+- Interfaz futurista con animaciones modernas
 - Colores neon y efectos glassmorphism
 
 ## Tecnologias
@@ -59,7 +59,7 @@ OPM_PUBLIC_KEY=your_public_key_base64
 # Default Payer Configuration
 DEFAULT_PAYER_ACCOUNT=684180017000000001
 DEFAULT_PAYER_BANK=90684
-DEFAULT_PAYER_NAME=NOVACORE SA DE CV
+DEFAULT_PAYER_NAME=NOVACORP SA DE CV
 \`\`\`
 
 ## Instalacion
@@ -120,23 +120,23 @@ El sistema esta desplegado en AWS EC2 con la siguiente configuracion:
 
 ```bash
 # Ver logs de la aplicacion
-pm2 logs novacore
+pm2 logs novacorp
 
 # Reiniciar aplicacion
-pm2 restart novacore
+pm2 restart novacorp
 
 # Ver estado
 pm2 status
 
 # Rebuild y restart
-cd /home/ubuntu/NOVACORE && npm run build && pm2 restart novacore
+cd /home/ubuntu/NOVACORE && npm run build && pm2 restart novacorp
 ```
 
 ### Logs de Webhooks
 
 Los webhooks loguean toda la informacion recibida. Para ver los logs:
 ```bash
-pm2 logs novacore --lines 100
+pm2 logs novacorp --lines 100
 ```
 
 ## Seguridad

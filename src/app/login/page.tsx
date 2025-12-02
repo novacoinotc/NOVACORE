@@ -221,30 +221,6 @@ export default function LoginPage() {
             </motion.button>
           </form>
 
-          {/* Demo credentials */}
-          <div className="mt-6 pt-6 border-t border-white/[0.06]">
-            <p className="text-white/30 text-xs text-center mb-3">
-              Credenciales de demo:
-            </p>
-            <div className="grid grid-cols-3 gap-2 text-[9px]">
-              <div className="bg-white/[0.02] border border-white/[0.06] rounded-lg p-2">
-                <p className="text-purple-400 font-medium mb-1">Super Admin</p>
-                <p className="text-white/40">admin@novacore.mx</p>
-                <p className="text-white/40">admin123</p>
-              </div>
-              <div className="bg-white/[0.02] border border-white/[0.06] rounded-lg p-2">
-                <p className="text-blue-400 font-medium mb-1">Empresa</p>
-                <p className="text-white/40">empresa@novacore.mx</p>
-                <p className="text-white/40">empresa123</p>
-              </div>
-              <div className="bg-white/[0.02] border border-white/[0.06] rounded-lg p-2">
-                <p className="text-emerald-400 font-medium mb-1">Usuario</p>
-                <p className="text-white/40">usuario@novacore.mx</p>
-                <p className="text-white/40">user123</p>
-              </div>
-            </div>
-          </div>
-
           {/* Footer */}
           <p className="text-white/20 text-[10px] text-center mt-6 tracking-wider">
             in crypto we trust

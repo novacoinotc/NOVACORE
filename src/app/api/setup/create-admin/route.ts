@@ -7,7 +7,7 @@ import { DEFAULT_ROLE_PERMISSIONS } from '@/types';
  * POST /api/setup/create-admin
  *
  * One-time endpoint to create super admin user
- * Database uses camelCase columns (Prisma schema)
+ * Database uses snake_case columns (Prisma @map)
  */
 export async function POST(request: NextRequest) {
   try {
@@ -25,14 +25,14 @@ export async function POST(request: NextRequest) {
     `;
 
     if (existingUsers.length > 0) {
-      // Update existing user - using camelCase column names
+      // Update existing user - using snake_case column names
       await sql`
         UPDATE users
         SET password = ${hashedPassword},
             role = 'super_admin',
             permissions = ${permissions},
-            "isActive" = true,
-            "updatedAt" = ${now}
+            is_active = true,
+            updated_at = ${now}
         WHERE email = ${email}
       `;
 
@@ -44,9 +44,9 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Create new super admin user - using camelCase column names
+    // Create new super admin user - using snake_case column names
     await sql`
-      INSERT INTO users (id, email, password, name, role, permissions, "isActive", "createdAt", "updatedAt")
+      INSERT INTO users (id, email, password, name, role, permissions, is_active, created_at, updated_at)
       VALUES (${userId}, ${email}, ${hashedPassword}, ${name}, 'super_admin', ${permissions}, true, ${now}, ${now})
     `;
 

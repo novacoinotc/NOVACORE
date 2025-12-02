@@ -6,6 +6,8 @@ import {
   getCompanyById,
 } from '@/lib/db';
 import { processCommission, canReceiveSpei } from '@/lib/commissions';
+import { verifySignature } from '@/lib/crypto';
+import { buildSupplyOriginalString } from '@/lib/opm-api';
 
 /**
  * POST /api/webhooks/deposit
@@ -42,6 +44,27 @@ export async function POST(request: NextRequest) {
       console.warn('Webhook secret mismatch - logging but continuing');
       // Don't reject, just log the mismatch
     }
+
+    // MANDATORY: Validate RSA signature from OPM
+    const signatureValid = await validateOpmSignature(body);
+    if (!signatureValid) {
+      console.error('=== DEPOSIT WEBHOOK SIGNATURE VALIDATION FAILED ===');
+      console.error('Timestamp:', timestamp);
+      console.error('Body:', JSON.stringify(body, null, 2));
+      console.error('Sign field:', body?.sign || body?.data?.sign || 'NOT PROVIDED');
+      console.error('================================================');
+
+      return NextResponse.json({
+        received: true,
+        timestamp,
+        processed: false,
+        returnCode: 99,
+        errorDescription: 'Invalid signature',
+        message: 'RSA signature validation failed',
+      });
+    }
+
+    console.log('RSA signature validated successfully');
 
     // Try to extract deposit data from various possible payload structures
     const depositData = extractDepositData(body);
@@ -154,6 +177,77 @@ function extractDepositData(body: any): DepositData | null {
   } catch (error) {
     console.error('Error extracting deposit data:', error);
     return null;
+  }
+}
+
+/**
+ * Validate OPM RSA signature on incoming deposit webhook
+ *
+ * OPM signs all webhooks with their private key. We verify using their public key.
+ * The original string format for supply webhooks is:
+ * ||beneficiaryName|beneficiaryUid|beneficiaryAccount|beneficiaryBank|beneficiaryAccountType|
+ * payerName|payerUid|payerAccount|payerBank|payerAccountType|amount|concept|trackingKey|numericalReference||
+ */
+async function validateOpmSignature(body: any): Promise<boolean> {
+  try {
+    const publicKey = process.env.OPM_PUBLIC_KEY;
+
+    if (!publicKey) {
+      console.error('OPM_PUBLIC_KEY not configured - cannot validate signature');
+      return false;
+    }
+
+    // Extract signature from payload (can be at root level or in data)
+    const signature = body?.sign || body?.data?.sign;
+
+    if (!signature) {
+      console.error('No signature (sign field) found in webhook payload');
+      return false;
+    }
+
+    // Extract data for building original string
+    // Handle both nested (type: 'supply', data: {...}) and flat structures
+    const data = body?.type === 'supply' && body?.data ? body.data : body;
+
+    // Validate required fields for signature verification
+    if (!data?.beneficiaryAccount || !data?.trackingKey) {
+      console.error('Missing required fields for signature verification');
+      return false;
+    }
+
+    // Build the original string that OPM signed
+    const originalString = buildSupplyOriginalString({
+      beneficiaryName: data.beneficiaryName || '',
+      beneficiaryUid: data.beneficiaryUid || '',
+      beneficiaryAccount: data.beneficiaryAccount,
+      beneficiaryBank: data.beneficiaryBank || '',
+      beneficiaryAccountType: data.beneficiaryAccountType || 40,
+      payerName: data.payerName || '',
+      payerUid: data.payerUid || '',
+      payerAccount: data.payerAccount || '',
+      payerBank: data.payerBank || '',
+      payerAccountType: data.payerAccountType || 40,
+      amount: data.amount || 0,
+      concept: data.concept || '',
+      trackingKey: data.trackingKey,
+      numericalReference: data.numericalReference || 0,
+    });
+
+    console.log('Original string for signature verification:', originalString);
+
+    // Verify the signature using OPM's public key
+    const isValid = await verifySignature(originalString, signature, publicKey);
+
+    if (!isValid) {
+      console.error('RSA signature verification failed');
+      console.error('Expected signature for original string:', originalString);
+      console.error('Received signature:', signature);
+    }
+
+    return isValid;
+  } catch (error) {
+    console.error('Error during signature validation:', error);
+    return false;
   }
 }
 

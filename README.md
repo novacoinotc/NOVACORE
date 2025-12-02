@@ -7,7 +7,7 @@ Sistema bancario moderno con integracion SPEI (Sistema de Pagos Electronicos Int
 - Dashboard interactivo con estadisticas en tiempo real
 - Transferencias SPEI de entrada y salida
 - Gestion de clientes (Participantes Indirectos)
-- Historial de transacciones con filtros avanzados
+- Historial de transacciones con filtros avanzadosll
 - Webhooks para notificaciones automaticas
 - Interfaz futurista con animaciones web3
 - Colores neon y efectos glassmorphism

@@ -53,6 +53,111 @@ jobs:
             # Try restart first, if it fails (process doesn't exist), start fresh
             pm2 restart novacorp 2>/dev/null || pm2 start ecosystem.config.js
 
-            echo "✅ Deployment completed successfully!"
+            echo "✅ Application deployment completed!"
             pm2 status
             pm2 save
+
+            # ============================================
+            # SSL Certificate Configuration
+            # ============================================
+            echo "🔐 Configuring SSL certificate..."
+
+            # Ensure directories exist
+            sudo mkdir -p /etc/ssl/certs /etc/ssl/private
+
+            # Copy certificate from repo to system location
+            if [ -f "/home/ubuntu/NOVACORE/ssl/novacorp_mx.chained.crt" ]; then
+              sudo cp /home/ubuntu/NOVACORE/ssl/novacorp_mx.chained.crt /etc/ssl/certs/novacorp.crt
+              echo "✅ Certificate copied to /etc/ssl/certs/"
+            else
+              echo "⚠️ Certificate file not found in repo, skipping SSL config..."
+            fi
+
+            # Copy private key from opm-certs if not already in private folder
+            if [ ! -f "/etc/ssl/private/novacorp.key" ]; then
+              if [ -f "/etc/ssl/opm-certs/novacorp-client.key" ]; then
+                sudo cp /etc/ssl/opm-certs/novacorp-client.key /etc/ssl/private/novacorp.key
+                echo "✅ Private key copied to /etc/ssl/private/"
+              else
+                echo "⚠️ Private key not found!"
+              fi
+            else
+              echo "✅ Private key already exists in /etc/ssl/private/"
+            fi
+
+            # Set proper permissions
+            sudo chmod 644 /etc/ssl/certs/novacorp.crt 2>/dev/null || true
+            sudo chmod 600 /etc/ssl/private/novacorp.key 2>/dev/null || true
+            sudo chown root:root /etc/ssl/private/novacorp.key 2>/dev/null || true
+
+            # Update Nginx configuration for SSL
+            echo "🔧 Updating Nginx configuration..."
+            sudo tee /etc/nginx/sites-available/novacorp > /dev/null << 'NGINXCONF'
+            # HTTP - Redirect to HTTPS
+            server {
+                listen 80;
+                server_name novacorp.mx www.novacorp.mx;
+                return 301 https://$server_name$request_uri;
+            }
+
+            # HTTPS - Main server block
+            server {
+                listen 443 ssl http2;
+                server_name novacorp.mx www.novacorp.mx;
+
+                # SSL Certificate (Client Authentication compatible)
+                ssl_certificate /etc/ssl/certs/novacorp.crt;
+                ssl_certificate_key /etc/ssl/private/novacorp.key;
+
+                # Modern SSL configuration
+                ssl_protocols TLSv1.2 TLSv1.3;
+                ssl_ciphers 'ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384';
+                ssl_prefer_server_ciphers off;
+                ssl_session_cache shared:SSL:10m;
+                ssl_session_timeout 1d;
+                ssl_session_tickets off;
+
+                # OCSP Stapling
+                ssl_stapling on;
+                ssl_stapling_verify on;
+
+                # Security headers
+                add_header X-Frame-Options "DENY" always;
+                add_header X-Content-Type-Options "nosniff" always;
+                add_header X-XSS-Protection "1; mode=block" always;
+                add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+
+                # Proxy to Next.js application
+                location / {
+                    proxy_pass http://localhost:3000;
+                    proxy_http_version 1.1;
+                    proxy_set_header Upgrade $http_upgrade;
+                    proxy_set_header Connection 'upgrade';
+                    proxy_set_header Host $host;
+                    proxy_set_header X-Real-IP $remote_addr;
+                    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                    proxy_set_header X-Forwarded-Proto $scheme;
+                    proxy_cache_bypass $http_upgrade;
+                    proxy_read_timeout 90;
+                    proxy_connect_timeout 90;
+                }
+            }
+            NGINXCONF
+
+            # Enable the site (create symlink if doesn't exist)
+            sudo ln -sf /etc/nginx/sites-available/novacorp /etc/nginx/sites-enabled/novacorp
+
+            # Remove default site if exists
+            sudo rm -f /etc/nginx/sites-enabled/default 2>/dev/null || true
+
+            # Test and restart Nginx
+            echo "🔄 Testing and restarting Nginx..."
+            if sudo nginx -t; then
+              sudo systemctl restart nginx
+              echo "✅ Nginx restarted successfully with SSL!"
+            else
+              echo "❌ Nginx configuration test failed!"
+              exit 1
+            fi
+
+            echo "🎉 Full deployment with SSL completed!"

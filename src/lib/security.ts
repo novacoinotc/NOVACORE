@@ -105,7 +105,9 @@ export function clearRateLimit(identifier: string): void {
 if (typeof setInterval !== 'undefined') {
   setInterval(() => {
     const now = Date.now();
-    for (const [key, entry] of rateLimitStore.entries()) {
+    const entries = Array.from(rateLimitStore.entries());
+    for (let i = 0; i < entries.length; i++) {
+      const [key, entry] = entries[i];
       if (now - entry.firstAttempt > RATE_LIMIT_WINDOW_MS) {
         rateLimitStore.delete(key);
       }

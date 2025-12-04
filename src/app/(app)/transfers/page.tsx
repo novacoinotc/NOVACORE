@@ -49,6 +49,10 @@ export default function TransfersPage() {
   const [isLoadingSavedAccounts, setIsLoadingSavedAccounts] = useState(false);
   const [showSavedAccountsDropdown, setShowSavedAccountsDropdown] = useState(false);
 
+  // 2FA state for transfers
+  const [requires2FA, setRequires2FA] = useState(false);
+  const [totpCode, setTotpCode] = useState('');
+
   // Form data
   const [formData, setFormData] = useState({
     beneficiaryAccount: '',
@@ -241,6 +245,14 @@ export default function TransfersPage() {
   };
 
   const handleConfirmTransfer = async () => {
+    // If 2FA is required but no code provided, show error
+    if (requires2FA && totpCode.length !== 6) {
+      setErrors({
+        submit: 'Ingresa el código de 6 dígitos de Google Authenticator',
+      });
+      return;
+    }
+
     setIsProcessing(true);
 
     try {
@@ -250,6 +262,10 @@ export default function TransfersPage() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
+          // Authentication
+          userId: user?.id,
+          totpCode: requires2FA ? totpCode : undefined,
+          // Transfer data
           beneficiaryAccount: formData.beneficiaryAccount,
           beneficiaryBank: formData.beneficiaryBank,
           beneficiaryName: formData.beneficiaryName,
@@ -264,6 +280,15 @@ export default function TransfersPage() {
       const data = await response.json();
 
       if (!response.ok) {
+        // Check if 2FA is required
+        if (data.requires2FA) {
+          setRequires2FA(true);
+          setErrors({
+            submit: data.error || 'Se requiere código de autenticación 2FA',
+          });
+          setIsProcessing(false);
+          return;
+        }
         throw new Error(data.error || 'Error al procesar la transferencia');
       }
 
@@ -275,6 +300,8 @@ export default function TransfersPage() {
 
       setShowConfirmModal(false);
       setShowSuccessModal(true);
+      setTotpCode('');
+      setRequires2FA(false);
     } catch (error) {
       console.error('Transfer error:', error);
       setErrors({
@@ -705,6 +732,29 @@ export default function TransfersPage() {
             </div>
           </div>
 
+          {/* 2FA Code Input - Shows when required */}
+          {requires2FA && (
+            <div className="p-4 rounded-lg bg-yellow-500/5 border border-yellow-500/20">
+              <div className="flex items-center gap-2 mb-3">
+                <Shield className="w-4 h-4 text-yellow-400" />
+                <span className="text-sm text-white/80 font-medium">Verificación 2FA requerida</span>
+              </div>
+              <p className="text-xs text-white/40 mb-3">
+                Ingresa el código de 6 dígitos de Google Authenticator
+              </p>
+              <Input
+                value={totpCode}
+                onChange={(e) => {
+                  setTotpCode(e.target.value.replace(/\D/g, '').slice(0, 6));
+                  if (errors.submit) setErrors({});
+                }}
+                placeholder="000000"
+                className="font-mono text-center text-lg tracking-widest"
+                maxLength={6}
+              />
+            </div>
+          )}
+
           {errors.submit && (
             <div className="p-3 rounded-md bg-red-500/10 border border-red-500/20 text-red-400 text-sm">
               {errors.submit}
@@ -715,7 +765,12 @@ export default function TransfersPage() {
             <Button
               variant="secondary"
               className="flex-1"
-              onClick={() => setShowConfirmModal(false)}
+              onClick={() => {
+                setShowConfirmModal(false);
+                setTotpCode('');
+                setRequires2FA(false);
+                setErrors({});
+              }}
               disabled={isProcessing}
             >
               Cancelar
@@ -724,9 +779,10 @@ export default function TransfersPage() {
               className="flex-1"
               onClick={handleConfirmTransfer}
               isLoading={isProcessing}
+              disabled={requires2FA && totpCode.length !== 6}
               leftIcon={isProcessing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Shield className="w-4 h-4" />}
             >
-              {isProcessing ? 'Procesando...' : 'Confirmar'}
+              {isProcessing ? 'Procesando...' : requires2FA ? 'Verificar y Enviar' : 'Confirmar'}
             </Button>
           </div>
         </div>

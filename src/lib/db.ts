@@ -149,6 +149,41 @@ export async function initializeDatabase() {
       // Column might already exist
     }
 
+    // Add security columns to users table (for account lockout and 2FA)
+    try {
+      await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS failed_attempts INTEGER DEFAULT 0`;
+      await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS locked_until TIMESTAMP`;
+      await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_secret TEXT`;
+      await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_enabled BOOLEAN DEFAULT false`;
+      await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_verified_at TIMESTAMP`;
+    } catch (e) {
+      // Columns might already exist
+    }
+
+    // Create audit_logs table for security auditing
+    await sql`
+      CREATE TABLE IF NOT EXISTS audit_logs (
+        id TEXT PRIMARY KEY,
+        timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        action TEXT NOT NULL,
+        user_id TEXT,
+        user_email TEXT,
+        ip_address TEXT,
+        user_agent TEXT,
+        details JSONB,
+        severity TEXT DEFAULT 'info' CHECK (severity IN ('info', 'warning', 'critical'))
+      )
+    `;
+
+    // Create index on audit_logs for faster queries
+    try {
+      await sql`CREATE INDEX IF NOT EXISTS idx_audit_logs_user ON audit_logs(user_id)`;
+      await sql`CREATE INDEX IF NOT EXISTS idx_audit_logs_action ON audit_logs(action)`;
+      await sql`CREATE INDEX IF NOT EXISTS idx_audit_logs_timestamp ON audit_logs(timestamp DESC)`;
+    } catch (e) {
+      // Indexes might already exist
+    }
+
     // Create transactions table for tracking SPEI transfers
     await sql`
       CREATE TABLE IF NOT EXISTS transactions (
@@ -1386,4 +1421,239 @@ export async function getTodayCommissionCutoff(companyId: string): Promise<DbCom
     WHERE company_id = ${companyId} AND cutoff_date = ${today}
   `;
   return result[0] as DbCommissionCutoff | null;
+}
+
+// ==================== SECURITY OPERATIONS ====================
+
+/**
+ * Record a failed login attempt for a user
+ */
+export async function recordFailedLoginAttempt(userId: string): Promise<{ failedAttempts: number; lockedUntil: Date | null }> {
+  const result = await sql`
+    UPDATE users
+    SET failed_attempts = COALESCE(failed_attempts, 0) + 1,
+        updated_at = CURRENT_TIMESTAMP
+    WHERE id = ${userId}
+    RETURNING failed_attempts, locked_until
+  `;
+
+  if (result.length === 0) {
+    return { failedAttempts: 0, lockedUntil: null };
+  }
+
+  return {
+    failedAttempts: result[0].failed_attempts || 0,
+    lockedUntil: result[0].locked_until ? new Date(result[0].locked_until) : null,
+  };
+}
+
+/**
+ * Lock a user account until a specified time
+ */
+export async function lockUserAccount(userId: string, lockedUntil: Date): Promise<void> {
+  await sql`
+    UPDATE users
+    SET locked_until = ${lockedUntil.toISOString()},
+        updated_at = CURRENT_TIMESTAMP
+    WHERE id = ${userId}
+  `;
+}
+
+/**
+ * Reset failed login attempts (e.g., after successful login)
+ */
+export async function resetFailedLoginAttempts(userId: string): Promise<void> {
+  await sql`
+    UPDATE users
+    SET failed_attempts = 0,
+        locked_until = NULL,
+        updated_at = CURRENT_TIMESTAMP
+    WHERE id = ${userId}
+  `;
+}
+
+/**
+ * Get user's security status (failed attempts and lock status)
+ */
+export async function getUserSecurityStatus(userId: string): Promise<{
+  failedAttempts: number;
+  lockedUntil: Date | null;
+  totpEnabled: boolean;
+}> {
+  const result = await sql`
+    SELECT failed_attempts, locked_until, totp_enabled
+    FROM users
+    WHERE id = ${userId}
+  `;
+
+  if (result.length === 0) {
+    return { failedAttempts: 0, lockedUntil: null, totpEnabled: false };
+  }
+
+  return {
+    failedAttempts: result[0].failed_attempts || 0,
+    lockedUntil: result[0].locked_until ? new Date(result[0].locked_until) : null,
+    totpEnabled: result[0].totp_enabled || false,
+  };
+}
+
+// ==================== 2FA OPERATIONS ====================
+
+/**
+ * Save TOTP secret for a user (during 2FA setup)
+ */
+export async function saveTotpSecret(userId: string, secret: string): Promise<void> {
+  await sql`
+    UPDATE users
+    SET totp_secret = ${secret},
+        totp_enabled = false,
+        updated_at = CURRENT_TIMESTAMP
+    WHERE id = ${userId}
+  `;
+}
+
+/**
+ * Enable 2FA for a user (after successful verification)
+ */
+export async function enableTotp(userId: string): Promise<void> {
+  await sql`
+    UPDATE users
+    SET totp_enabled = true,
+        totp_verified_at = CURRENT_TIMESTAMP,
+        updated_at = CURRENT_TIMESTAMP
+    WHERE id = ${userId}
+  `;
+}
+
+/**
+ * Disable 2FA for a user
+ */
+export async function disableTotp(userId: string): Promise<void> {
+  await sql`
+    UPDATE users
+    SET totp_enabled = false,
+        totp_secret = NULL,
+        totp_verified_at = NULL,
+        updated_at = CURRENT_TIMESTAMP
+    WHERE id = ${userId}
+  `;
+}
+
+/**
+ * Get user's TOTP secret
+ */
+export async function getUserTotpSecret(userId: string): Promise<string | null> {
+  const result = await sql`
+    SELECT totp_secret
+    FROM users
+    WHERE id = ${userId}
+  `;
+
+  return result.length > 0 ? result[0].totp_secret : null;
+}
+
+/**
+ * Check if user has 2FA enabled
+ */
+export async function isUserTotpEnabled(userId: string): Promise<boolean> {
+  const result = await sql`
+    SELECT totp_enabled
+    FROM users
+    WHERE id = ${userId}
+  `;
+
+  return result.length > 0 && result[0].totp_enabled === true;
+}
+
+// ==================== AUDIT LOG OPERATIONS ====================
+
+export interface DbAuditLog {
+  id: string;
+  timestamp: Date;
+  action: string;
+  user_id: string | null;
+  user_email: string | null;
+  ip_address: string | null;
+  user_agent: string | null;
+  details: Record<string, any> | null;
+  severity: 'info' | 'warning' | 'critical';
+}
+
+/**
+ * Create an audit log entry in the database
+ */
+export async function createAuditLogEntry(entry: {
+  id: string;
+  action: string;
+  userId?: string;
+  userEmail?: string;
+  ipAddress?: string;
+  userAgent?: string;
+  details?: Record<string, any>;
+  severity?: 'info' | 'warning' | 'critical';
+}): Promise<void> {
+  await sql`
+    INSERT INTO audit_logs (id, action, user_id, user_email, ip_address, user_agent, details, severity)
+    VALUES (
+      ${entry.id},
+      ${entry.action},
+      ${entry.userId || null},
+      ${entry.userEmail || null},
+      ${entry.ipAddress || null},
+      ${entry.userAgent || null},
+      ${entry.details ? JSON.stringify(entry.details) : null},
+      ${entry.severity || 'info'}
+    )
+  `;
+}
+
+/**
+ * Get recent audit logs
+ */
+export async function getRecentAuditLogs(limit: number = 100): Promise<DbAuditLog[]> {
+  const result = await sql`
+    SELECT * FROM audit_logs
+    ORDER BY timestamp DESC
+    LIMIT ${limit}
+  `;
+  return result as DbAuditLog[];
+}
+
+/**
+ * Get audit logs for a specific user
+ */
+export async function getAuditLogsByUser(userId: string, limit: number = 50): Promise<DbAuditLog[]> {
+  const result = await sql`
+    SELECT * FROM audit_logs
+    WHERE user_id = ${userId}
+    ORDER BY timestamp DESC
+    LIMIT ${limit}
+  `;
+  return result as DbAuditLog[];
+}
+
+/**
+ * Get audit logs by action type
+ */
+export async function getAuditLogsByAction(action: string, limit: number = 50): Promise<DbAuditLog[]> {
+  const result = await sql`
+    SELECT * FROM audit_logs
+    WHERE action = ${action}
+    ORDER BY timestamp DESC
+    LIMIT ${limit}
+  `;
+  return result as DbAuditLog[];
+}
+
+/**
+ * Get critical security events
+ */
+export async function getCriticalAuditLogs(limit: number = 50): Promise<DbAuditLog[]> {
+  const result = await sql`
+    SELECT * FROM audit_logs
+    WHERE severity = 'critical'
+    ORDER BY timestamp DESC
+    LIMIT ${limit}
+  `;
+  return result as DbAuditLog[];
 }

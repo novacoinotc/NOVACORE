@@ -8,6 +8,8 @@
  * - 2FA TOTP validation
  */
 
+import { createHmac } from 'crypto';
+
 // ==================== RATE LIMITING ====================
 
 interface RateLimitEntry {
@@ -268,31 +270,29 @@ export function verifyTOTP(secret: string, code: string): boolean {
 }
 
 /**
- * Generate TOTP code for a given counter
+ * Generate TOTP code for a given counter using Node.js crypto
  * Implementation of RFC 6238 TOTP
  */
 function generateTOTPCode(secret: string, counter: number): string {
   // Decode base32 secret
   const keyBytes = base32Decode(secret);
 
-  // Convert counter to 8-byte big-endian
-  const counterBytes = new Uint8Array(8);
-  let temp = counter;
-  for (let i = 7; i >= 0; i--) {
-    counterBytes[i] = temp & 0xff;
-    temp = Math.floor(temp / 256);
-  }
+  // Convert counter to 8-byte big-endian buffer
+  const counterBuffer = Buffer.alloc(8);
+  counterBuffer.writeBigInt64BE(BigInt(counter), 0);
 
-  // HMAC-SHA1
-  const hmac = hmacSha1(keyBytes, counterBytes);
+  // HMAC-SHA1 using Node.js native crypto
+  const hmac = createHmac('sha1', Buffer.from(keyBytes));
+  hmac.update(counterBuffer);
+  const hmacResult = hmac.digest();
 
   // Dynamic truncation
-  const offset = hmac[hmac.length - 1] & 0x0f;
+  const offset = hmacResult[hmacResult.length - 1] & 0x0f;
   const binary =
-    ((hmac[offset] & 0x7f) << 24) |
-    ((hmac[offset + 1] & 0xff) << 16) |
-    ((hmac[offset + 2] & 0xff) << 8) |
-    (hmac[offset + 3] & 0xff);
+    ((hmacResult[offset] & 0x7f) << 24) |
+    ((hmacResult[offset + 1] & 0xff) << 16) |
+    ((hmacResult[offset + 2] & 0xff) << 8) |
+    (hmacResult[offset + 3] & 0xff);
 
   const otp = binary % 1000000;
   return otp.toString().padStart(6, '0');
@@ -323,132 +323,6 @@ function base32Decode(encoded: string): Uint8Array {
   }
 
   return new Uint8Array(output);
-}
-
-/**
- * Simple HMAC-SHA1 implementation
- * Note: In production, use crypto.subtle.sign with HMAC
- */
-function hmacSha1(key: Uint8Array, message: Uint8Array): Uint8Array {
-  // For serverless/edge compatibility, we use a pure JS implementation
-  // This is a simplified version - in production use Web Crypto API
-
-  const blockSize = 64;
-  const outputSize = 20;
-
-  // Pad or hash key
-  let keyPadded = new Uint8Array(blockSize);
-  if (key.length > blockSize) {
-    // Hash key if too long (simplified - should use SHA1)
-    keyPadded.set(key.slice(0, blockSize));
-  } else {
-    keyPadded.set(key);
-  }
-
-  // XOR with pads
-  const ipad = new Uint8Array(blockSize);
-  const opad = new Uint8Array(blockSize);
-  for (let i = 0; i < blockSize; i++) {
-    ipad[i] = keyPadded[i] ^ 0x36;
-    opad[i] = keyPadded[i] ^ 0x5c;
-  }
-
-  // Inner hash: SHA1(ipad || message)
-  const innerData = new Uint8Array(blockSize + message.length);
-  innerData.set(ipad);
-  innerData.set(message, blockSize);
-  const innerHash = sha1(innerData);
-
-  // Outer hash: SHA1(opad || innerHash)
-  const outerData = new Uint8Array(blockSize + outputSize);
-  outerData.set(opad);
-  outerData.set(innerHash, blockSize);
-
-  return sha1(outerData);
-}
-
-/**
- * SHA1 implementation (pure JS for edge compatibility)
- */
-function sha1(message: Uint8Array): Uint8Array {
-  const H = [0x67452301, 0xEFCDAB89, 0x98BADCFE, 0x10325476, 0xC3D2E1F0];
-
-  // Pre-processing
-  const msgLen = message.length;
-  const bitLen = msgLen * 8;
-
-  // Padding
-  const padLen = ((msgLen + 8) % 64 < 56) ?
-    56 - (msgLen + 8) % 64 :
-    120 - (msgLen + 8) % 64;
-
-  const padded = new Uint8Array(msgLen + 1 + padLen + 8);
-  padded.set(message);
-  padded[msgLen] = 0x80;
-
-  // Append length in bits as 64-bit big-endian
-  const view = new DataView(padded.buffer);
-  view.setUint32(padded.length - 4, bitLen, false);
-
-  // Process in 64-byte chunks
-  for (let i = 0; i < padded.length; i += 64) {
-    const W = new Uint32Array(80);
-
-    // Copy chunk into first 16 words
-    for (let j = 0; j < 16; j++) {
-      W[j] = view.getUint32(i + j * 4, false);
-    }
-
-    // Extend to 80 words
-    for (let j = 16; j < 80; j++) {
-      W[j] = rotateLeft(W[j-3] ^ W[j-8] ^ W[j-14] ^ W[j-16], 1);
-    }
-
-    let [a, b, c, d, e] = H;
-
-    for (let j = 0; j < 80; j++) {
-      let f: number, k: number;
-
-      if (j < 20) {
-        f = (b & c) | ((~b) & d);
-        k = 0x5A827999;
-      } else if (j < 40) {
-        f = b ^ c ^ d;
-        k = 0x6ED9EBA1;
-      } else if (j < 60) {
-        f = (b & c) | (b & d) | (c & d);
-        k = 0x8F1BBCDC;
-      } else {
-        f = b ^ c ^ d;
-        k = 0xCA62C1D6;
-      }
-
-      const temp = (rotateLeft(a, 5) + f + e + k + W[j]) >>> 0;
-      e = d;
-      d = c;
-      c = rotateLeft(b, 30);
-      b = a;
-      a = temp;
-    }
-
-    H[0] = (H[0] + a) >>> 0;
-    H[1] = (H[1] + b) >>> 0;
-    H[2] = (H[2] + c) >>> 0;
-    H[3] = (H[3] + d) >>> 0;
-    H[4] = (H[4] + e) >>> 0;
-  }
-
-  const result = new Uint8Array(20);
-  const resultView = new DataView(result.buffer);
-  for (let i = 0; i < 5; i++) {
-    resultView.setUint32(i * 4, H[i], false);
-  }
-
-  return result;
-}
-
-function rotateLeft(n: number, s: number): number {
-  return ((n << s) | (n >>> (32 - s))) >>> 0;
 }
 
 // ==================== HELPER FUNCTIONS ====================

@@ -1433,7 +1433,7 @@ export async function recordFailedLoginAttempt(userId: string): Promise<{ failed
     const result = await sql`
       UPDATE users
       SET failed_attempts = COALESCE(failed_attempts, 0) + 1,
-          updated_at = CURRENT_TIMESTAMP
+          "updatedAt" = CURRENT_TIMESTAMP
       WHERE id = ${userId}
       RETURNING failed_attempts, locked_until
     `;
@@ -1461,7 +1461,7 @@ export async function lockUserAccount(userId: string, lockedUntil: Date): Promis
     await sql`
       UPDATE users
       SET locked_until = ${lockedUntil.toISOString()},
-          updated_at = CURRENT_TIMESTAMP
+          "updatedAt" = CURRENT_TIMESTAMP
       WHERE id = ${userId}
     `;
   } catch (error) {
@@ -1478,7 +1478,7 @@ export async function resetFailedLoginAttempts(userId: string): Promise<void> {
       UPDATE users
       SET failed_attempts = 0,
           locked_until = NULL,
-          updated_at = CURRENT_TIMESTAMP
+          "updatedAt" = CURRENT_TIMESTAMP
       WHERE id = ${userId}
     `;
   } catch (error) {

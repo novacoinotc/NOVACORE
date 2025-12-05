@@ -1528,12 +1528,12 @@ export async function saveTotpSecret(userId: string, secret: string): Promise<vo
       UPDATE users
       SET totp_secret = ${secret},
           totp_enabled = false,
-          updated_at = CURRENT_TIMESTAMP
+          "updatedAt" = CURRENT_TIMESTAMP
       WHERE id = ${userId}
     `;
   } catch (error) {
     console.log('Could not save TOTP secret:', error);
-    throw new Error('2FA setup is not available. Please contact support.');
+    throw new Error('No se pudo guardar la configuración 2FA. Contacte a soporte.');
   }
 }
 
@@ -1546,12 +1546,12 @@ export async function enableTotp(userId: string): Promise<void> {
       UPDATE users
       SET totp_enabled = true,
           totp_verified_at = CURRENT_TIMESTAMP,
-          updated_at = CURRENT_TIMESTAMP
+          "updatedAt" = CURRENT_TIMESTAMP
       WHERE id = ${userId}
     `;
   } catch (error) {
     console.log('Could not enable TOTP:', error);
-    throw new Error('Could not enable 2FA. Please contact support.');
+    throw new Error('No se pudo activar 2FA. Contacte a soporte.');
   }
 }
 
@@ -1565,12 +1565,12 @@ export async function disableTotp(userId: string): Promise<void> {
       SET totp_enabled = false,
           totp_secret = NULL,
           totp_verified_at = NULL,
-          updated_at = CURRENT_TIMESTAMP
+          "updatedAt" = CURRENT_TIMESTAMP
       WHERE id = ${userId}
     `;
   } catch (error) {
     console.log('Could not disable TOTP:', error);
-    throw new Error('Could not disable 2FA. Please contact support.');
+    throw new Error('No se pudo desactivar 2FA. Contacte a soporte.');
   }
 }
 
@@ -1584,7 +1584,6 @@ export async function getUserTotpSecret(userId: string): Promise<string | null> 
       FROM users
       WHERE id = ${userId}
     `;
-
     return result.length > 0 ? result[0].totp_secret : null;
   } catch (error) {
     console.log('Could not get TOTP secret:', error);
@@ -1602,7 +1601,6 @@ export async function isUserTotpEnabled(userId: string): Promise<boolean> {
       FROM users
       WHERE id = ${userId}
     `;
-
     return result.length > 0 && result[0].totp_enabled === true;
   } catch (error) {
     console.log('Could not check TOTP status:', error);

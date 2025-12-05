@@ -317,10 +317,14 @@ export async function POST(request: NextRequest) {
       clabeAccounts: clabeAccounts,
     };
 
+    // Check if user needs to setup 2FA (required for security)
+    const requiresTotpSetup = !securityStatus.totpEnabled;
+
     return NextResponse.json({
       user,
       token,
       expiresAt,
+      requiresTotpSetup, // Frontend should redirect to 2FA setup if true
     });
   } catch (error) {
     console.error('Login error:', error);

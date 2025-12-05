@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useRouter } from 'next/navigation';
-import { Eye, EyeOff, Lock, Mail, AlertCircle, Loader2 } from 'lucide-react';
+import { Eye, EyeOff, Lock, Mail, AlertCircle, Loader2, KeyRound, CheckCircle, ArrowLeft } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 
 export default function LoginPage() {
@@ -15,6 +15,17 @@ export default function LoginPage() {
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [mounted, setMounted] = useState(false);
+
+  // Password recovery states
+  const [showRecovery, setShowRecovery] = useState(false);
+  const [recoveryEmail, setRecoveryEmail] = useState('');
+  const [recoveryCode, setRecoveryCode] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [recoveryStep, setRecoveryStep] = useState<'email' | 'code' | 'success'>('email');
+  const [recoveryLoading, setRecoveryLoading] = useState(false);
+  const [recoveryError, setRecoveryError] = useState('');
+  const [recoverySuccess, setRecoverySuccess] = useState('');
 
   // Generate random gradient on mount (only client-side)
   const [gradient, setGradient] = useState('from-purple-900/40 via-violet-800/30 to-indigo-900/40');
@@ -61,6 +72,95 @@ export default function LoginPage() {
       setError('Error al iniciar sesión. Intenta de nuevo.');
       setIsLoading(false);
     }
+  };
+
+  // Request password reset code
+  const handleRequestReset = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setRecoveryError('');
+    setRecoveryLoading(true);
+
+    try {
+      const res = await fetch('/api/auth/reset-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: recoveryEmail, action: 'request' }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        setRecoveryError(data.error || 'Error al solicitar recuperación');
+        return;
+      }
+
+      // In development, the code is returned in response
+      if (data.resetCode) {
+        setRecoveryCode(data.resetCode);
+      }
+
+      setRecoverySuccess('Revisa tu correo para el código de recuperación.');
+      setRecoveryStep('code');
+    } catch (err) {
+      setRecoveryError('Error de conexión');
+    } finally {
+      setRecoveryLoading(false);
+    }
+  };
+
+  // Complete password reset
+  const handleResetPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setRecoveryError('');
+
+    if (newPassword !== confirmPassword) {
+      setRecoveryError('Las contraseñas no coinciden');
+      return;
+    }
+
+    if (newPassword.length < 8) {
+      setRecoveryError('La contraseña debe tener al menos 8 caracteres');
+      return;
+    }
+
+    setRecoveryLoading(true);
+
+    try {
+      const res = await fetch('/api/auth/reset-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'reset',
+          resetCode: recoveryCode,
+          newPassword,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        setRecoveryError(data.error || 'Error al restablecer contraseña');
+        return;
+      }
+
+      setRecoveryStep('success');
+    } catch (err) {
+      setRecoveryError('Error de conexión');
+    } finally {
+      setRecoveryLoading(false);
+    }
+  };
+
+  // Reset recovery state
+  const resetRecovery = () => {
+    setShowRecovery(false);
+    setRecoveryEmail('');
+    setRecoveryCode('');
+    setNewPassword('');
+    setConfirmPassword('');
+    setRecoveryStep('email');
+    setRecoveryError('');
+    setRecoverySuccess('');
   };
 
   // Show loading state while checking auth
@@ -219,6 +319,15 @@ export default function LoginPage() {
                 'Iniciar sesión'
               )}
             </motion.button>
+
+            {/* Forgot password link */}
+            <button
+              type="button"
+              onClick={() => setShowRecovery(true)}
+              className="w-full text-center text-sm text-white/40 hover:text-white/60 transition-colors mt-3"
+            >
+              ¿Olvidaste tu contraseña?
+            </button>
           </form>
 
           {/* Footer */}
@@ -227,6 +336,221 @@ export default function LoginPage() {
           </p>
         </div>
       </motion.div>
+
+      {/* Password Recovery Modal */}
+      <AnimatePresence>
+        {showRecovery && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          >
+            {/* Backdrop */}
+            <div
+              className="absolute inset-0 bg-black/80 backdrop-blur-sm"
+              onClick={resetRecovery}
+            />
+
+            {/* Modal */}
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="relative z-10 w-full max-w-md"
+            >
+              <div className="backdrop-blur-xl bg-white/[0.03] border border-white/[0.08] rounded-2xl p-8 shadow-2xl">
+                {/* Back button */}
+                <button
+                  onClick={resetRecovery}
+                  className="flex items-center gap-2 text-white/40 hover:text-white/60 transition-colors mb-6"
+                >
+                  <ArrowLeft className="w-4 h-4" />
+                  <span className="text-sm">Volver al login</span>
+                </button>
+
+                {/* Header */}
+                <div className="text-center mb-6">
+                  <div className="w-12 h-12 rounded-full bg-purple-500/10 flex items-center justify-center mx-auto mb-4">
+                    <KeyRound className="w-6 h-6 text-purple-400" />
+                  </div>
+                  <h2 className="text-xl font-medium text-white/90">
+                    {recoveryStep === 'email' && 'Recuperar contraseña'}
+                    {recoveryStep === 'code' && 'Establecer nueva contraseña'}
+                    {recoveryStep === 'success' && '¡Contraseña restablecida!'}
+                  </h2>
+                  <p className="text-sm text-white/40 mt-2">
+                    {recoveryStep === 'email' && 'Ingresa tu correo para recibir un código de recuperación'}
+                    {recoveryStep === 'code' && 'Ingresa el código y tu nueva contraseña'}
+                    {recoveryStep === 'success' && 'Ya puedes iniciar sesión con tu nueva contraseña'}
+                  </p>
+                </div>
+
+                {/* Error/Success messages */}
+                <AnimatePresence>
+                  {recoveryError && (
+                    <motion.div
+                      initial={{ opacity: 0, y: -10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -10 }}
+                      className="mb-4 p-3 bg-red-500/10 border border-red-500/20 rounded-lg flex items-center gap-2 text-red-400 text-sm"
+                    >
+                      <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                      {recoveryError}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+
+                {/* Step 1: Email input */}
+                {recoveryStep === 'email' && (
+                  <form onSubmit={handleRequestReset} className="space-y-4">
+                    <div className="space-y-1.5">
+                      <label className="text-white/40 text-xs uppercase tracking-wider">
+                        Correo electrónico
+                      </label>
+                      <div className="relative">
+                        <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/20" />
+                        <input
+                          type="email"
+                          value={recoveryEmail}
+                          onChange={(e) => setRecoveryEmail(e.target.value)}
+                          placeholder="usuario@novacorp.mx"
+                          className="w-full bg-white/[0.03] border border-white/[0.08] rounded-lg py-3 pl-10 pr-4 text-white placeholder:text-white/20 focus:outline-none focus:border-purple-500/50 focus:ring-1 focus:ring-purple-500/30 transition-all"
+                          required
+                          disabled={recoveryLoading}
+                        />
+                      </div>
+                    </div>
+
+                    <button
+                      type="submit"
+                      disabled={recoveryLoading}
+                      className="w-full py-3 bg-gradient-to-r from-purple-600 to-violet-600 hover:from-purple-500 hover:to-violet-500 text-white font-medium rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                    >
+                      {recoveryLoading ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          Enviando...
+                        </>
+                      ) : (
+                        'Enviar código'
+                      )}
+                    </button>
+                  </form>
+                )}
+
+                {/* Step 2: Code and new password */}
+                {recoveryStep === 'code' && (
+                  <form onSubmit={handleResetPassword} className="space-y-4">
+                    {recoverySuccess && (
+                      <div className="p-3 bg-green-500/10 border border-green-500/20 rounded-lg flex items-center gap-2 text-green-400 text-sm">
+                        <CheckCircle className="w-4 h-4 flex-shrink-0" />
+                        {recoverySuccess}
+                      </div>
+                    )}
+
+                    <div className="space-y-1.5">
+                      <label className="text-white/40 text-xs uppercase tracking-wider">
+                        Código de recuperación
+                      </label>
+                      <input
+                        type="text"
+                        value={recoveryCode}
+                        onChange={(e) => setRecoveryCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                        placeholder="000000"
+                        className="w-full bg-white/[0.03] border border-white/[0.08] rounded-lg py-3 px-4 text-white text-center text-lg tracking-widest font-mono placeholder:text-white/20 focus:outline-none focus:border-purple-500/50 focus:ring-1 focus:ring-purple-500/30 transition-all"
+                        maxLength={6}
+                        required
+                        disabled={recoveryLoading}
+                      />
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="text-white/40 text-xs uppercase tracking-wider">
+                        Nueva contraseña
+                      </label>
+                      <div className="relative">
+                        <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/20" />
+                        <input
+                          type="password"
+                          value={newPassword}
+                          onChange={(e) => setNewPassword(e.target.value)}
+                          placeholder="Mínimo 8 caracteres"
+                          className="w-full bg-white/[0.03] border border-white/[0.08] rounded-lg py-3 pl-10 pr-4 text-white placeholder:text-white/20 focus:outline-none focus:border-purple-500/50 focus:ring-1 focus:ring-purple-500/30 transition-all"
+                          required
+                          disabled={recoveryLoading}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="text-white/40 text-xs uppercase tracking-wider">
+                        Confirmar contraseña
+                      </label>
+                      <div className="relative">
+                        <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/20" />
+                        <input
+                          type="password"
+                          value={confirmPassword}
+                          onChange={(e) => setConfirmPassword(e.target.value)}
+                          placeholder="Repite la contraseña"
+                          className="w-full bg-white/[0.03] border border-white/[0.08] rounded-lg py-3 pl-10 pr-4 text-white placeholder:text-white/20 focus:outline-none focus:border-purple-500/50 focus:ring-1 focus:ring-purple-500/30 transition-all"
+                          required
+                          disabled={recoveryLoading}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-lg">
+                      <p className="text-xs text-amber-200/70">
+                        Al restablecer tu contraseña, el 2FA será deshabilitado y deberás configurarlo nuevamente al iniciar sesión.
+                      </p>
+                    </div>
+
+                    <button
+                      type="submit"
+                      disabled={recoveryLoading || recoveryCode.length !== 6}
+                      className="w-full py-3 bg-gradient-to-r from-purple-600 to-violet-600 hover:from-purple-500 hover:to-violet-500 text-white font-medium rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                    >
+                      {recoveryLoading ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          Restableciendo...
+                        </>
+                      ) : (
+                        'Restablecer contraseña'
+                      )}
+                    </button>
+                  </form>
+                )}
+
+                {/* Step 3: Success */}
+                {recoveryStep === 'success' && (
+                  <div className="space-y-4">
+                    <div className="flex justify-center">
+                      <div className="w-16 h-16 rounded-full bg-green-500/10 flex items-center justify-center">
+                        <CheckCircle className="w-8 h-8 text-green-400" />
+                      </div>
+                    </div>
+
+                    <p className="text-sm text-white/60 text-center">
+                      Tu contraseña ha sido restablecida y el 2FA ha sido deshabilitado.
+                      Deberás configurar el 2FA nuevamente al iniciar sesión.
+                    </p>
+
+                    <button
+                      onClick={resetRecovery}
+                      className="w-full py-3 bg-gradient-to-r from-purple-600 to-violet-600 hover:from-purple-500 hover:to-violet-500 text-white font-medium rounded-lg transition-all flex items-center justify-center gap-2"
+                    >
+                      Ir a iniciar sesión
+                    </button>
+                  </div>
+                )}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Shooting stars */}
       <div className="absolute inset-0 pointer-events-none overflow-hidden">

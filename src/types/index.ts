@@ -150,6 +150,7 @@ export interface User {
   updatedAt: number;
   lastLogin?: number;
   isActive: boolean;
+  totpEnabled?: boolean;     // Whether 2FA is enabled for user
   // Populated fields
   company?: Company;
   clabeAccounts?: ClabeAccount[];

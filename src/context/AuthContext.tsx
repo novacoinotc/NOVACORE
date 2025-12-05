@@ -11,11 +11,13 @@ interface AuthContextType {
   user: User | null;
   isAuthenticated: boolean;
   isLoading: boolean;
+  requiresTotpSetup: boolean;
   login: (email: string, password: string) => Promise<boolean>;
   logout: () => void;
   hasPermission: (permission: Permission) => boolean;
   hasAnyPermission: (permissions: Permission[]) => boolean;
   hasAllPermissions: (permissions: Permission[]) => boolean;
+  clearTotpSetupRequired: () => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -23,12 +25,16 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 // Pages that don't require authentication
 const PUBLIC_PATHS = ['/login'];
 
+// Pages allowed during 2FA setup (so user can configure 2FA)
+const TOTP_SETUP_PATHS = ['/settings', '/login'];
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [mounted, setMounted] = useState(false);
+  const [requiresTotpSetup, setRequiresTotpSetup] = useState(false);
 
   // Set mounted state
   useEffect(() => {
@@ -47,6 +53,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           // Validate session has valid role (clear stale sessions with old role format)
           if (session.expiresAt > Date.now() && session.user?.role && VALID_ROLES.includes(session.user.role)) {
             setUser(session.user);
+            // Check if user still needs to setup 2FA
+            if (session.requiresTotpSetup && !session.user?.totpEnabled) {
+              setRequiresTotpSetup(true);
+            }
           } else {
             // Session expired or has invalid role format
             localStorage.removeItem('novacorp_session');
@@ -71,15 +81,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (!mounted || isLoading) return;
 
     const isPublicPath = PUBLIC_PATHS.includes(pathname);
+    const isTotpSetupAllowedPath = TOTP_SETUP_PATHS.includes(pathname);
 
     if (!user && !isPublicPath) {
       // Not logged in and trying to access protected page
       router.push('/login');
     } else if (user && pathname === '/login') {
-      // Already logged in and on login page
-      router.push('/dashboard');
+      // Already logged in and on login page - check if needs 2FA setup
+      if (requiresTotpSetup) {
+        router.push('/settings');
+      } else {
+        router.push('/dashboard');
+      }
+    } else if (user && requiresTotpSetup && !isTotpSetupAllowedPath) {
+      // User needs to setup 2FA but is trying to access other pages
+      router.push('/settings');
     }
-  }, [user, isLoading, pathname, router, mounted]);
+  }, [user, isLoading, pathname, router, mounted, requiresTotpSetup]);
 
   const login = useCallback(async (email: string, password: string): Promise<boolean> => {
     try {
@@ -100,6 +118,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         user: data.user,
         token: data.token,
         expiresAt: data.expiresAt,
+        requiresTotpSetup: data.requiresTotpSetup || false,
       };
 
       try {
@@ -109,6 +128,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       setUser(data.user);
+
+      // Check if 2FA setup is required
+      if (data.requiresTotpSetup) {
+        setRequiresTotpSetup(true);
+      }
+
       return true;
     } catch (error) {
       console.error('Login error:', error);
@@ -123,8 +148,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // Ignore
     }
     setUser(null);
+    setRequiresTotpSetup(false);
     router.push('/login');
   }, [router]);
+
+  // Clear the 2FA setup requirement (called after user configures 2FA)
+  const clearTotpSetupRequired = useCallback(() => {
+    setRequiresTotpSetup(false);
+    // Update stored session
+    try {
+      const sessionStr = localStorage.getItem('novacorp_session');
+      if (sessionStr) {
+        const session = JSON.parse(sessionStr);
+        session.requiresTotpSetup = false;
+        if (session.user) {
+          session.user.totpEnabled = true;
+        }
+        localStorage.setItem('novacorp_session', JSON.stringify(session));
+        // Also update the user state
+        if (user) {
+          setUser({ ...user, totpEnabled: true });
+        }
+      }
+    } catch {
+      // Ignore
+    }
+  }, [user]);
 
   const hasPermission = useCallback(
     (permission: Permission): boolean => {
@@ -158,11 +207,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     user,
     isAuthenticated: !!user,
     isLoading: !mounted || isLoading,
+    requiresTotpSetup,
     login,
     logout,
     hasPermission,
     hasAnyPermission,
     hasAllPermissions,
+    clearTotpSetupRequired,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

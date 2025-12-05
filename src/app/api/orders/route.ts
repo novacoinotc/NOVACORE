@@ -3,6 +3,8 @@ import { createOrder, listOrders, buildOrderOriginalString } from '@/lib/opm-api
 import { signWithPrivateKey, generateNumericalReference, generateTrackingKey } from '@/lib/crypto';
 import { CreateOrderRequest } from '@/types';
 import { validateOrderFields, prepareTextForSpei, sanitizeForSpei } from '@/lib/utils';
+import { verifyTOTP, getClientIP, getUserAgent } from '@/lib/security';
+import { getUserTotpSecret, isUserTotpEnabled, createAuditLogEntry, getUserById } from '@/lib/db';
 
 /**
  * POST /api/orders
@@ -26,10 +28,17 @@ import { validateOrderFields, prepareTextForSpei, sanitizeForSpei } from '@/lib/
  * - trackingKey: string<30> - max 30 characters (optional)
  */
 export async function POST(request: NextRequest) {
+  const clientIP = getClientIP(request);
+  const userAgent = getUserAgent(request);
+
   try {
     const body = await request.json();
 
     const {
+      // Authentication fields
+      userId,
+      totpCode,
+      // Transfer fields
       beneficiaryAccount,
       beneficiaryBank,
       beneficiaryName,
@@ -50,6 +59,75 @@ export async function POST(request: NextRequest) {
       cepPayerUid,
       cepPayerAccount,
     } = body;
+
+    // ============================================
+    // 2FA Verification for SPEI Transfers
+    // ============================================
+    if (!userId) {
+      return NextResponse.json(
+        { error: 'Se requiere autenticación para realizar transferencias' },
+        { status: 401 }
+      );
+    }
+
+    // Check if user has 2FA enabled
+    const totpEnabled = await isUserTotpEnabled(userId);
+
+    if (totpEnabled) {
+      // 2FA is enabled - require TOTP code
+      if (!totpCode) {
+        return NextResponse.json(
+          {
+            error: 'Se requiere código de autenticación 2FA para realizar transferencias',
+            requires2FA: true
+          },
+          { status: 401 }
+        );
+      }
+
+      // Verify the TOTP code
+      const secret = await getUserTotpSecret(userId);
+      if (!secret || !verifyTOTP(secret, totpCode)) {
+        // Log failed 2FA attempt
+        const user = await getUserById(userId);
+        await createAuditLogEntry({
+          id: `audit_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`,
+          action: '2FA_FAILED',
+          userId,
+          userEmail: user?.email,
+          ipAddress: clientIP,
+          userAgent,
+          details: { reason: 'Invalid TOTP code for SPEI transfer', amount },
+          severity: 'warning',
+        });
+
+        return NextResponse.json(
+          {
+            error: 'Código de autenticación inválido',
+            requires2FA: true
+          },
+          { status: 401 }
+        );
+      }
+
+      // Log successful 2FA verification for transfer
+      const user = await getUserById(userId);
+      await createAuditLogEntry({
+        id: `audit_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`,
+        action: 'TRANSFER_INITIATED',
+        userId,
+        userEmail: user?.email,
+        ipAddress: clientIP,
+        userAgent,
+        details: {
+          beneficiaryAccount,
+          beneficiaryName,
+          amount,
+          verified2FA: true
+        },
+        severity: 'info',
+      });
+    }
 
     // Validate required fields
     if (!beneficiaryAccount || !beneficiaryBank || !beneficiaryName || !amount || !concept) {

@@ -7,12 +7,18 @@ import { User, Permission, UserRole } from '@/types';
 // Valid roles
 const VALID_ROLES: UserRole[] = ['super_admin', 'company_admin', 'user'];
 
+interface LoginResult {
+  success: boolean;
+  requires2FA?: boolean;
+  error?: string;
+}
+
 interface AuthContextType {
   user: User | null;
   isAuthenticated: boolean;
   isLoading: boolean;
   requiresTotpSetup: boolean;
-  login: (email: string, password: string) => Promise<boolean>;
+  login: (email: string, password: string, totpCode?: string) => Promise<LoginResult>;
   logout: () => void;
   hasPermission: (permission: Permission) => boolean;
   hasAnyPermission: (permissions: Permission[]) => boolean;
@@ -99,19 +105,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [user, isLoading, pathname, router, mounted, requiresTotpSetup]);
 
-  const login = useCallback(async (email: string, password: string): Promise<boolean> => {
+  const login = useCallback(async (email: string, password: string, totpCode?: string): Promise<LoginResult> => {
     try {
       const response = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email, password, totpCode }),
       });
 
-      if (!response.ok) {
-        return false;
+      const data = await response.json();
+
+      // Check if 2FA is required
+      if (!response.ok && data.requires2FA) {
+        return { success: false, requires2FA: true };
       }
 
-      const data = await response.json();
+      if (!response.ok) {
+        return { success: false, error: data.error || 'Error de autenticación' };
+      }
 
       // Save session to localStorage
       const session = {
@@ -134,10 +145,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setRequiresTotpSetup(true);
       }
 
-      return true;
+      return { success: true };
     } catch (error) {
       console.error('Login error:', error);
-      return false;
+      return { success: false, error: 'Error de conexión' };
     }
   }, []);
 

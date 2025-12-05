@@ -16,6 +16,10 @@ export default function LoginPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [mounted, setMounted] = useState(false);
 
+  // 2FA states
+  const [requires2FA, setRequires2FA] = useState(false);
+  const [totpCode, setTotpCode] = useState('');
+
   // Password recovery states
   const [showRecovery, setShowRecovery] = useState(false);
   const [recoveryEmail, setRecoveryEmail] = useState('');
@@ -58,10 +62,22 @@ export default function LoginPage() {
     setIsLoading(true);
 
     try {
-      const success = await login(email, password);
+      const result = await login(email, password, requires2FA ? totpCode : undefined);
 
-      if (!success) {
-        setError('Credenciales inválidas o usuario desactivado');
+      if (result.requires2FA) {
+        // Password correct but 2FA code needed
+        setRequires2FA(true);
+        setIsLoading(false);
+        return;
+      }
+
+      if (!result.success) {
+        setError(result.error || 'Error de autenticación');
+        // If 2FA failed, keep showing the TOTP input
+        if (!requires2FA) {
+          setRequires2FA(false);
+        }
+        setTotpCode('');
         setIsLoading(false);
         return;
       }
@@ -71,6 +87,23 @@ export default function LoginPage() {
     } catch (err) {
       setError('Error al iniciar sesión. Intenta de nuevo.');
       setIsLoading(false);
+    }
+  };
+
+  // Reset 2FA state when email/password changes
+  const handleEmailChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setEmail(e.target.value);
+    if (requires2FA) {
+      setRequires2FA(false);
+      setTotpCode('');
+    }
+  };
+
+  const handlePasswordChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setPassword(e.target.value);
+    if (requires2FA) {
+      setRequires2FA(false);
+      setTotpCode('');
     }
   };
 
@@ -263,11 +296,11 @@ export default function LoginPage() {
                 <input
                   type="email"
                   value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  onChange={handleEmailChange}
                   placeholder="usuario@novacorp.mx"
                   className="w-full bg-white/[0.03] border border-white/[0.08] rounded-lg py-3 pl-10 pr-4 text-white placeholder:text-white/20 focus:outline-none focus:border-purple-500/50 focus:ring-1 focus:ring-purple-500/30 transition-all"
                   required
-                  disabled={isLoading}
+                  disabled={isLoading || requires2FA}
                 />
               </div>
             </div>
@@ -282,11 +315,11 @@ export default function LoginPage() {
                 <input
                   type={showPassword ? 'text' : 'password'}
                   value={password}
-                  onChange={(e) => setPassword(e.target.value)}
+                  onChange={handlePasswordChange}
                   placeholder="••••••••"
                   className="w-full bg-white/[0.03] border border-white/[0.08] rounded-lg py-3 pl-10 pr-12 text-white placeholder:text-white/20 focus:outline-none focus:border-purple-500/50 focus:ring-1 focus:ring-purple-500/30 transition-all"
                   required
-                  disabled={isLoading}
+                  disabled={isLoading || requires2FA}
                 />
                 <button
                   type="button"
@@ -302,10 +335,43 @@ export default function LoginPage() {
               </div>
             </div>
 
+            {/* 2FA Code */}
+            <AnimatePresence>
+              {requires2FA && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  className="space-y-1.5"
+                >
+                  <label className="text-white/40 text-xs uppercase tracking-wider">
+                    Código de autenticación
+                  </label>
+                  <div className="relative">
+                    <KeyRound className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/20" />
+                    <input
+                      type="text"
+                      value={totpCode}
+                      onChange={(e) => setTotpCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                      placeholder="000000"
+                      className="w-full bg-white/[0.03] border border-white/[0.08] rounded-lg py-3 pl-10 pr-4 text-white text-center text-lg tracking-widest font-mono placeholder:text-white/20 focus:outline-none focus:border-purple-500/50 focus:ring-1 focus:ring-purple-500/30 transition-all"
+                      maxLength={6}
+                      required
+                      disabled={isLoading}
+                      autoFocus
+                    />
+                  </div>
+                  <p className="text-xs text-white/30 text-center">
+                    Ingresa el código de Google Authenticator
+                  </p>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
             {/* Submit button */}
             <motion.button
               type="submit"
-              disabled={isLoading}
+              disabled={isLoading || (requires2FA && totpCode.length !== 6)}
               whileHover={{ scale: isLoading ? 1 : 1.01 }}
               whileTap={{ scale: isLoading ? 1 : 0.99 }}
               className="w-full py-3 bg-gradient-to-r from-purple-600 to-violet-600 hover:from-purple-500 hover:to-violet-500 text-white font-medium rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-lg shadow-purple-500/20"
@@ -313,8 +379,10 @@ export default function LoginPage() {
               {isLoading ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin" />
-                  Iniciando sesión...
+                  {requires2FA ? 'Verificando...' : 'Iniciando sesión...'}
                 </>
+              ) : requires2FA ? (
+                'Verificar código'
               ) : (
                 'Iniciar sesión'
               )}

@@ -17,6 +17,7 @@ import {
   RefreshCw,
   Smartphone,
   Loader2,
+  ShieldAlert,
 } from 'lucide-react';
 import {
   Button,
@@ -29,6 +30,7 @@ import {
   Badge,
 } from '@/components/ui';
 import { cn } from '@/lib/utils';
+import { useAuth } from '@/context/AuthContext';
 
 const tabs = [
   { id: 'api', label: 'API', icon: Key },
@@ -39,13 +41,16 @@ const tabs = [
 ];
 
 export default function SettingsPage() {
-  const [activeTab, setActiveTab] = useState('api');
+  const { user, requiresTotpSetup, clearTotpSetupRequired } = useAuth();
+
+  // Auto-open security tab if 2FA setup is required
+  const [activeTab, setActiveTab] = useState(requiresTotpSetup ? 'security' : 'api');
   const [showApiKey, setShowApiKey] = useState(false);
   const [apiKey, setApiKey] = useState('your-api-key-here');
   const [environment, setEnvironment] = useState('uat');
 
   // 2FA States
-  const [twoFAEnabled, setTwoFAEnabled] = useState(false);
+  const [twoFAEnabled, setTwoFAEnabled] = useState(user?.totpEnabled || false);
   const [twoFASetupMode, setTwoFASetupMode] = useState(false);
   const [twoFASecret, setTwoFASecret] = useState('');
   const [twoFAQrUri, setTwoFAQrUri] = useState('');
@@ -55,20 +60,27 @@ export default function SettingsPage() {
   const [twoFASuccess, setTwoFASuccess] = useState('');
   const [disablePassword, setDisablePassword] = useState('');
 
-  // Get user ID from session (simplified - in production use proper auth context)
+  // Update 2FA enabled state when user changes
+  useEffect(() => {
+    if (user?.totpEnabled !== undefined) {
+      setTwoFAEnabled(user.totpEnabled);
+    }
+  }, [user?.totpEnabled]);
+
+  // Get user ID from session
   const getUserId = () => {
     if (typeof window !== 'undefined') {
-      const session = localStorage.getItem('session');
+      const session = localStorage.getItem('novacorp_session');
       if (session) {
         try {
           const parsed = JSON.parse(session);
-          return parsed.userId || parsed.id;
+          return parsed.user?.id;
         } catch {
           return null;
         }
       }
     }
-    return null;
+    return user?.id || null;
   };
 
   // Setup 2FA - Generate secret and QR code
@@ -129,10 +141,13 @@ export default function SettingsPage() {
 
       setTwoFAEnabled(true);
       setTwoFASetupMode(false);
-      setTwoFASuccess('2FA habilitado correctamente');
+      setTwoFASuccess('2FA habilitado correctamente. Ya puedes acceder a todas las funciones.');
       setTwoFACode('');
       setTwoFASecret('');
       setTwoFAQrUri('');
+
+      // Clear the 2FA setup requirement in the auth context
+      clearTotpSetupRequired();
     } catch (error) {
       setTwoFAError('Error de conexión');
     } finally {
@@ -676,6 +691,20 @@ export default function SettingsPage() {
 
   return (
     <div className="space-y-6 max-w-4xl">
+      {/* 2FA Required Warning Banner */}
+      {requiresTotpSetup && !twoFAEnabled && (
+        <div className="p-4 rounded-lg bg-amber-500/10 border border-amber-500/30 flex items-start gap-3">
+          <ShieldAlert className="w-6 h-6 text-amber-400 flex-shrink-0 mt-0.5" />
+          <div>
+            <h3 className="text-sm font-medium text-amber-300">Configuración de seguridad requerida</h3>
+            <p className="text-xs text-amber-200/70 mt-1">
+              Para continuar usando el sistema, debes configurar la autenticación de dos factores (2FA).
+              Esto protegerá tu cuenta y será necesario para iniciar sesión y realizar transferencias SPEI.
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <div>
         <h1 className="text-xl font-medium text-white/90">Configuracion</h1>

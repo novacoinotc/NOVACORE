@@ -1429,47 +1429,61 @@ export async function getTodayCommissionCutoff(companyId: string): Promise<DbCom
  * Record a failed login attempt for a user
  */
 export async function recordFailedLoginAttempt(userId: string): Promise<{ failedAttempts: number; lockedUntil: Date | null }> {
-  const result = await sql`
-    UPDATE users
-    SET failed_attempts = COALESCE(failed_attempts, 0) + 1,
-        updated_at = CURRENT_TIMESTAMP
-    WHERE id = ${userId}
-    RETURNING failed_attempts, locked_until
-  `;
+  try {
+    const result = await sql`
+      UPDATE users
+      SET failed_attempts = COALESCE(failed_attempts, 0) + 1,
+          updated_at = CURRENT_TIMESTAMP
+      WHERE id = ${userId}
+      RETURNING failed_attempts, locked_until
+    `;
 
-  if (result.length === 0) {
+    if (result.length === 0) {
+      return { failedAttempts: 0, lockedUntil: null };
+    }
+
+    return {
+      failedAttempts: result[0].failed_attempts || 0,
+      lockedUntil: result[0].locked_until ? new Date(result[0].locked_until) : null,
+    };
+  } catch (error) {
+    // Security columns might not exist yet
+    console.log('Could not record failed login attempt:', error);
     return { failedAttempts: 0, lockedUntil: null };
   }
-
-  return {
-    failedAttempts: result[0].failed_attempts || 0,
-    lockedUntil: result[0].locked_until ? new Date(result[0].locked_until) : null,
-  };
 }
 
 /**
  * Lock a user account until a specified time
  */
 export async function lockUserAccount(userId: string, lockedUntil: Date): Promise<void> {
-  await sql`
-    UPDATE users
-    SET locked_until = ${lockedUntil.toISOString()},
-        updated_at = CURRENT_TIMESTAMP
-    WHERE id = ${userId}
-  `;
+  try {
+    await sql`
+      UPDATE users
+      SET locked_until = ${lockedUntil.toISOString()},
+          updated_at = CURRENT_TIMESTAMP
+      WHERE id = ${userId}
+    `;
+  } catch (error) {
+    console.log('Could not lock user account:', error);
+  }
 }
 
 /**
  * Reset failed login attempts (e.g., after successful login)
  */
 export async function resetFailedLoginAttempts(userId: string): Promise<void> {
-  await sql`
-    UPDATE users
-    SET failed_attempts = 0,
-        locked_until = NULL,
-        updated_at = CURRENT_TIMESTAMP
-    WHERE id = ${userId}
-  `;
+  try {
+    await sql`
+      UPDATE users
+      SET failed_attempts = 0,
+          locked_until = NULL,
+          updated_at = CURRENT_TIMESTAMP
+      WHERE id = ${userId}
+    `;
+  } catch (error) {
+    console.log('Could not reset failed login attempts:', error);
+  }
 }
 
 /**
@@ -1480,21 +1494,27 @@ export async function getUserSecurityStatus(userId: string): Promise<{
   lockedUntil: Date | null;
   totpEnabled: boolean;
 }> {
-  const result = await sql`
-    SELECT failed_attempts, locked_until, totp_enabled
-    FROM users
-    WHERE id = ${userId}
-  `;
+  try {
+    const result = await sql`
+      SELECT failed_attempts, locked_until, totp_enabled
+      FROM users
+      WHERE id = ${userId}
+    `;
 
-  if (result.length === 0) {
+    if (result.length === 0) {
+      return { failedAttempts: 0, lockedUntil: null, totpEnabled: false };
+    }
+
+    return {
+      failedAttempts: result[0].failed_attempts || 0,
+      lockedUntil: result[0].locked_until ? new Date(result[0].locked_until) : null,
+      totpEnabled: result[0].totp_enabled || false,
+    };
+  } catch (error) {
+    // Security columns might not exist yet - return defaults
+    console.log('Security columns not found, returning defaults');
     return { failedAttempts: 0, lockedUntil: null, totpEnabled: false };
   }
-
-  return {
-    failedAttempts: result[0].failed_attempts || 0,
-    lockedUntil: result[0].locked_until ? new Date(result[0].locked_until) : null,
-    totpEnabled: result[0].totp_enabled || false,
-  };
 }
 
 // ==================== 2FA OPERATIONS ====================
@@ -1503,66 +1523,91 @@ export async function getUserSecurityStatus(userId: string): Promise<{
  * Save TOTP secret for a user (during 2FA setup)
  */
 export async function saveTotpSecret(userId: string, secret: string): Promise<void> {
-  await sql`
-    UPDATE users
-    SET totp_secret = ${secret},
-        totp_enabled = false,
-        updated_at = CURRENT_TIMESTAMP
-    WHERE id = ${userId}
-  `;
+  try {
+    await sql`
+      UPDATE users
+      SET totp_secret = ${secret},
+          totp_enabled = false,
+          updated_at = CURRENT_TIMESTAMP
+      WHERE id = ${userId}
+    `;
+  } catch (error) {
+    console.log('Could not save TOTP secret:', error);
+    throw new Error('2FA setup is not available. Please contact support.');
+  }
 }
 
 /**
  * Enable 2FA for a user (after successful verification)
  */
 export async function enableTotp(userId: string): Promise<void> {
-  await sql`
-    UPDATE users
-    SET totp_enabled = true,
-        totp_verified_at = CURRENT_TIMESTAMP,
-        updated_at = CURRENT_TIMESTAMP
-    WHERE id = ${userId}
-  `;
+  try {
+    await sql`
+      UPDATE users
+      SET totp_enabled = true,
+          totp_verified_at = CURRENT_TIMESTAMP,
+          updated_at = CURRENT_TIMESTAMP
+      WHERE id = ${userId}
+    `;
+  } catch (error) {
+    console.log('Could not enable TOTP:', error);
+    throw new Error('Could not enable 2FA. Please contact support.');
+  }
 }
 
 /**
  * Disable 2FA for a user
  */
 export async function disableTotp(userId: string): Promise<void> {
-  await sql`
-    UPDATE users
-    SET totp_enabled = false,
-        totp_secret = NULL,
-        totp_verified_at = NULL,
-        updated_at = CURRENT_TIMESTAMP
-    WHERE id = ${userId}
-  `;
+  try {
+    await sql`
+      UPDATE users
+      SET totp_enabled = false,
+          totp_secret = NULL,
+          totp_verified_at = NULL,
+          updated_at = CURRENT_TIMESTAMP
+      WHERE id = ${userId}
+    `;
+  } catch (error) {
+    console.log('Could not disable TOTP:', error);
+    throw new Error('Could not disable 2FA. Please contact support.');
+  }
 }
 
 /**
  * Get user's TOTP secret
  */
 export async function getUserTotpSecret(userId: string): Promise<string | null> {
-  const result = await sql`
-    SELECT totp_secret
-    FROM users
-    WHERE id = ${userId}
-  `;
+  try {
+    const result = await sql`
+      SELECT totp_secret
+      FROM users
+      WHERE id = ${userId}
+    `;
 
-  return result.length > 0 ? result[0].totp_secret : null;
+    return result.length > 0 ? result[0].totp_secret : null;
+  } catch (error) {
+    console.log('Could not get TOTP secret:', error);
+    return null;
+  }
 }
 
 /**
  * Check if user has 2FA enabled
  */
 export async function isUserTotpEnabled(userId: string): Promise<boolean> {
-  const result = await sql`
-    SELECT totp_enabled
-    FROM users
-    WHERE id = ${userId}
-  `;
+  try {
+    const result = await sql`
+      SELECT totp_enabled
+      FROM users
+      WHERE id = ${userId}
+    `;
 
-  return result.length > 0 && result[0].totp_enabled === true;
+    return result.length > 0 && result[0].totp_enabled === true;
+  } catch (error) {
+    console.log('Could not check TOTP status:', error);
+    return false;
+  }
 }
 
 // ==================== AUDIT LOG OPERATIONS ====================

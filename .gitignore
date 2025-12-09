@@ -26,6 +26,11 @@ yarn-error.log*
 .env*.local
 .env
 
+# OPM API Keys (NEVER commit these)
+mds_keys/
+*.pem
+*.key
+
 # Vercel
 .vercel
 

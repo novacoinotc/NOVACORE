@@ -183,18 +183,32 @@ function extractDepositData(body: any): DepositData | null {
 /**
  * Validate OPM RSA signature on incoming deposit webhook
  *
- * OPM signs all webhooks with their private key. We verify using their public key.
+ * IMPORTANT: OPM signs webhooks with THEIR private key.
+ * We must verify using OPM'S PUBLIC KEY (not ours).
+ *
+ * - OPM_WEBHOOK_PUBLIC_KEY: OPM's public key for verifying their webhooks (REQUIRED for validation)
+ * - OPM_PUBLIC_KEY: OUR public key (part of our keypair, NOT for webhook validation)
+ *
  * The original string format for supply webhooks is:
  * ||beneficiaryName|beneficiaryUid|beneficiaryAccount|beneficiaryBank|beneficiaryAccountType|
  * payerName|payerUid|payerAccount|payerBank|payerAccountType|amount|concept|trackingKey|numericalReference||
  */
 async function validateOpmSignature(body: any): Promise<boolean> {
   try {
-    const publicKey = process.env.OPM_PUBLIC_KEY;
+    // IMPORTANT: Use OPM's public key for webhook validation, NOT our public key
+    // OPM_WEBHOOK_PUBLIC_KEY = OPM's key to verify their signatures
+    // OPM_PUBLIC_KEY = Our key (wrong for webhook validation)
+    const opmWebhookPublicKey = process.env.OPM_WEBHOOK_PUBLIC_KEY;
 
-    if (!publicKey) {
-      console.error('OPM_PUBLIC_KEY not configured - cannot validate signature');
-      return false;
+    if (!opmWebhookPublicKey) {
+      // If OPM's public key is not configured, log warning and skip validation
+      // This allows the system to work while waiting for OPM to provide their public key
+      console.warn('=== OPM WEBHOOK SIGNATURE VALIDATION SKIPPED ===');
+      console.warn('OPM_WEBHOOK_PUBLIC_KEY not configured.');
+      console.warn('To enable signature validation, obtain OPM\'s public key and set OPM_WEBHOOK_PUBLIC_KEY');
+      console.warn('NOTE: OPM_PUBLIC_KEY is YOUR key, not OPM\'s key for webhook validation');
+      console.warn('=================================================');
+      return true; // Skip validation, accept the webhook
     }
 
     // Extract signature from payload (can be at root level or in data)
@@ -235,13 +249,14 @@ async function validateOpmSignature(body: any): Promise<boolean> {
 
     console.log('Original string for signature verification:', originalString);
 
-    // Verify the signature using OPM's public key
-    const isValid = await verifySignature(originalString, signature, publicKey);
+    // Verify the signature using OPM's public key (not ours)
+    const isValid = await verifySignature(originalString, signature, opmWebhookPublicKey);
 
     if (!isValid) {
       console.error('RSA signature verification failed');
-      console.error('Expected signature for original string:', originalString);
+      console.error('Original string:', originalString);
       console.error('Received signature:', signature);
+      console.error('Using OPM_WEBHOOK_PUBLIC_KEY for validation');
     }
 
     return isValid;

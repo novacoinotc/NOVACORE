@@ -163,13 +163,13 @@ export async function GET(request: NextRequest) {
     const countResult = await pool.query(countQuery, params);
     const total = parseInt(countResult.rows[0]?.count || '0');
 
-    // Stats query
+    // Stats query - in_transit only counts outgoing transactions that haven't settled
     const statsQuery = `
       SELECT
         COUNT(*) as total_count,
         COALESCE(SUM(CASE WHEN type = 'incoming' THEN amount ELSE 0 END), 0) as total_incoming,
         COALESCE(SUM(CASE WHEN type = 'outgoing' THEN amount ELSE 0 END), 0) as total_outgoing,
-        COALESCE(SUM(CASE WHEN status = 'pending' OR status = 'sent' THEN amount ELSE 0 END), 0) as in_transit
+        COALESCE(SUM(CASE WHEN type = 'outgoing' AND status IN ('pending', 'sent', 'queued') THEN amount ELSE 0 END), 0) as in_transit
       FROM transactions
       WHERE ${whereClause}
     `;

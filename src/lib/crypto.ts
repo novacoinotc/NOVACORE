@@ -1,114 +1,107 @@
 // Cryptographic utilities for RSA signing (OPM API)
+import { createSign, createVerify, createPrivateKey, createPublicKey } from 'crypto';
 
 // Note: This file handles RSA-SHA256 signing for OPM API
 // The private key should NEVER be exposed to the client
 // All signing operations should happen server-side via API routes
 
 /**
+ * Decode a Base64-encoded PEM key from environment variable
+ * The .env file stores keys as Base64-encoded PEM strings
+ */
+function decodeKeyFromEnv(encodedKey: string): string {
+  // Check if the key is already in PEM format (starts with -----)
+  if (encodedKey.trim().startsWith('-----')) {
+    return encodedKey;
+  }
+
+  // Otherwise, decode from Base64
+  try {
+    const decoded = Buffer.from(encodedKey, 'base64').toString('utf-8');
+    return decoded;
+  } catch (error) {
+    console.error('Failed to decode key from Base64:', error);
+    return encodedKey;
+  }
+}
+
+/**
  * Sign a string using RSA-SHA256 (Server-side only)
  * This function should only be called from API routes
+ *
+ * Supports both:
+ * - PKCS#1 format: -----BEGIN RSA PRIVATE KEY-----
+ * - PKCS#8 format: -----BEGIN PRIVATE KEY-----
  */
 export async function signWithPrivateKey(
   originalString: string,
-  privateKeyPem: string
+  privateKeyInput: string
 ): Promise<string> {
-  // Convert PEM to ArrayBuffer
-  const pemHeader = '-----BEGIN PRIVATE KEY-----';
-  const pemFooter = '-----END PRIVATE KEY-----';
-  const pemContents = privateKeyPem
-    .replace(pemHeader, '')
-    .replace(pemFooter, '')
-    .replace(/\s/g, '');
+  try {
+    // Decode the key if it's Base64 encoded
+    const privateKeyPem = decodeKeyFromEnv(privateKeyInput);
 
-  const binaryString = atob(pemContents);
-  const bytes = new Uint8Array(binaryString.length);
-  for (let i = 0; i < binaryString.length; i++) {
-    bytes[i] = binaryString.charCodeAt(i);
+    console.log('Signing with private key...');
+    console.log('Key format detected:', privateKeyPem.includes('RSA PRIVATE KEY') ? 'PKCS#1' : 'PKCS#8');
+    console.log('Original string to sign:', originalString);
+
+    // Create a private key object - Node.js crypto handles both PKCS#1 and PKCS#8
+    const privateKey = createPrivateKey({
+      key: privateKeyPem,
+      format: 'pem',
+    });
+
+    // Create signer with SHA256
+    const signer = createSign('RSA-SHA256');
+    signer.update(originalString);
+    signer.end();
+
+    // Sign and return Base64-encoded signature
+    const signature = signer.sign(privateKey, 'base64');
+
+    console.log('Signature generated successfully, length:', signature.length);
+    return signature;
+  } catch (error) {
+    console.error('Error signing with private key:', error);
+    throw new Error(`Failed to sign: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
-
-  // Import the private key
-  const privateKey = await crypto.subtle.importKey(
-    'pkcs8',
-    bytes.buffer,
-    {
-      name: 'RSASSA-PKCS1-v1_5',
-      hash: 'SHA-256',
-    },
-    false,
-    ['sign']
-  );
-
-  // Sign the original string
-  const encoder = new TextEncoder();
-  const data = encoder.encode(originalString);
-  const signature = await crypto.subtle.sign(
-    'RSASSA-PKCS1-v1_5',
-    privateKey,
-    data
-  );
-
-  // Convert to base64
-  const signatureArray = new Uint8Array(signature);
-  let binary = '';
-  for (let i = 0; i < signatureArray.length; i++) {
-    binary += String.fromCharCode(signatureArray[i]);
-  }
-
-  return btoa(binary);
 }
 
 /**
  * Verify a signature using RSA-SHA256 public key
+ *
+ * Supports both:
+ * - SPKI format: -----BEGIN PUBLIC KEY-----
+ * - RSA format: -----BEGIN RSA PUBLIC KEY-----
  */
 export async function verifySignature(
   originalString: string,
   signature: string,
-  publicKeyPem: string
+  publicKeyInput: string
 ): Promise<boolean> {
   try {
-    // Convert PEM to ArrayBuffer
-    const pemHeader = '-----BEGIN PUBLIC KEY-----';
-    const pemFooter = '-----END PUBLIC KEY-----';
-    const pemContents = publicKeyPem
-      .replace(pemHeader, '')
-      .replace(pemFooter, '')
-      .replace(/\s/g, '');
+    // Decode the key if it's Base64 encoded
+    const publicKeyPem = decodeKeyFromEnv(publicKeyInput);
 
-    const binaryString = atob(pemContents);
-    const bytes = new Uint8Array(binaryString.length);
-    for (let i = 0; i < binaryString.length; i++) {
-      bytes[i] = binaryString.charCodeAt(i);
-    }
+    console.log('Verifying signature...');
+    console.log('Key format:', publicKeyPem.includes('RSA PUBLIC KEY') ? 'PKCS#1' : 'SPKI');
 
-    // Import the public key
-    const publicKey = await crypto.subtle.importKey(
-      'spki',
-      bytes.buffer,
-      {
-        name: 'RSASSA-PKCS1-v1_5',
-        hash: 'SHA-256',
-      },
-      false,
-      ['verify']
-    );
+    // Create a public key object
+    const publicKey = createPublicKey({
+      key: publicKeyPem,
+      format: 'pem',
+    });
 
-    // Decode the signature
-    const signatureBinary = atob(signature);
-    const signatureBytes = new Uint8Array(signatureBinary.length);
-    for (let i = 0; i < signatureBinary.length; i++) {
-      signatureBytes[i] = signatureBinary.charCodeAt(i);
-    }
+    // Create verifier
+    const verifier = createVerify('RSA-SHA256');
+    verifier.update(originalString);
+    verifier.end();
 
-    // Verify
-    const encoder = new TextEncoder();
-    const data = encoder.encode(originalString);
+    // Verify the signature
+    const isValid = verifier.verify(publicKey, signature, 'base64');
 
-    return await crypto.subtle.verify(
-      'RSASSA-PKCS1-v1_5',
-      publicKey,
-      signatureBytes.buffer,
-      data
-    );
+    console.log('Signature verification result:', isValid);
+    return isValid;
   } catch (error) {
     console.error('Signature verification failed:', error);
     return false;

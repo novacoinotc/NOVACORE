@@ -9,9 +9,78 @@ import {
   Client,
   ApiResponse
 } from '@/types';
+import crypto from 'crypto';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_OPM_API_URL || 'https://apiuat.opm.mx';
 const API_VERSION = '1.0';
+
+// ==================== RSA-SHA256 SIGNATURE ====================
+// Based on MI-OPM-2.5.pdf - Digital signature generation
+
+/**
+ * Sign a string using RSA-SHA256 algorithm
+ *
+ * Uses the private key from environment variable OPM_PRIVATE_KEY
+ * The key should be in PEM format (can be base64 encoded in env var)
+ *
+ * @param originalString - The "cadena original" to sign
+ * @param privateKeyPem - Optional PEM private key, defaults to env var
+ * @returns Base64 encoded signature
+ */
+export function signWithRSA(originalString: string, privateKeyPem?: string): string {
+  const privateKey = privateKeyPem || process.env.OPM_PRIVATE_KEY || '';
+
+  if (!privateKey) {
+    throw new Error('OPM_PRIVATE_KEY environment variable is not set');
+  }
+
+  // Handle base64 encoded keys (if stored that way in env)
+  let pemKey = privateKey;
+  if (!privateKey.includes('-----BEGIN')) {
+    // Assume it's base64 encoded, decode it
+    pemKey = Buffer.from(privateKey, 'base64').toString('utf8');
+  }
+
+  const signer = crypto.createSign('RSA-SHA256');
+  signer.update(originalString, 'utf8');
+  const signature = signer.sign(pemKey, 'base64');
+
+  return signature;
+}
+
+/**
+ * Verify a signature using RSA-SHA256 algorithm
+ *
+ * Uses the public key from environment variable OPM_PUBLIC_KEY
+ * Useful for verifying webhook signatures from OPM
+ *
+ * @param originalString - The "cadena original" that was signed
+ * @param signature - Base64 encoded signature to verify
+ * @param publicKeyPem - Optional PEM public key, defaults to env var
+ * @returns true if signature is valid
+ */
+export function verifyRSASignature(
+  originalString: string,
+  signature: string,
+  publicKeyPem?: string
+): boolean {
+  const publicKey = publicKeyPem || process.env.OPM_PUBLIC_KEY || '';
+
+  if (!publicKey) {
+    throw new Error('OPM_PUBLIC_KEY environment variable is not set');
+  }
+
+  // Handle base64 encoded keys
+  let pemKey = publicKey;
+  if (!publicKey.includes('-----BEGIN')) {
+    pemKey = Buffer.from(publicKey, 'base64').toString('utf8');
+  }
+
+  const verifier = crypto.createVerify('RSA-SHA256');
+  verifier.update(originalString, 'utf8');
+
+  return verifier.verify(pemKey, signature, 'base64');
+}
 
 // Helper to build API URL
 function buildUrl(endpoint: string): string {
@@ -61,6 +130,54 @@ export async function createOrder(
   return fetchApi<Order>('orders/', {
     method: 'POST',
     body: JSON.stringify(orderData),
+  }, apiKey);
+}
+
+/**
+ * Create a signed payment order (SPEI Out)
+ *
+ * This function automatically:
+ * 1. Builds the "cadena original" from order data
+ * 2. Signs it using RSA-SHA256
+ * 3. Includes the signature in the request
+ *
+ * Use this function instead of createOrder for production SPEI transfers.
+ *
+ * @param orderData - Order data without signature
+ * @param apiKey - Optional API key
+ * @returns API response with created order
+ */
+export async function createSignedOrder(
+  orderData: Omit<CreateOrderRequest, 'sign'>,
+  apiKey?: string
+): Promise<ApiResponse<Order>> {
+  // Build the original string for signing
+  const originalString = buildOrderOriginalString({
+    beneficiaryName: orderData.beneficiaryName,
+    beneficiaryUid: orderData.beneficiaryUid,
+    beneficiaryBank: orderData.beneficiaryBank,
+    beneficiaryAccount: orderData.beneficiaryAccount,
+    beneficiaryAccountType: orderData.beneficiaryAccountType,
+    payerAccount: orderData.payerAccount,
+    numericalReference: orderData.numericalReference,
+    paymentDay: orderData.paymentDay,
+    paymentType: orderData.paymentType,
+    concept: orderData.concept,
+    amount: orderData.amount,
+  });
+
+  // Sign the original string with RSA-SHA256
+  const sign = signWithRSA(originalString);
+
+  // Create the order with signature
+  const signedOrderData: CreateOrderRequest = {
+    ...orderData,
+    sign,
+  };
+
+  return fetchApi<Order>('orders/', {
+    method: 'POST',
+    body: JSON.stringify(signedOrderData),
   }, apiKey);
 }
 

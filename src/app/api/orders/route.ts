@@ -31,8 +31,13 @@ export async function POST(request: NextRequest) {
   const clientIP = getClientIP(request);
   const userAgent = getUserAgent(request);
 
+  console.log('=== ORDER CREATION REQUEST ===');
+  console.log('Timestamp:', new Date().toISOString());
+  console.log('Client IP:', clientIP);
+
   try {
     const body = await request.json();
+    console.log('Request body:', JSON.stringify(body, null, 2));
 
     const {
       // Authentication fields
@@ -64,18 +69,23 @@ export async function POST(request: NextRequest) {
     // 2FA Verification for SPEI Transfers
     // ============================================
     if (!userId) {
+      console.error('ORDER ERROR: Missing userId in request');
       return NextResponse.json(
-        { error: 'Se requiere autenticación para realizar transferencias' },
+        { error: 'Se requiere autenticación para realizar transferencias', details: 'userId not provided in request body' },
         { status: 401 }
       );
     }
 
+    console.log('User ID:', userId);
+
     // Check if user has 2FA enabled
     const totpEnabled = await isUserTotpEnabled(userId);
+    console.log('2FA enabled for user:', totpEnabled);
 
     if (totpEnabled) {
       // 2FA is enabled - require TOTP code
       if (!totpCode) {
+        console.log('2FA required but no code provided');
         return NextResponse.json(
           {
             error: 'Se requiere código de autenticación 2FA para realizar transferencias',
@@ -101,6 +111,7 @@ export async function POST(request: NextRequest) {
           severity: 'warning',
         });
 
+        console.error('ORDER ERROR: Invalid 2FA code');
         return NextResponse.json(
           {
             error: 'Código de autenticación inválido',
@@ -109,6 +120,8 @@ export async function POST(request: NextRequest) {
           { status: 401 }
         );
       }
+
+      console.log('2FA verification successful');
 
       // Log successful 2FA verification for transfer
       const user = await getUserById(userId);
@@ -130,11 +143,20 @@ export async function POST(request: NextRequest) {
     }
 
     // Validate required fields
-    if (!beneficiaryAccount || !beneficiaryBank || !beneficiaryName || !amount || !concept) {
+    const missingFields: string[] = [];
+    if (!beneficiaryAccount) missingFields.push('beneficiaryAccount');
+    if (!beneficiaryBank) missingFields.push('beneficiaryBank');
+    if (!beneficiaryName) missingFields.push('beneficiaryName');
+    if (!amount) missingFields.push('amount');
+    if (!concept) missingFields.push('concept');
+    if (!payerAccount) missingFields.push('payerAccount (cuenta de origen)');
+
+    if (missingFields.length > 0) {
+      console.error('ORDER ERROR: Missing required fields:', missingFields);
       return NextResponse.json(
         {
-          error: 'Missing required fields',
-          requiredFields: ['beneficiaryAccount', 'beneficiaryBank', 'beneficiaryName', 'amount', 'concept']
+          error: `Campos requeridos faltantes: ${missingFields.join(', ')}`,
+          missingFields,
         },
         { status: 400 }
       );
@@ -143,8 +165,9 @@ export async function POST(request: NextRequest) {
     // Parse amount to ensure it's a number
     const parsedAmount = parseFloat(amount);
     if (isNaN(parsedAmount)) {
+      console.error('ORDER ERROR: Invalid amount:', amount);
       return NextResponse.json(
-        { error: 'Amount must be a valid number' },
+        { error: 'El monto debe ser un número válido', providedAmount: amount },
         { status: 400 }
       );
     }
@@ -153,7 +176,7 @@ export async function POST(request: NextRequest) {
     const sanitizedBeneficiaryName = prepareTextForSpei(beneficiaryName, 40);
     const sanitizedConcept = prepareTextForSpei(concept, 40);
     const sanitizedPayerName = prepareTextForSpei(
-      payerName || process.env.DEFAULT_PAYER_NAME || '',
+      payerName || process.env.DEFAULT_PAYER_NAME || 'NOVACORE',
       40
     );
 
@@ -162,13 +185,36 @@ export async function POST(request: NextRequest) {
       ? trackingKey.substring(0, 30)
       : generateTrackingKey('NC');
 
-    // Generate numerical reference if not provided (7 digits)
-    const finalNumericalReference = numericalReference || generateNumericalReference();
+    // Generate numerical reference if not provided OR if provided value is invalid (not 7 digits)
+    let finalNumericalReference: number;
+    if (numericalReference) {
+      const numRef = parseInt(String(numericalReference), 10);
+      // If the provided reference is not 7 digits, generate a new one
+      if (numRef >= 1000000 && numRef <= 9999999) {
+        finalNumericalReference = numRef;
+      } else {
+        console.log(`Provided numericalReference (${numericalReference}) is invalid, generating new one`);
+        finalNumericalReference = generateNumericalReference();
+      }
+    } else {
+      finalNumericalReference = generateNumericalReference();
+    }
 
     // Resolve payer account and bank from defaults if not provided
     const resolvedPayerAccount = payerAccount || process.env.DEFAULT_PAYER_ACCOUNT || '';
     const resolvedPayerBank = payerBank || process.env.DEFAULT_PAYER_BANK || '90684';
     const resolvedPayerAccountType = payerAccountType ?? 40;
+
+    console.log('Resolved order data:', {
+      beneficiaryAccount,
+      beneficiaryBank,
+      beneficiaryName: sanitizedBeneficiaryName,
+      payerAccount: resolvedPayerAccount,
+      payerBank: resolvedPayerBank,
+      amount: parsedAmount,
+      numericalReference: finalNumericalReference,
+      trackingKey: finalTrackingKey,
+    });
 
     // Validate all fields according to OPM API specification
     const validationErrors = validateOrderFields({
@@ -187,9 +233,10 @@ export async function POST(request: NextRequest) {
     });
 
     if (validationErrors.length > 0) {
+      console.error('ORDER ERROR: Validation failed:', JSON.stringify(validationErrors, null, 2));
       return NextResponse.json(
         {
-          error: 'Validation failed',
+          error: 'Error de validación: ' + validationErrors.map(e => e.message).join(', '),
           validationErrors,
         },
         { status: 400 }
@@ -243,15 +290,35 @@ export async function POST(request: NextRequest) {
       ...(cepPayerAccount && { cepPayerAccount }),
     };
 
+    console.log('Sending order to OPM API...');
+    console.log('Order request (without sign):', { ...orderRequest, sign: '[REDACTED]' });
+
     // Send to OPM API
     const apiKey = process.env.OPM_API_KEY;
+    if (!apiKey) {
+      console.error('ORDER ERROR: OPM_API_KEY not configured');
+      return NextResponse.json(
+        { error: 'API key no configurada' },
+        { status: 500 }
+      );
+    }
+
     const response = await createOrder(orderRequest, apiKey);
+
+    console.log('OPM API response:', JSON.stringify(response, null, 2));
+    console.log('=== ORDER CREATION COMPLETE ===');
 
     return NextResponse.json(response);
   } catch (error) {
-    console.error('Order creation error:', error);
+    console.error('=== ORDER CREATION ERROR ===');
+    console.error('Error:', error);
+    console.error('Stack:', error instanceof Error ? error.stack : 'No stack trace');
     return NextResponse.json(
-      { error: 'Failed to create order', details: error instanceof Error ? error.message : 'Unknown error' },
+      {
+        error: 'Error al crear la orden',
+        details: error instanceof Error ? error.message : 'Error desconocido',
+        hint: 'Revisa los logs del servidor para más detalles'
+      },
       { status: 500 }
     );
   }

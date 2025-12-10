@@ -13,6 +13,15 @@
  * - DATABASE_URL: PostgreSQL connection string
  */
 
+// Load environment variables FIRST (before any other imports that use env vars)
+import { config } from 'dotenv';
+import { resolve } from 'path';
+
+// Load from project root .env files
+config({ path: resolve(__dirname, '../../.env.local') });
+config({ path: resolve(__dirname, '../../.env') });
+
+// Now import modules that depend on environment variables
 import { listOrders, getBalance, ListOrdersParams } from '@/lib/opm-api';
 import {
   createTransaction,
@@ -306,23 +315,17 @@ export async function syncOpmTransactions(account?: string): Promise<SyncResult>
   return result;
 }
 
-// CLI execution support
+// CLI execution support - env vars already loaded at top of file
 const isMainModule = typeof require !== 'undefined' && require.main === module;
 const isDirectExecution = process.argv[1]?.includes('sync-opm-transactions');
 
 if (isMainModule || isDirectExecution) {
-  // Load environment variables for CLI execution
-  import('dotenv').then((dotenv) => {
-    dotenv.config({ path: '.env.local' });
-    dotenv.config({ path: '.env' });
-
-    syncOpmTransactions()
-      .then((result) => {
-        process.exit(result.errors.length > 0 ? 1 : 0);
-      })
-      .catch((error) => {
-        console.error('Fatal error:', error);
-        process.exit(1);
-      });
-  });
+  syncOpmTransactions()
+    .then((result) => {
+      process.exit(result.errors.length > 0 ? 1 : 0);
+    })
+    .catch((error) => {
+      console.error('Fatal error:', error);
+      process.exit(1);
+    });
 }

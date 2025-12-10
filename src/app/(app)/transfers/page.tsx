@@ -49,12 +49,17 @@ export default function TransfersPage() {
   const [isLoadingSavedAccounts, setIsLoadingSavedAccounts] = useState(false);
   const [showSavedAccountsDropdown, setShowSavedAccountsDropdown] = useState(false);
 
+  // Source CLABE accounts (payer accounts)
+  const [clabeAccounts, setClabeAccounts] = useState<{ id: string; clabe: string; alias: string }[]>([]);
+  const [isLoadingClabeAccounts, setIsLoadingClabeAccounts] = useState(false);
+
   // 2FA state for transfers
   const [requires2FA, setRequires2FA] = useState(false);
   const [totpCode, setTotpCode] = useState('');
 
   // Form data
   const [formData, setFormData] = useState({
+    payerAccount: '', // Source CLABE account
     beneficiaryAccount: '',
     beneficiaryBank: '',
     beneficiaryName: '',
@@ -135,12 +140,44 @@ export default function TransfersPage() {
     loadSavedAccounts();
   }, [loadSavedAccounts]);
 
+  // Load CLABE accounts (source accounts for transfers)
+  useEffect(() => {
+    async function loadClabeAccounts() {
+      setIsLoadingClabeAccounts(true);
+      try {
+        const response = await fetch('/api/clabe-accounts');
+        if (response.ok) {
+          const data = await response.json();
+          const activeClabes = data
+            .filter((acc: any) => acc.isActive)
+            .map((acc: any) => ({
+              id: acc.id,
+              clabe: acc.clabe,
+              alias: acc.alias,
+            }));
+          setClabeAccounts(activeClabes);
+          // Auto-select first account if only one exists
+          if (activeClabes.length === 1) {
+            setFormData(prev => ({ ...prev, payerAccount: activeClabes[0].clabe }));
+          }
+        }
+      } catch (error) {
+        console.error('Error loading CLABE accounts:', error);
+      } finally {
+        setIsLoadingClabeAccounts(false);
+      }
+    }
+
+    loadClabeAccounts();
+  }, []);
+
   // Select a saved account and fill the form
   const selectSavedAccount = (account: SavedAccount) => {
     // Get bank info from the saved account
     const bankFromClabe = getBankFromClabe(account.clabe);
 
     setFormData({
+      payerAccount: formData.payerAccount, // Keep the current source account
       beneficiaryAccount: account.clabe,
       beneficiaryBank: account.bankCode.length === 3 ? (bankFromClabe?.speiCode || `40${account.bankCode}`) : account.bankCode,
       beneficiaryName: account.beneficiaryName,
@@ -199,6 +236,11 @@ export default function TransfersPage() {
 
   const validateForm = () => {
     const newErrors: Record<string, string> = {};
+
+    // Validate source account (payerAccount)
+    if (!formData.payerAccount) {
+      newErrors.payerAccount = 'Selecciona una cuenta de origen';
+    }
 
     if (!formData.beneficiaryAccount) {
       newErrors.beneficiaryAccount = 'La cuenta es requerida';
@@ -265,6 +307,8 @@ export default function TransfersPage() {
           // Authentication
           userId: user?.id,
           totpCode: requires2FA ? totpCode : undefined,
+          // Source account
+          payerAccount: formData.payerAccount,
           // Transfer data
           beneficiaryAccount: formData.beneficiaryAccount,
           beneficiaryBank: formData.beneficiaryBank,
@@ -314,6 +358,7 @@ export default function TransfersPage() {
 
   const resetForm = () => {
     setFormData({
+      payerAccount: clabeAccounts.length === 1 ? clabeAccounts[0].clabe : '',
       beneficiaryAccount: '',
       beneficiaryBank: '',
       beneficiaryName: '',
@@ -426,6 +471,37 @@ export default function TransfersPage() {
                 </CardContent>
               </Card>
             )}
+
+            {/* Source Account Selector */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Building2 className="w-4 h-4 text-white/40" />
+                  Cuenta de Origen
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <Select
+                  label="Selecciona la cuenta CLABE de origen"
+                  options={[
+                    { value: '', label: 'Seleccionar cuenta...' },
+                    ...clabeAccounts.map((acc) => ({
+                      value: acc.clabe,
+                      label: `${acc.alias} - ${acc.clabe.replace(/(.{4})/g, '$1 ').trim()}`,
+                    })),
+                  ]}
+                  value={formData.payerAccount}
+                  onChange={(e) => handleInputChange('payerAccount', e.target.value)}
+                  error={errors.payerAccount}
+                  disabled={isLoadingClabeAccounts}
+                />
+                {clabeAccounts.length === 0 && !isLoadingClabeAccounts && (
+                  <p className="text-xs text-amber-400/70 mt-2">
+                    No hay cuentas CLABE registradas. Ve a "Cuentas CLABE" para agregar una.
+                  </p>
+                )}
+              </CardContent>
+            </Card>
 
             <Card>
               <CardHeader>

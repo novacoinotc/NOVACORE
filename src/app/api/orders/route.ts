@@ -308,7 +308,8 @@ export async function POST(request: NextRequest) {
     console.log('OPM API response:', JSON.stringify(response, null, 2));
 
     // Save the outgoing transaction to local database
-    if (response.success && response.data) {
+    // ApiResponse has code=0 for success, and data contains the order
+    if (response.code === 0 && response.data) {
       try {
         const opmOrder = response.data;
 

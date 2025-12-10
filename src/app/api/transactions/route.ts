@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { sql } from '@/lib/db';
+import { pool } from '@/lib/db';
 
 /**
  * GET /api/transactions
@@ -43,18 +43,84 @@ export async function GET(request: NextRequest) {
     const itemsPerPage = Math.min(parseInt(searchParams.get('itemsPerPage') || '50'), 100);
     const offset = (page - 1) * itemsPerPage;
 
-    // Parse numeric/date filters
-    const fromDate = from ? new Date(parseInt(from)) : null;
-    const toDate = to ? new Date(parseInt(to)) : null;
-    const minAmountNum = minAmount ? parseFloat(minAmount) : null;
-    const maxAmountNum = maxAmount ? parseFloat(maxAmount) : null;
-    const searchPattern = search ? `%${search}%` : null;
-    const beneficiaryAccountPattern = beneficiaryAccount ? `%${beneficiaryAccount}%` : null;
-    const payerAccountPattern = payerAccount ? `%${payerAccount}%` : null;
+    // Build dynamic WHERE clause
+    const conditions: string[] = ['1=1'];
+    const params: any[] = [];
+    let paramIndex = 1;
 
-    // Build and execute query with all filters
-    // Using tagged template literals for safe parameterized queries
-    const transactions = await sql`
+    if (type) {
+      conditions.push(`type = $${paramIndex++}`);
+      params.push(type);
+    }
+
+    if (status) {
+      conditions.push(`status = $${paramIndex++}`);
+      params.push(status);
+    }
+
+    if (clabeAccountId) {
+      conditions.push(`clabe_account_id = $${paramIndex++}`);
+      params.push(clabeAccountId);
+    }
+
+    if (from) {
+      const fromDate = new Date(parseInt(from));
+      conditions.push(`created_at >= $${paramIndex++}`);
+      params.push(fromDate);
+    }
+
+    if (to) {
+      const toDate = new Date(parseInt(to));
+      conditions.push(`created_at <= $${paramIndex++}`);
+      params.push(toDate);
+    }
+
+    if (minAmount) {
+      conditions.push(`amount >= $${paramIndex++}`);
+      params.push(parseFloat(minAmount));
+    }
+
+    if (maxAmount) {
+      conditions.push(`amount <= $${paramIndex++}`);
+      params.push(parseFloat(maxAmount));
+    }
+
+    if (beneficiaryAccount) {
+      conditions.push(`beneficiary_account LIKE $${paramIndex++}`);
+      params.push(`%${beneficiaryAccount}%`);
+    }
+
+    if (payerAccount) {
+      conditions.push(`payer_account LIKE $${paramIndex++}`);
+      params.push(`%${payerAccount}%`);
+    }
+
+    if (beneficiaryBank) {
+      conditions.push(`beneficiary_bank = $${paramIndex++}`);
+      params.push(beneficiaryBank);
+    }
+
+    if (payerBank) {
+      conditions.push(`payer_bank = $${paramIndex++}`);
+      params.push(payerBank);
+    }
+
+    if (search) {
+      const searchPattern = `%${search}%`;
+      conditions.push(`(
+        tracking_key ILIKE $${paramIndex} OR
+        beneficiary_name ILIKE $${paramIndex} OR
+        payer_name ILIKE $${paramIndex} OR
+        concept ILIKE $${paramIndex}
+      )`);
+      paramIndex++;
+      params.push(searchPattern);
+    }
+
+    const whereClause = conditions.join(' AND ');
+
+    // Main query for transactions
+    const transactionsQuery = `
       SELECT
         id,
         clabe_account_id,
@@ -79,80 +145,35 @@ export async function GET(request: NextRequest) {
         updated_at,
         settled_at
       FROM transactions
-      WHERE 1=1
-        ${type ? sql`AND type = ${type}` : sql``}
-        ${status ? sql`AND status = ${status}` : sql``}
-        ${clabeAccountId ? sql`AND clabe_account_id = ${clabeAccountId}` : sql``}
-        ${fromDate ? sql`AND created_at >= ${fromDate}` : sql``}
-        ${toDate ? sql`AND created_at <= ${toDate}` : sql``}
-        ${minAmountNum !== null ? sql`AND amount >= ${minAmountNum}` : sql``}
-        ${maxAmountNum !== null ? sql`AND amount <= ${maxAmountNum}` : sql``}
-        ${beneficiaryAccountPattern ? sql`AND beneficiary_account LIKE ${beneficiaryAccountPattern}` : sql``}
-        ${payerAccountPattern ? sql`AND payer_account LIKE ${payerAccountPattern}` : sql``}
-        ${beneficiaryBank ? sql`AND beneficiary_bank = ${beneficiaryBank}` : sql``}
-        ${payerBank ? sql`AND payer_bank = ${payerBank}` : sql``}
-        ${searchPattern ? sql`AND (
-          tracking_key ILIKE ${searchPattern} OR
-          beneficiary_name ILIKE ${searchPattern} OR
-          payer_name ILIKE ${searchPattern} OR
-          concept ILIKE ${searchPattern}
-        )` : sql``}
+      WHERE ${whereClause}
       ORDER BY created_at DESC
-      LIMIT ${itemsPerPage} OFFSET ${offset}
+      LIMIT $${paramIndex++} OFFSET $${paramIndex++}
     `;
 
-    // Get total count with same filters
-    const countResult = await sql`
+    const transactionsParams = [...params, itemsPerPage, offset];
+    const transactionsResult = await pool.query(transactionsQuery, transactionsParams);
+    const transactions = transactionsResult.rows;
+
+    // Count query
+    const countQuery = `
       SELECT COUNT(*) as count
       FROM transactions
-      WHERE 1=1
-        ${type ? sql`AND type = ${type}` : sql``}
-        ${status ? sql`AND status = ${status}` : sql``}
-        ${clabeAccountId ? sql`AND clabe_account_id = ${clabeAccountId}` : sql``}
-        ${fromDate ? sql`AND created_at >= ${fromDate}` : sql``}
-        ${toDate ? sql`AND created_at <= ${toDate}` : sql``}
-        ${minAmountNum !== null ? sql`AND amount >= ${minAmountNum}` : sql``}
-        ${maxAmountNum !== null ? sql`AND amount <= ${maxAmountNum}` : sql``}
-        ${beneficiaryAccountPattern ? sql`AND beneficiary_account LIKE ${beneficiaryAccountPattern}` : sql``}
-        ${payerAccountPattern ? sql`AND payer_account LIKE ${payerAccountPattern}` : sql``}
-        ${beneficiaryBank ? sql`AND beneficiary_bank = ${beneficiaryBank}` : sql``}
-        ${payerBank ? sql`AND payer_bank = ${payerBank}` : sql``}
-        ${searchPattern ? sql`AND (
-          tracking_key ILIKE ${searchPattern} OR
-          beneficiary_name ILIKE ${searchPattern} OR
-          payer_name ILIKE ${searchPattern} OR
-          concept ILIKE ${searchPattern}
-        )` : sql``}
+      WHERE ${whereClause}
     `;
-    const total = parseInt(countResult[0]?.count || '0');
+    const countResult = await pool.query(countQuery, params);
+    const total = parseInt(countResult.rows[0]?.count || '0');
 
-    // Get stats with same filters
-    const statsResult = await sql`
+    // Stats query
+    const statsQuery = `
       SELECT
         COUNT(*) as total_count,
         COALESCE(SUM(CASE WHEN type = 'incoming' THEN amount ELSE 0 END), 0) as total_incoming,
         COALESCE(SUM(CASE WHEN type = 'outgoing' THEN amount ELSE 0 END), 0) as total_outgoing,
         COALESCE(SUM(CASE WHEN status = 'pending' OR status = 'sent' THEN amount ELSE 0 END), 0) as in_transit
       FROM transactions
-      WHERE 1=1
-        ${type ? sql`AND type = ${type}` : sql``}
-        ${status ? sql`AND status = ${status}` : sql``}
-        ${clabeAccountId ? sql`AND clabe_account_id = ${clabeAccountId}` : sql``}
-        ${fromDate ? sql`AND created_at >= ${fromDate}` : sql``}
-        ${toDate ? sql`AND created_at <= ${toDate}` : sql``}
-        ${minAmountNum !== null ? sql`AND amount >= ${minAmountNum}` : sql``}
-        ${maxAmountNum !== null ? sql`AND amount <= ${maxAmountNum}` : sql``}
-        ${beneficiaryAccountPattern ? sql`AND beneficiary_account LIKE ${beneficiaryAccountPattern}` : sql``}
-        ${payerAccountPattern ? sql`AND payer_account LIKE ${payerAccountPattern}` : sql``}
-        ${beneficiaryBank ? sql`AND beneficiary_bank = ${beneficiaryBank}` : sql``}
-        ${payerBank ? sql`AND payer_bank = ${payerBank}` : sql``}
-        ${searchPattern ? sql`AND (
-          tracking_key ILIKE ${searchPattern} OR
-          beneficiary_name ILIKE ${searchPattern} OR
-          payer_name ILIKE ${searchPattern} OR
-          concept ILIKE ${searchPattern}
-        )` : sql``}
+      WHERE ${whereClause}
     `;
+    const statsResult = await pool.query(statsQuery, params);
 
     // Transform to frontend format
     const formattedTransactions = transactions.map((tx: any) => ({
@@ -181,10 +202,10 @@ export async function GET(request: NextRequest) {
     }));
 
     const stats = {
-      totalCount: parseInt(statsResult[0]?.total_count || '0'),
-      totalIncoming: parseFloat(statsResult[0]?.total_incoming || '0'),
-      totalOutgoing: parseFloat(statsResult[0]?.total_outgoing || '0'),
-      inTransit: parseFloat(statsResult[0]?.in_transit || '0'),
+      totalCount: parseInt(statsResult.rows[0]?.total_count || '0'),
+      totalIncoming: parseFloat(statsResult.rows[0]?.total_incoming || '0'),
+      totalOutgoing: parseFloat(statsResult.rows[0]?.total_outgoing || '0'),
+      inTransit: parseFloat(statsResult.rows[0]?.in_transit || '0'),
     };
 
     return NextResponse.json({

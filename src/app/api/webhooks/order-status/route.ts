@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { updateTransactionStatus, getTransactionById } from '@/lib/db';
+import { updateTransactionStatusByOpmOrderId, getTransactionByOpmOrderId, getTransactionByTrackingKey } from '@/lib/db';
 import { verifySignature } from '@/lib/crypto';
 import { buildOrderStatusOriginalString } from '@/lib/opm-api';
 
@@ -276,19 +276,40 @@ async function processOrderStatus(data: OrderStatusData): Promise<ProcessResult>
       orderId: data.orderId,
       status: data.status,
       detail: data.detail,
+      trackingKey: data.trackingKey,
     });
 
     // Try to find and update the transaction in our database
     let transactionUpdated = false;
+    let foundBy = '';
 
     try {
-      const transaction = await getTransactionById(data.orderId);
+      // First try to find by OPM order ID
+      let transaction = await getTransactionByOpmOrderId(data.orderId);
+
       if (transaction) {
-        await updateTransactionStatus(data.orderId, data.status, data.detail);
-        transactionUpdated = true;
-        console.log(`Transaction ${data.orderId} status updated to ${data.status}`);
+        foundBy = 'opmOrderId';
+        console.log(`Found transaction by OPM order ID: ${transaction.id}`);
+      } else if (data.trackingKey) {
+        // If not found by order ID, try by tracking key
+        transaction = await getTransactionByTrackingKey(data.trackingKey);
+        if (transaction) {
+          foundBy = 'trackingKey';
+          console.log(`Found transaction by tracking key: ${transaction.id}`);
+        }
+      }
+
+      if (transaction) {
+        // Update the transaction status
+        const updated = await updateTransactionStatusByOpmOrderId(data.orderId, data.status, data.detail);
+        if (updated) {
+          transactionUpdated = true;
+          console.log(`Transaction ${transaction.id} (OPM: ${data.orderId}) status updated to ${data.status}`);
+        } else {
+          console.warn(`Failed to update transaction for order ID: ${data.orderId}`);
+        }
       } else {
-        console.warn(`Transaction not found for order ID: ${data.orderId}`);
+        console.warn(`Transaction not found for order ID: ${data.orderId} or tracking key: ${data.trackingKey || 'N/A'}`);
       }
     } catch (dbError) {
       console.error('Database error updating transaction:', dbError);
@@ -327,7 +348,7 @@ async function processOrderStatus(data: OrderStatusData): Promise<ProcessResult>
     return {
       success: transactionUpdated,
       message: transactionUpdated
-        ? `Transaction ${data.orderId} updated to ${data.status}`
+        ? `Transaction updated to ${data.status} (found by ${foundBy})`
         : `Status update logged but transaction not found in database`,
     };
 

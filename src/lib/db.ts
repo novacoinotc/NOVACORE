@@ -846,6 +846,13 @@ export async function getTransactionByTrackingKey(trackingKey: string): Promise<
   return result[0] as DbTransaction | null;
 }
 
+export async function getTransactionByOpmOrderId(opmOrderId: string): Promise<DbTransaction | null> {
+  const result = await sql`
+    SELECT * FROM transactions WHERE opm_order_id = ${opmOrderId}
+  `;
+  return result[0] as DbTransaction | null;
+}
+
 export async function getTransactionsByClabeAccount(clabeAccountId: string): Promise<DbTransaction[]> {
   const result = await sql`
     SELECT * FROM transactions WHERE clabe_account_id = ${clabeAccountId} ORDER BY created_at DESC
@@ -865,6 +872,23 @@ export async function updateTransactionStatus(
         settled_at = CASE WHEN ${status} = 'scattered' THEN CURRENT_TIMESTAMP ELSE settled_at END,
         updated_at = CURRENT_TIMESTAMP
     WHERE id = ${id}
+    RETURNING *
+  `;
+  return result[0] as DbTransaction | null;
+}
+
+export async function updateTransactionStatusByOpmOrderId(
+  opmOrderId: string,
+  status: string,
+  errorDetail?: string
+): Promise<DbTransaction | null> {
+  const result = await sql`
+    UPDATE transactions
+    SET status = ${status},
+        error_detail = COALESCE(${errorDetail || null}, error_detail),
+        settled_at = CASE WHEN ${status} = 'scattered' THEN CURRENT_TIMESTAMP ELSE settled_at END,
+        updated_at = CURRENT_TIMESTAMP
+    WHERE opm_order_id = ${opmOrderId}
     RETURNING *
   `;
   return result[0] as DbTransaction | null;

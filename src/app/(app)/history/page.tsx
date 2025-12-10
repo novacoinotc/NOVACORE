@@ -79,6 +79,7 @@ interface TransactionResponse {
 
 const statusOptions = [
   { value: '', label: 'Todos los estados' },
+  { value: 'pending_confirmation', label: 'En espera (20s)' },
   { value: 'pending', label: 'Pendiente' },
   { value: 'sent', label: 'Enviada' },
   { value: 'scattered', label: 'Liquidada' },
@@ -438,7 +439,7 @@ export default function HistoryPage() {
                       variant={
                         tx.status === 'scattered'
                           ? 'success'
-                          : tx.status === 'pending' || tx.status === 'sent'
+                          : tx.status === 'pending' || tx.status === 'sent' || tx.status === 'pending_confirmation'
                           ? 'warning'
                           : tx.status === 'returned'
                           ? 'danger'

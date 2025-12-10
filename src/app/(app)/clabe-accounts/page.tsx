@@ -161,6 +161,7 @@ export default function ClabeAccountsPage() {
       alias: clabeAccount.alias,
       description: clabeAccount.description || '',
       isActive: clabeAccount.isActive,
+      inputMode: 'manual', // Not used for editing, but required by type
     });
     setError('');
     setIsModalOpen(true);

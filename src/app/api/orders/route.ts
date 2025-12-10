@@ -309,9 +309,17 @@ export async function POST(request: NextRequest) {
 
     // Save the outgoing transaction to local database
     // ApiResponse has code=0 for success, and data contains the order
+    console.log('=== CHECKING IF SHOULD SAVE TO DATABASE ===');
+    console.log('response.code:', response.code);
+    console.log('response.code === 0:', response.code === 0);
+    console.log('response.data exists:', !!response.data);
+    console.log('response.data type:', typeof response.data);
+
     if (response.code === 0 && response.data) {
+      console.log('=== SAVING TRANSACTION TO DATABASE ===');
       try {
         const opmOrder = response.data;
+        console.log('OPM Order object:', JSON.stringify(opmOrder, null, 2));
 
         // Get the CLABE account ID from payer account
         const clabeAccount = await getClabeAccountByClabe(resolvedPayerAccount);
@@ -343,13 +351,22 @@ export async function POST(request: NextRequest) {
           opmOrderId: opmOrder.id,
         });
 
-        console.log('Outgoing transaction saved to database:', savedTransaction.id);
+        console.log('=== TRANSACTION SAVED SUCCESSFULLY ===');
+        console.log('Saved transaction ID:', savedTransaction.id);
         console.log('OPM Order ID:', opmOrder.id);
         console.log('Tracking Key:', opmOrder.trackingKey || finalTrackingKey);
       } catch (dbError) {
         // Log the error but don't fail the request - the order was created successfully in OPM
+        console.error('=== DATABASE SAVE FAILED ===');
         console.error('Failed to save outgoing transaction to database:', dbError);
+        console.error('Error details:', dbError instanceof Error ? dbError.message : String(dbError));
+        console.error('Stack:', dbError instanceof Error ? dbError.stack : 'No stack');
       }
+    } else {
+      console.log('=== SKIPPING DATABASE SAVE ===');
+      console.log('Reason: response.code !== 0 OR response.data is falsy');
+      console.log('response.code:', response.code);
+      console.log('response.data:', response.data);
     }
 
     console.log('=== ORDER CREATION COMPLETE ===');

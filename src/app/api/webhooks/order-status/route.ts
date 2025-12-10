@@ -46,26 +46,37 @@ export async function POST(request: NextRequest) {
       // Don't reject, just log the mismatch
     }
 
-    // MANDATORY: Validate RSA signature from OPM
-    const signatureValid = await validateOpmSignature(body);
-    if (!signatureValid) {
-      console.error('=== ORDER STATUS WEBHOOK SIGNATURE VALIDATION FAILED ===');
-      console.error('Timestamp:', timestamp);
-      console.error('Body:', JSON.stringify(body, null, 2));
-      console.error('Sign field:', body?.sign || body?.data?.sign || 'NOT PROVIDED');
-      console.error('=======================================================');
+    // RSA signature validation from OPM
+    // TEMPORARILY DISABLED: Awaiting OPM's public key for webhook validation
+    // The keys downloaded from OPM portal are OUR keys, not theirs
+    // Contact OPM to get their public key for validating incoming webhooks
+    const skipSignatureValidation = process.env.SKIP_WEBHOOK_SIGNATURE_VALIDATION === 'true';
 
-      return NextResponse.json({
-        received: true,
-        timestamp,
-        processed: false,
-        returnCode: 99,
-        errorDescription: 'Invalid signature',
-        message: 'RSA signature validation failed',
-      });
+    if (!skipSignatureValidation) {
+      const signatureValid = await validateOpmSignature(body);
+      if (!signatureValid) {
+        console.error('=== ORDER STATUS WEBHOOK SIGNATURE VALIDATION FAILED ===');
+        console.error('Timestamp:', timestamp);
+        console.error('Body:', JSON.stringify(body, null, 2));
+        console.error('Sign field:', body?.sign || body?.data?.sign || 'NOT PROVIDED');
+        console.error('=======================================================');
+
+        return NextResponse.json({
+          received: true,
+          timestamp,
+          processed: false,
+          returnCode: 99,
+          errorDescription: 'Invalid signature',
+          message: 'RSA signature validation failed',
+        });
+      }
+      console.log('RSA signature validated successfully');
+    } else {
+      console.warn('=== WEBHOOK SIGNATURE VALIDATION SKIPPED ===');
+      console.warn('SKIP_WEBHOOK_SIGNATURE_VALIDATION is enabled');
+      console.warn('This should only be used temporarily until OPM provides their public key');
+      console.warn('============================================');
     }
-
-    console.log('RSA signature validated successfully');
 
     // Try to extract order status data from various possible payload structures
     const orderData = extractOrderStatusData(body);

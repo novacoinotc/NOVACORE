@@ -4,7 +4,7 @@ import { signWithPrivateKey, generateNumericalReference, generateTrackingKey } f
 import { CreateOrderRequest } from '@/types';
 import { validateOrderFields, prepareTextForSpei, sanitizeForSpei } from '@/lib/utils';
 import { verifyTOTP, getClientIP, getUserAgent } from '@/lib/security';
-import { getUserTotpSecret, isUserTotpEnabled, createAuditLogEntry, getUserById } from '@/lib/db';
+import { getUserTotpSecret, isUserTotpEnabled, createAuditLogEntry, getUserById, createTransaction, getClabeAccountByClabe } from '@/lib/db';
 
 /**
  * POST /api/orders
@@ -306,6 +306,51 @@ export async function POST(request: NextRequest) {
     const response = await createOrder(orderRequest, apiKey);
 
     console.log('OPM API response:', JSON.stringify(response, null, 2));
+
+    // Save the outgoing transaction to local database
+    if (response.success && response.data) {
+      try {
+        const opmOrder = response.data;
+
+        // Get the CLABE account ID from payer account
+        const clabeAccount = await getClabeAccountByClabe(resolvedPayerAccount);
+
+        // Determine initial status based on OPM response
+        let status = 'pending';
+        if (opmOrder.sent) status = 'sent';
+        if (opmOrder.scattered) status = 'scattered';
+        if (opmOrder.returned) status = 'returned';
+        if (opmOrder.canceled) status = 'canceled';
+
+        const savedTransaction = await createTransaction({
+          id: `tx_out_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`,
+          clabeAccountId: clabeAccount?.id,
+          type: 'outgoing',
+          status,
+          amount: parsedAmount,
+          concept: sanitizedConcept,
+          trackingKey: opmOrder.trackingKey || finalTrackingKey,
+          numericalReference: finalNumericalReference,
+          beneficiaryAccount,
+          beneficiaryBank,
+          beneficiaryName: sanitizedBeneficiaryName,
+          beneficiaryUid: beneficiaryUid || undefined,
+          payerAccount: resolvedPayerAccount,
+          payerBank: resolvedPayerBank,
+          payerName: sanitizedPayerName,
+          payerUid: payerUid || undefined,
+          opmOrderId: opmOrder.id,
+        });
+
+        console.log('Outgoing transaction saved to database:', savedTransaction.id);
+        console.log('OPM Order ID:', opmOrder.id);
+        console.log('Tracking Key:', opmOrder.trackingKey || finalTrackingKey);
+      } catch (dbError) {
+        // Log the error but don't fail the request - the order was created successfully in OPM
+        console.error('Failed to save outgoing transaction to database:', dbError);
+      }
+    }
+
     console.log('=== ORDER CREATION COMPLETE ===');
 
     return NextResponse.json(response);

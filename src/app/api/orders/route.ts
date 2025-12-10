@@ -315,7 +315,7 @@ export async function POST(request: NextRequest) {
     console.log('response.data exists:', !!response.data);
     console.log('response.data type:', typeof response.data);
 
-    if (response.code === 0 && response.data) {
+    if ((response.code === 200 || response.code === 0) && response.data) {
       console.log('=== SAVING TRANSACTION TO DATABASE ===');
       try {
         const opmOrder = response.data;

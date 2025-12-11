@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createOrder, listOrders, buildOrderOriginalString } from '@/lib/opm-api';
-import { signWithPrivateKey, generateNumericalReference, generateTrackingKey } from '@/lib/crypto';
-import { CreateOrderRequest } from '@/types';
+import { listOrders } from '@/lib/opm-api';
+import { generateNumericalReference, generateTrackingKey } from '@/lib/crypto';
 import { validateOrderFields, prepareTextForSpei, sanitizeForSpei } from '@/lib/utils';
 import { verifyTOTP, getClientIP, getUserAgent } from '@/lib/security';
 import { getUserTotpSecret, isUserTotpEnabled, createAuditLogEntry, getUserById, createTransaction, getClabeAccountByClabe } from '@/lib/db';
@@ -243,11 +242,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Payment day (current timestamp in milliseconds)
-    const paymentDay = Date.now();
+    // Grace period configuration: 20 seconds before order is sent to OPM
+    const GRACE_PERIOD_SECONDS = 20;
 
-    // Build order data
-    const orderData = {
+    // Build order data to be sent to OPM AFTER grace period
+    // Note: paymentDay will be set when actually sending to OPM
+    const pendingOrderData = {
       beneficiaryName: sanitizedBeneficiaryName,
       beneficiaryUid: beneficiaryUid || '',
       beneficiaryBank,
@@ -259,30 +259,9 @@ export async function POST(request: NextRequest) {
       payerUid: payerUid || '',
       payerAccountType: resolvedPayerAccountType,
       numericalReference: finalNumericalReference,
-      paymentDay,
       paymentType: paymentType ?? 1, // Default: Third party to third party
       concept: sanitizedConcept,
       amount: parsedAmount,
-    };
-
-    // Build original string for signing
-    const originalString = buildOrderOriginalString(orderData);
-
-    // Sign the order with private key
-    const privateKey = process.env.OPM_PRIVATE_KEY;
-    if (!privateKey) {
-      return NextResponse.json(
-        { error: 'Private key not configured' },
-        { status: 500 }
-      );
-    }
-
-    const sign = await signWithPrivateKey(originalString, privateKey);
-
-    // Create the order request
-    const orderRequest: CreateOrderRequest = {
-      ...orderData,
-      sign,
       trackingKey: finalTrackingKey,
       // Include CEP override fields if provided
       ...(cepPayerName && { cepPayerName: sanitizeForSpei(cepPayerName).substring(0, 40) }),
@@ -290,106 +269,82 @@ export async function POST(request: NextRequest) {
       ...(cepPayerAccount && { cepPayerAccount }),
     };
 
-    console.log('Sending order to OPM API...');
-    console.log('Order request (without sign):', { ...orderRequest, sign: '[REDACTED]' });
+    console.log('=== SAVING TRANSACTION WITH GRACE PERIOD (NOT SENT TO OPM YET) ===');
+    console.log('Order data (will be sent after grace period):', JSON.stringify(pendingOrderData, null, 2));
 
-    // Send to OPM API
-    const apiKey = process.env.OPM_API_KEY;
-    if (!apiKey) {
-      console.error('ORDER ERROR: OPM_API_KEY not configured');
+    try {
+      // Get the CLABE account ID from payer account
+      const clabeAccount = await getClabeAccountByClabe(resolvedPayerAccount);
+
+      // Calculate confirmation deadline (20 seconds from now)
+      const confirmationDeadline = new Date(Date.now() + GRACE_PERIOD_SECONDS * 1000);
+
+      // All outgoing transactions start as pending_confirmation during grace period
+      const status = 'pending_confirmation';
+
+      const transactionId = `tx_out_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+
+      const savedTransaction = await createTransaction({
+        id: transactionId,
+        clabeAccountId: clabeAccount?.id,
+        type: 'outgoing',
+        status,
+        amount: parsedAmount,
+        concept: sanitizedConcept,
+        trackingKey: finalTrackingKey,
+        numericalReference: finalNumericalReference,
+        beneficiaryAccount,
+        beneficiaryBank,
+        beneficiaryName: sanitizedBeneficiaryName,
+        beneficiaryUid: beneficiaryUid || undefined,
+        payerAccount: resolvedPayerAccount,
+        payerBank: resolvedPayerBank,
+        payerName: sanitizedPayerName,
+        payerUid: payerUid || undefined,
+        // NO opmOrderId yet - will be set after grace period when sent to OPM
+        confirmationDeadline,
+        pendingOrderData, // Store the full order data for later submission
+      });
+
+      console.log('=== TRANSACTION SAVED WITH GRACE PERIOD ===');
+      console.log('Saved transaction ID:', savedTransaction.id);
+      console.log('Tracking Key:', finalTrackingKey);
+      console.log('Confirmation Deadline:', confirmationDeadline.toISOString());
+      console.log('Grace Period:', GRACE_PERIOD_SECONDS, 'seconds');
+      console.log('NOTE: Order will be sent to OPM after grace period expires');
+
+      // Return response with grace period info
+      // Note: No OPM order ID yet since we haven't sent to OPM
+      return NextResponse.json({
+        code: 200,
+        data: {
+          id: transactionId,
+          trackingKey: finalTrackingKey,
+          amount: parsedAmount,
+          beneficiaryName: sanitizedBeneficiaryName,
+          beneficiaryAccount,
+          status: 'pending_confirmation',
+        },
+        gracePeriod: {
+          transactionId: savedTransaction.id,
+          confirmationDeadline: confirmationDeadline.toISOString(),
+          secondsRemaining: GRACE_PERIOD_SECONDS,
+          canCancel: true,
+          message: 'La transferencia se enviará automáticamente en 20 segundos. Puedes cancelar antes de que expire el tiempo.',
+        },
+      });
+    } catch (dbError) {
+      console.error('=== DATABASE SAVE FAILED ===');
+      console.error('Failed to save transaction to database:', dbError);
+      console.error('Error details:', dbError instanceof Error ? dbError.message : String(dbError));
       return NextResponse.json(
-        { error: 'API key no configurada' },
+        {
+          error: 'Error al guardar la transacción',
+          details: dbError instanceof Error ? dbError.message : 'Error desconocido'
+        },
         { status: 500 }
       );
     }
-
-    const response = await createOrder(orderRequest, apiKey);
-
-    console.log('OPM API response:', JSON.stringify(response, null, 2));
-
-    // Save the outgoing transaction to local database
-    // ApiResponse has code=0 for success, and data contains the order
-    console.log('=== CHECKING IF SHOULD SAVE TO DATABASE ===');
-    console.log('response.code:', response.code);
-    console.log('response.code === 0:', response.code === 0);
-    console.log('response.data exists:', !!response.data);
-    console.log('response.data type:', typeof response.data);
-
-    // Grace period configuration: 20 seconds before order is confirmed
-    const GRACE_PERIOD_SECONDS = 20;
-
-    if ((response.code === 200 || response.code === 0) && response.data) {
-      console.log('=== SAVING TRANSACTION TO DATABASE WITH GRACE PERIOD ===');
-      try {
-        const opmOrder = response.data;
-        console.log('OPM Order object:', JSON.stringify(opmOrder, null, 2));
-
-        // Get the CLABE account ID from payer account
-        const clabeAccount = await getClabeAccountByClabe(resolvedPayerAccount);
-
-        // Calculate confirmation deadline (20 seconds from now)
-        const confirmationDeadline = new Date(Date.now() + GRACE_PERIOD_SECONDS * 1000);
-
-        // All outgoing transactions start as pending_confirmation during grace period
-        const status = 'pending_confirmation';
-
-        const transactionId = `tx_out_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
-
-        const savedTransaction = await createTransaction({
-          id: transactionId,
-          clabeAccountId: clabeAccount?.id,
-          type: 'outgoing',
-          status,
-          amount: parsedAmount,
-          concept: sanitizedConcept,
-          trackingKey: opmOrder.trackingKey || finalTrackingKey,
-          numericalReference: finalNumericalReference,
-          beneficiaryAccount,
-          beneficiaryBank,
-          beneficiaryName: sanitizedBeneficiaryName,
-          beneficiaryUid: beneficiaryUid || undefined,
-          payerAccount: resolvedPayerAccount,
-          payerBank: resolvedPayerBank,
-          payerName: sanitizedPayerName,
-          payerUid: payerUid || undefined,
-          opmOrderId: opmOrder.id,
-          confirmationDeadline,
-        });
-
-        console.log('=== TRANSACTION SAVED WITH GRACE PERIOD ===');
-        console.log('Saved transaction ID:', savedTransaction.id);
-        console.log('OPM Order ID:', opmOrder.id);
-        console.log('Tracking Key:', opmOrder.trackingKey || finalTrackingKey);
-        console.log('Confirmation Deadline:', confirmationDeadline.toISOString());
-        console.log('Grace Period:', GRACE_PERIOD_SECONDS, 'seconds');
-
-        // Return enhanced response with grace period info
-        return NextResponse.json({
-          ...response,
-          gracePeriod: {
-            transactionId: savedTransaction.id,
-            confirmationDeadline: confirmationDeadline.toISOString(),
-            secondsRemaining: GRACE_PERIOD_SECONDS,
-            canCancel: true,
-          },
-        });
-      } catch (dbError) {
-        // Log the error but don't fail the request - the order was created successfully in OPM
-        console.error('=== DATABASE SAVE FAILED ===');
-        console.error('Failed to save outgoing transaction to database:', dbError);
-        console.error('Error details:', dbError instanceof Error ? dbError.message : String(dbError));
-        console.error('Stack:', dbError instanceof Error ? dbError.stack : 'No stack');
-      }
-    } else {
-      console.log('=== SKIPPING DATABASE SAVE ===');
-      console.log('Reason: response.code !== 0 OR response.data is falsy');
-      console.log('response.code:', response.code);
-      console.log('response.data:', response.data);
-    }
-
-    console.log('=== ORDER CREATION COMPLETE ===');
-
-    return NextResponse.json(response);
   } catch (error) {
     console.error('=== ORDER CREATION ERROR ===');
     console.error('Error:', error);

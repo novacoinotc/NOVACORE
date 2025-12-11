@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getTransactionForCancel, updateTransactionStatus, getTransactionById } from '@/lib/db';
-import { cancelOrder } from '@/lib/opm-api';
 
 /**
  * POST /api/orders/[id]/cancel
@@ -9,13 +8,15 @@ import { cancelOrder } from '@/lib/opm-api';
  *
  * This endpoint:
  * 1. Verifies the transaction is still in grace period (status = pending_confirmation)
- * 2. Calls OPM API to cancel the order
- * 3. Updates local transaction status to 'canceled'
+ * 2. Updates local transaction status to 'canceled'
+ *
+ * NOTE: Since orders are only sent to OPM AFTER the grace period,
+ * cancellation during the grace period only needs to update local status.
+ * No OPM API call is needed.
  *
  * Returns error if:
  * - Transaction not found
- * - Grace period has expired
- * - OPM cancellation fails
+ * - Grace period has expired (order already sent to OPM)
  */
 export async function POST(
   request: NextRequest,
@@ -57,7 +58,7 @@ export async function POST(
       return NextResponse.json(
         {
           error: 'El período de gracia ha expirado',
-          details: 'Esta transferencia ya no puede ser cancelada',
+          details: 'Esta transferencia ya fue enviada y no puede ser cancelada',
           status: existingTx.status,
         },
         { status: 400 }
@@ -65,35 +66,11 @@ export async function POST(
     }
 
     console.log('Transaction found and cancelable');
-    console.log('OPM Order ID:', transaction.opm_order_id);
     console.log('Confirmation Deadline:', transaction.confirmation_deadline);
+    console.log('NOTE: Order has NOT been sent to OPM yet, canceling locally only');
 
-    // Step 2: Cancel in OPM API
-    if (transaction.opm_order_id) {
-      try {
-        console.log('Calling OPM API to cancel order:', transaction.opm_order_id);
-        const opmResponse = await cancelOrder(transaction.opm_order_id);
-        console.log('OPM Cancel Response:', JSON.stringify(opmResponse, null, 2));
-
-        // OPM returns code 200 for success
-        if (opmResponse.code !== 200 && opmResponse.code !== 0) {
-          console.error('OPM cancellation failed:', opmResponse);
-          return NextResponse.json(
-            {
-              error: 'Error al cancelar en OPM',
-              details: opmResponse.error || 'La orden no pudo ser cancelada',
-            },
-            { status: 500 }
-          );
-        }
-      } catch (opmError) {
-        console.error('OPM API error during cancellation:', opmError);
-        // Continue with local cancellation even if OPM fails
-        // The order might already be processed
-      }
-    }
-
-    // Step 3: Update local transaction status
+    // Step 2: Update local transaction status
+    // Since order hasn't been sent to OPM, we just update local status
     console.log('Updating local transaction status to canceled');
     const updatedTransaction = await updateTransactionStatus(
       transactionId,

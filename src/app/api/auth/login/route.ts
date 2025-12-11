@@ -307,6 +307,7 @@ export async function POST(request: NextRequest) {
       email: dbUser.email,
       name: dbUser.name,
       role: role,
+      companyId: dbUser.company_id, // Include companyId for company_admin users
       permissions: permissions,
       clabeAccountIds: clabeAccountIds,
       isActive: dbUser.isActive,

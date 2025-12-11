@@ -119,11 +119,13 @@ export function getStatusBgColor(status: string): string {
 // Get status text in Spanish
 export function getStatusText(status: string): string {
   const texts: Record<string, string> = {
+    pending_confirmation: 'En espera',
     pending: 'Pendiente',
     sent: 'Enviada',
     scattered: 'Liquidada',
     canceled: 'Cancelada',
     returned: 'Devuelta',
+    queued: 'En cola',
   };
   return texts[status] || status;
 }

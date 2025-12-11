@@ -315,8 +315,11 @@ export async function POST(request: NextRequest) {
     console.log('response.data exists:', !!response.data);
     console.log('response.data type:', typeof response.data);
 
+    // Grace period configuration: 20 seconds before order is confirmed
+    const GRACE_PERIOD_SECONDS = 20;
+
     if ((response.code === 200 || response.code === 0) && response.data) {
-      console.log('=== SAVING TRANSACTION TO DATABASE ===');
+      console.log('=== SAVING TRANSACTION TO DATABASE WITH GRACE PERIOD ===');
       try {
         const opmOrder = response.data;
         console.log('OPM Order object:', JSON.stringify(opmOrder, null, 2));
@@ -324,15 +327,16 @@ export async function POST(request: NextRequest) {
         // Get the CLABE account ID from payer account
         const clabeAccount = await getClabeAccountByClabe(resolvedPayerAccount);
 
-        // Determine initial status based on OPM response
-        let status = 'pending';
-        if (opmOrder.sent) status = 'sent';
-        if (opmOrder.scattered) status = 'scattered';
-        if (opmOrder.returned) status = 'returned';
-        if (opmOrder.canceled) status = 'canceled';
+        // Calculate confirmation deadline (20 seconds from now)
+        const confirmationDeadline = new Date(Date.now() + GRACE_PERIOD_SECONDS * 1000);
+
+        // All outgoing transactions start as pending_confirmation during grace period
+        const status = 'pending_confirmation';
+
+        const transactionId = `tx_out_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
 
         const savedTransaction = await createTransaction({
-          id: `tx_out_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`,
+          id: transactionId,
           clabeAccountId: clabeAccount?.id,
           type: 'outgoing',
           status,
@@ -349,12 +353,26 @@ export async function POST(request: NextRequest) {
           payerName: sanitizedPayerName,
           payerUid: payerUid || undefined,
           opmOrderId: opmOrder.id,
+          confirmationDeadline,
         });
 
-        console.log('=== TRANSACTION SAVED SUCCESSFULLY ===');
+        console.log('=== TRANSACTION SAVED WITH GRACE PERIOD ===');
         console.log('Saved transaction ID:', savedTransaction.id);
         console.log('OPM Order ID:', opmOrder.id);
         console.log('Tracking Key:', opmOrder.trackingKey || finalTrackingKey);
+        console.log('Confirmation Deadline:', confirmationDeadline.toISOString());
+        console.log('Grace Period:', GRACE_PERIOD_SECONDS, 'seconds');
+
+        // Return enhanced response with grace period info
+        return NextResponse.json({
+          ...response,
+          gracePeriod: {
+            transactionId: savedTransaction.id,
+            confirmationDeadline: confirmationDeadline.toISOString(),
+            secondsRemaining: GRACE_PERIOD_SECONDS,
+            canCancel: true,
+          },
+        });
       } catch (dbError) {
         // Log the error but don't fail the request - the order was created successfully in OPM
         console.error('=== DATABASE SAVE FAILED ===');

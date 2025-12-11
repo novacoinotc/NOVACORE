@@ -801,12 +801,14 @@ export async function createTransaction(transaction: {
   payerName?: string;
   payerUid?: string;
   opmOrderId?: string;
+  confirmationDeadline?: Date;
 }): Promise<DbTransaction> {
   const result = await sql`
     INSERT INTO transactions (
       id, clabe_account_id, type, status, amount, concept, tracking_key,
       numerical_reference, beneficiary_account, beneficiary_bank, beneficiary_name,
-      beneficiary_uid, payer_account, payer_bank, payer_name, payer_uid, opm_order_id
+      beneficiary_uid, payer_account, payer_bank, payer_name, payer_uid, opm_order_id,
+      confirmation_deadline
     )
     VALUES (
       ${transaction.id},
@@ -825,11 +827,34 @@ export async function createTransaction(transaction: {
       ${transaction.payerBank || null},
       ${transaction.payerName || null},
       ${transaction.payerUid || null},
-      ${transaction.opmOrderId || null}
+      ${transaction.opmOrderId || null},
+      ${transaction.confirmationDeadline?.toISOString() || null}
     )
     RETURNING *
   `;
   return result[0] as DbTransaction;
+}
+
+// Get transactions pending confirmation that have passed their deadline
+export async function getPendingConfirmationTransactions(): Promise<DbTransaction[]> {
+  const result = await sql`
+    SELECT * FROM transactions
+    WHERE status = 'pending_confirmation'
+    AND confirmation_deadline <= CURRENT_TIMESTAMP
+    ORDER BY created_at ASC
+  `;
+  return result as DbTransaction[];
+}
+
+// Get a single transaction pending confirmation by ID (for cancel check)
+export async function getTransactionForCancel(transactionId: string): Promise<DbTransaction | null> {
+  const result = await sql`
+    SELECT * FROM transactions
+    WHERE id = ${transactionId}
+    AND status = 'pending_confirmation'
+    AND confirmation_deadline > CURRENT_TIMESTAMP
+  `;
+  return result[0] as DbTransaction | null;
 }
 
 export async function getTransactionById(id: string): Promise<DbTransaction | null> {

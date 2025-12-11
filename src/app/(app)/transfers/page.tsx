@@ -18,6 +18,9 @@ import {
   RefreshCw,
   Bookmark,
   ChevronDown,
+  XCircle,
+  Clock,
+  Ban,
 } from 'lucide-react';
 import { Button, Input, Select, Card, CardHeader, CardTitle, CardContent, Modal } from '@/components/ui';
 import { formatCurrency, formatClabe, validateClabe, sanitizeForSpei } from '@/lib/utils';
@@ -38,6 +41,19 @@ export default function TransfersPage() {
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
+
+  // Grace period state (20 second countdown)
+  const [showGracePeriodModal, setShowGracePeriodModal] = useState(false);
+  const [gracePeriodData, setGracePeriodData] = useState<{
+    transactionId: string;
+    confirmationDeadline: string;
+    secondsRemaining: number;
+    trackingKey: string;
+    orderId: string;
+  } | null>(null);
+  const [countdown, setCountdown] = useState(20);
+  const [isCanceling, setIsCanceling] = useState(false);
+  const [cancelSuccess, setCancelSuccess] = useState(false);
 
   // Bank loading state
   const [banks, setBanks] = useState<{ value: string; label: string }[]>([]);
@@ -139,6 +155,94 @@ export default function TransfersPage() {
   useEffect(() => {
     loadSavedAccounts();
   }, [loadSavedAccounts]);
+
+  // Grace period countdown effect
+  useEffect(() => {
+    if (!showGracePeriodModal || !gracePeriodData || cancelSuccess) return;
+
+    // Initial countdown from grace period data
+    const deadline = new Date(gracePeriodData.confirmationDeadline).getTime();
+    const updateCountdown = () => {
+      const now = Date.now();
+      const remaining = Math.max(0, Math.ceil((deadline - now) / 1000));
+      setCountdown(remaining);
+
+      if (remaining <= 0) {
+        // Grace period expired - confirm the transaction
+        handleGracePeriodExpired();
+      }
+    };
+
+    updateCountdown();
+    const interval = setInterval(updateCountdown, 1000);
+
+    return () => clearInterval(interval);
+  }, [showGracePeriodModal, gracePeriodData, cancelSuccess]);
+
+  // Handle grace period expiration
+  const handleGracePeriodExpired = async () => {
+    if (!gracePeriodData) return;
+
+    try {
+      // Call the confirm-pending endpoint to process this transaction
+      await fetch('/api/orders/confirm-pending', { method: 'POST' });
+
+      // Show success modal
+      setSuccessData({
+        trackingKey: gracePeriodData.trackingKey,
+        orderId: gracePeriodData.orderId,
+      });
+      setShowGracePeriodModal(false);
+      setShowSuccessModal(true);
+      setGracePeriodData(null);
+    } catch (error) {
+      console.error('Error confirming transaction:', error);
+      // Still show success - the transaction was created
+      setSuccessData({
+        trackingKey: gracePeriodData.trackingKey,
+        orderId: gracePeriodData.orderId,
+      });
+      setShowGracePeriodModal(false);
+      setShowSuccessModal(true);
+    }
+  };
+
+  // Handle cancel during grace period
+  const handleCancelTransfer = async () => {
+    if (!gracePeriodData) return;
+
+    setIsCanceling(true);
+
+    try {
+      const response = await fetch(`/api/orders/${gracePeriodData.transactionId}/cancel`, {
+        method: 'POST',
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Error al cancelar la transferencia');
+      }
+
+      // Show cancel success
+      setCancelSuccess(true);
+
+      // After 2 seconds, close modal and reset form
+      setTimeout(() => {
+        setShowGracePeriodModal(false);
+        setCancelSuccess(false);
+        setGracePeriodData(null);
+        resetForm();
+      }, 2000);
+    } catch (error) {
+      console.error('Cancel error:', error);
+      setErrors({
+        submit: error instanceof Error ? error.message : 'Error al cancelar',
+      });
+    } finally {
+      setIsCanceling(false);
+    }
+  };
 
   // Load CLABE accounts (source accounts for transfers)
   useEffect(() => {
@@ -336,16 +440,33 @@ export default function TransfersPage() {
         throw new Error(data.error || 'Error al procesar la transferencia');
       }
 
-      // Store success data
-      setSuccessData({
-        trackingKey: data.data?.trackingKey || data.trackingKey || 'N/A',
-        orderId: data.data?.id || data.id || 'N/A',
-      });
+      // Check if grace period data is included in response
+      if (data.gracePeriod) {
+        // Show grace period modal with countdown
+        setGracePeriodData({
+          transactionId: data.gracePeriod.transactionId,
+          confirmationDeadline: data.gracePeriod.confirmationDeadline,
+          secondsRemaining: data.gracePeriod.secondsRemaining,
+          trackingKey: data.data?.trackingKey || data.trackingKey || 'N/A',
+          orderId: data.data?.id || data.id || 'N/A',
+        });
+        setCountdown(data.gracePeriod.secondsRemaining);
+        setShowConfirmModal(false);
+        setShowGracePeriodModal(true);
+        setTotpCode('');
+        setRequires2FA(false);
+      } else {
+        // No grace period - show success directly (fallback for older API)
+        setSuccessData({
+          trackingKey: data.data?.trackingKey || data.trackingKey || 'N/A',
+          orderId: data.data?.id || data.id || 'N/A',
+        });
 
-      setShowConfirmModal(false);
-      setShowSuccessModal(true);
-      setTotpCode('');
-      setRequires2FA(false);
+        setShowConfirmModal(false);
+        setShowSuccessModal(true);
+        setTotpCode('');
+        setRequires2FA(false);
+      }
     } catch (error) {
       console.error('Transfer error:', error);
       setErrors({
@@ -861,6 +982,93 @@ export default function TransfersPage() {
               {isProcessing ? 'Procesando...' : requires2FA ? 'Verificar y Enviar' : 'Confirmar'}
             </Button>
           </div>
+        </div>
+      </Modal>
+
+      {/* Grace Period Modal - 20 second countdown */}
+      <Modal
+        isOpen={showGracePeriodModal}
+        onClose={() => {}} // Prevent closing by clicking outside
+        size="md"
+        showCloseButton={false}
+      >
+        <div className="text-center py-4">
+          {cancelSuccess ? (
+            // Cancel success state
+            <>
+              <div className="w-20 h-20 mx-auto mb-4 rounded-full bg-green-500/10 border-2 border-green-500/30 flex items-center justify-center">
+                <Ban className="w-10 h-10 text-green-400" />
+              </div>
+              <h3 className="text-xl font-medium text-white/90 mb-2">Transferencia Cancelada</h3>
+              <p className="text-sm text-white/40">
+                La transferencia ha sido cancelada exitosamente
+              </p>
+            </>
+          ) : (
+            // Countdown state
+            <>
+              <div className="w-24 h-24 mx-auto mb-4 rounded-full bg-amber-500/10 border-4 border-amber-500/30 flex items-center justify-center relative">
+                <Clock className="w-8 h-8 text-amber-400 absolute opacity-30" />
+                <span className="text-4xl font-bold text-amber-400">{countdown}</span>
+              </div>
+
+              <h3 className="text-xl font-medium text-white/90 mb-2">Transferencia Programada</h3>
+              <p className="text-sm text-white/40 mb-2">
+                Se enviara en <span className="text-amber-400 font-semibold">{countdown} segundos</span>
+              </p>
+              <p className="text-xs text-white/30 mb-6">
+                Puedes cancelar la transferencia durante este tiempo
+              </p>
+
+              {/* Progress bar */}
+              <div className="w-full h-2 bg-white/[0.06] rounded-full mb-6 overflow-hidden">
+                <div
+                  className="h-full bg-gradient-to-r from-amber-500 to-amber-400 transition-all duration-1000 ease-linear"
+                  style={{ width: `${(countdown / 20) * 100}%` }}
+                />
+              </div>
+
+              {/* Transfer details */}
+              <div className="p-4 rounded-lg bg-white/[0.02] border border-white/[0.06] mb-6 text-left">
+                <div className="flex justify-between text-sm mb-2">
+                  <span className="text-white/40">Beneficiario</span>
+                  <span className="text-white/80">{formData.beneficiaryName}</span>
+                </div>
+                <div className="flex justify-between text-sm mb-2">
+                  <span className="text-white/40">Cuenta</span>
+                  <span className="font-mono text-white/60 text-xs">{formatClabe(formData.beneficiaryAccount)}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-white/40">Monto</span>
+                  <span className="font-mono text-lg text-white/90">
+                    {formatCurrency(parseFloat(formData.amount || '0'))}
+                  </span>
+                </div>
+              </div>
+
+              {errors.submit && (
+                <div className="p-3 rounded-md bg-red-500/10 border border-red-500/20 text-red-400 text-sm mb-4">
+                  {errors.submit}
+                </div>
+              )}
+
+              {/* Cancel button */}
+              <Button
+                variant="secondary"
+                className="w-full py-4 text-lg bg-red-500/10 hover:bg-red-500/20 border-red-500/30 text-red-400 hover:text-red-300"
+                onClick={handleCancelTransfer}
+                isLoading={isCanceling}
+                disabled={isCanceling || countdown <= 0}
+                leftIcon={isCanceling ? <Loader2 className="w-5 h-5 animate-spin" /> : <XCircle className="w-5 h-5" />}
+              >
+                {isCanceling ? 'Cancelando...' : 'CANCELAR TRANSFERENCIA'}
+              </Button>
+
+              <p className="text-xs text-white/20 mt-4">
+                La transferencia se confirmara automaticamente al terminar el contador
+              </p>
+            </>
+          )}
         </div>
       </Modal>
 

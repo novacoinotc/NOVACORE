@@ -4,7 +4,6 @@ import { useState, useEffect } from 'react';
 import {
   Shield,
   Bell,
-  Globe,
   CheckCircle,
   AlertTriangle,
   Smartphone,
@@ -332,35 +331,6 @@ export default function SettingsPage() {
                     </div>
                   </div>
                 )}
-              </CardContent>
-            </Card>
-
-            {/* IP Whitelist */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Globe className="w-4 h-4 text-white/40" />
-                  IPs Permitidas
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-xs text-white/40 mb-3">
-                  Restringe el acceso a tu cuenta solo desde estas direcciones IP.
-                </p>
-                <div className="space-y-2">
-                  {['192.168.1.100', '10.0.0.50', '203.45.67.89'].map((ip) => (
-                    <div
-                      key={ip}
-                      className="flex items-center justify-between p-2 rounded-md bg-white/[0.02]"
-                    >
-                      <span className="font-mono text-sm text-white/60">{ip}</span>
-                      <button className="text-xs text-red-400/80 hover:text-red-400">Eliminar</button>
-                    </div>
-                  ))}
-                </div>
-                <Button variant="secondary" size="sm" className="mt-3">
-                  Agregar IP
-                </Button>
               </CardContent>
             </Card>
           </div>

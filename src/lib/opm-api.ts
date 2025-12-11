@@ -341,7 +341,7 @@ export async function listPaymentTypes(
 
 // ==================== CLIENTS API ====================
 
-// Create indirect participant client
+// Create indirect participant client (without signature - for testing only)
 export async function createClient(
   clientData: Client,
   apiKey?: string
@@ -349,6 +349,53 @@ export async function createClient(
   return fetchApi<Client>('indirectParticipantClients', {
     method: 'POST',
     body: JSON.stringify(clientData),
+  }, apiKey);
+}
+
+/**
+ * Create a signed indirect participant client
+ *
+ * This function automatically:
+ * 1. Builds the "cadena original" from client data
+ * 2. Signs it using RSA-SHA256
+ * 3. Includes the signature in the request
+ *
+ * Use this function for production client creation.
+ * Based on MI-OPM-2.5.pdf signature requirements.
+ *
+ * @param clientData - Client data without signature
+ * @param apiKey - Optional API key
+ * @returns API response with created client including virtualAccountNumber
+ */
+export async function createSignedClient(
+  clientData: Omit<Client, 'signature'>,
+  apiKey?: string
+): Promise<ApiResponse<Client>> {
+  // Build the original string for signing
+  const originalString = buildClientOriginalString({
+    name: clientData.name,
+    businessName: clientData.businessName,
+    commercialActivity: clientData.commercialActivity,
+    rfc: clientData.rfc,
+    curp: clientData.curp,
+    address: clientData.address,
+    email: clientData.email,
+    mobileNumber: clientData.mobileNumber,
+    birthDate: clientData.birthDate,
+  });
+
+  // Sign the original string with RSA-SHA256
+  const signature = signWithRSA(originalString);
+
+  // Create the client with signature
+  const signedClientData: Client = {
+    ...clientData,
+    signature,
+  };
+
+  return fetchApi<Client>('indirectParticipantClients', {
+    method: 'POST',
+    body: JSON.stringify(signedClientData),
   }, apiKey);
 }
 
@@ -467,7 +514,8 @@ export async function createVirtualClabe(
     status: 'ACTIVE',
   };
 
-  return createClient(clientData, apiKey);
+  // Use signed client creation for production (required by OPM API)
+  return createSignedClient(clientData, apiKey);
 }
 
 /**

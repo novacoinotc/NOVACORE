@@ -91,11 +91,29 @@ export async function POST(request: NextRequest) {
     let generatedClabe: string;
 
     try {
+      console.log('Calling OPM API with request:', JSON.stringify(opmRequest, null, 2));
       const opmResponse = await createVirtualClabe(opmRequest);
+      console.log('OPM API response:', JSON.stringify(opmResponse, null, 2));
 
-      if (!opmResponse.data || !opmResponse.data.virtualAccountNumber) {
+      // Check for the virtualAccountNumber in the response data
+      // OPM API returns the created client with the generated CLABE in virtualAccountNumber
+      if (!opmResponse.data) {
         return NextResponse.json(
-          { error: 'OPM no devolvió un número de cuenta CLABE' },
+          {
+            error: 'OPM no devolvió datos en la respuesta',
+            opmResponse: opmResponse,
+          },
+          { status: 500 }
+        );
+      }
+
+      if (!opmResponse.data.virtualAccountNumber) {
+        return NextResponse.json(
+          {
+            error: 'OPM no devolvió un número de cuenta CLABE',
+            detail: 'El campo virtualAccountNumber no está presente en la respuesta',
+            opmData: opmResponse.data,
+          },
           { status: 500 }
         );
       }
@@ -107,6 +125,7 @@ export async function POST(request: NextRequest) {
         {
           error: 'Error al comunicarse con OPM API',
           detail: opmError.message || 'Error desconocido',
+          stack: process.env.NODE_ENV === 'development' ? opmError.stack : undefined,
         },
         { status: 502 }
       );

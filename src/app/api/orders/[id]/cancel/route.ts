@@ -3,7 +3,7 @@ import { getTransactionForCancel, updateTransactionStatus, getTransactionById } 
 import { cancelOrder } from '@/lib/opm-api';
 
 /**
- * POST /api/orders/[transactionId]/cancel
+ * POST /api/orders/[id]/cancel
  *
  * Cancel a transfer during the 20-second grace period.
  *
@@ -19,9 +19,9 @@ import { cancelOrder } from '@/lib/opm-api';
  */
 export async function POST(
   request: NextRequest,
-  { params }: { params: Promise<{ transactionId: string }> }
+  { params }: { params: Promise<{ id: string }> }
 ) {
-  const { transactionId } = await params;
+  const { id: transactionId } = await params;
 
   console.log('=== CANCEL TRANSFER REQUEST ===');
   console.log('Transaction ID:', transactionId);
@@ -140,15 +140,15 @@ export async function POST(
 }
 
 /**
- * GET /api/orders/[transactionId]/cancel
+ * GET /api/orders/[id]/cancel
  *
  * Check if a transaction can still be canceled.
  */
 export async function GET(
   request: NextRequest,
-  { params }: { params: Promise<{ transactionId: string }> }
+  { params }: { params: Promise<{ id: string }> }
 ) {
-  const { transactionId } = await params;
+  const { id: transactionId } = await params;
 
   try {
     const transaction = await getTransactionForCancel(transactionId);

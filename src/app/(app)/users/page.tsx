@@ -739,7 +739,7 @@ export default function UsersPage() {
                         ))}
                       </select>
                     )}
-                    {!formData.companyId && formData.role !== 'super_admin' && (
+                    {!formData.companyId && (
                       <p className="text-yellow-400/70 text-xs flex items-center gap-1 mt-1">
                         <AlertCircle className="w-3 h-3" />
                         Se requiere asignar una empresa para este rol

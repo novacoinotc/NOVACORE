@@ -81,7 +81,7 @@ export async function POST(
           return NextResponse.json(
             {
               error: 'Error al cancelar en OPM',
-              details: opmResponse.message || 'La orden no pudo ser cancelada',
+              details: opmResponse.error || 'La orden no pudo ser cancelada',
             },
             { status: 500 }
           );
@@ -173,14 +173,15 @@ export async function GET(
     }
 
     // Calculate remaining time
-    const deadline = new Date(transaction.confirmation_deadline);
+    // Note: confirmation_deadline is guaranteed to exist for cancelable transactions
+    const deadline = new Date(transaction.confirmation_deadline!);
     const now = new Date();
     const secondsRemaining = Math.max(0, Math.floor((deadline.getTime() - now.getTime()) / 1000));
 
     return NextResponse.json({
       canCancel: true,
       secondsRemaining,
-      confirmationDeadline: transaction.confirmation_deadline,
+      confirmationDeadline: transaction.confirmation_deadline!,
       status: transaction.status,
     });
   } catch (error) {

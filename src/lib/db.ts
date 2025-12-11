@@ -368,6 +368,7 @@ export interface DbTransaction {
   created_at: Date;
   updated_at: Date;
   settled_at: Date | null;
+  confirmation_deadline: Date | null;
 }
 
 export interface DbSavedAccount {

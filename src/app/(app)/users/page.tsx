@@ -51,12 +51,20 @@ interface ClabeAccount {
   isActive: boolean;
 }
 
+interface Company {
+  id: string;
+  name: string;
+  businessName: string;
+  isActive: boolean;
+}
+
 interface UserFormData {
   id: string;
   email: string;
   password: string;
   name: string;
   role: UserRole;
+  companyId: string;
   permissions: Permission[];
   isActive: boolean;
   clabeAccountIds: string[];
@@ -68,6 +76,7 @@ const defaultFormData: UserFormData = {
   password: '',
   name: '',
   role: 'user',
+  companyId: '',
   permissions: [...DEFAULT_ROLE_PERMISSIONS.user],
   isActive: true,
   clabeAccountIds: [],
@@ -90,6 +99,8 @@ export default function UsersPage() {
   const [saving, setSaving] = useState(false);
   const [clabeAccounts, setClabeAccounts] = useState<ClabeAccount[]>([]);
   const [loadingClabeAccounts, setLoadingClabeAccounts] = useState(false);
+  const [companies, setCompanies] = useState<Company[]>([]);
+  const [loadingCompanies, setLoadingCompanies] = useState(false);
 
   // Fetch users from API
   const fetchUsers = async () => {
@@ -149,6 +160,29 @@ export default function UsersPage() {
     }
   };
 
+  // Fetch companies for super_admin
+  const fetchCompanies = async () => {
+    if (!currentUser || currentUser.role !== 'super_admin') return;
+
+    try {
+      setLoadingCompanies(true);
+      const response = await fetch('/api/companies', {
+        headers: {
+          'x-user-id': currentUser.id,
+        },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setCompanies(data.filter((c: Company) => c.isActive));
+      }
+    } catch (error) {
+      console.error('Error fetching companies:', error);
+    } finally {
+      setLoadingCompanies(false);
+    }
+  };
+
   // Filter users by search
   const filteredUsers = users.filter(
     (u) =>
@@ -162,9 +196,11 @@ export default function UsersPage() {
     setFormData({
       ...defaultFormData,
       id: `user_${Date.now()}`,
+      companyId: currentUser?.role === 'company_admin' ? (currentUser.companyId || '') : '',
     });
     setError('');
     fetchClabeAccounts(); // Load CLABE accounts
+    fetchCompanies(); // Load companies for super_admin
     setIsModalOpen(true);
   };
 
@@ -177,12 +213,14 @@ export default function UsersPage() {
       password: '', // Don't show existing password
       name: user.name,
       role: user.role,
+      companyId: user.companyId || '',
       permissions: [...user.permissions],
       isActive: user.isActive,
       clabeAccountIds: user.clabeAccountIds || [],
     });
     setError('');
     fetchClabeAccounts(); // Load CLABE accounts
+    fetchCompanies(); // Load companies for super_admin
     setIsModalOpen(true);
   };
 
@@ -246,6 +284,12 @@ export default function UsersPage() {
       }
     }
 
+    // super_admin must select a company for non-super_admin users
+    if (currentUser.role === 'super_admin' && formData.role !== 'super_admin' && !formData.companyId) {
+      setError('Debes asignar una empresa para este usuario');
+      return;
+    }
+
     try {
       setSaving(true);
       setError('');
@@ -262,13 +306,16 @@ export default function UsersPage() {
         ...(formData.password && { password: formData.password }),
       };
 
-      // For company_admin, automatically assign their company to new users
-      if (currentUser.role === 'company_admin' && !selectedUser) {
-        userData.companyId = currentUser.companyId;
+      // Assign company based on role and context
+      if (formData.role !== 'super_admin') {
+        // For company_admin creating users, use their company
+        if (currentUser.role === 'company_admin') {
+          userData.companyId = currentUser.companyId || formData.companyId;
+        } else {
+          // For super_admin, use the selected company
+          userData.companyId = formData.companyId || null;
+        }
       }
-
-      // For super_admin creating company_admin or user, they need to select a company
-      // This will be handled by the API validation
 
       let response;
       if (selectedUser) {
@@ -666,6 +713,40 @@ export default function UsersPage() {
                     </select>
                   </div>
                 </div>
+
+                {/* Company selector - only for super_admin creating non-super_admin users */}
+                {currentUser?.role === 'super_admin' && formData.role !== 'super_admin' && (
+                  <div className="space-y-1.5">
+                    <label className="text-white/40 text-xs uppercase tracking-wider">
+                      Empresa
+                    </label>
+                    {loadingCompanies ? (
+                      <div className="flex items-center gap-2 py-2.5 px-4 text-white/40 text-sm">
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        Cargando empresas...
+                      </div>
+                    ) : (
+                      <select
+                        value={formData.companyId}
+                        onChange={(e) => setFormData((prev) => ({ ...prev, companyId: e.target.value }))}
+                        className="w-full bg-white/[0.03] border border-white/[0.08] rounded-lg py-2.5 px-4 text-white text-sm focus:outline-none focus:border-purple-500/50 transition-colors"
+                      >
+                        <option value="" className="bg-[#0a0a1a]">Seleccionar empresa...</option>
+                        {companies.map((company) => (
+                          <option key={company.id} value={company.id} className="bg-[#0a0a1a]">
+                            {company.name} - {company.businessName}
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                    {!formData.companyId && formData.role !== 'super_admin' && (
+                      <p className="text-yellow-400/70 text-xs flex items-center gap-1 mt-1">
+                        <AlertCircle className="w-3 h-3" />
+                        Se requiere asignar una empresa para este rol
+                      </p>
+                    )}
+                  </div>
+                )}
 
                 {/* Status toggle */}
                 <div className="flex items-center gap-3">

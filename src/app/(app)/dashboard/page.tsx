@@ -17,6 +17,7 @@ interface DashboardData {
     pendingCount: number;
     clientsCount: number;
     totalBalance: number;
+    inTransit: number;
     incomingChange: number;
     outgoingChange: number;
   };
@@ -105,6 +106,7 @@ export default function DashboardPage() {
     pendingCount: 0,
     clientsCount: 0,
     totalBalance: 0,
+    inTransit: 0,
     incomingChange: 0,
     outgoingChange: 0,
   };
@@ -139,8 +141,8 @@ export default function DashboardPage() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <BalanceCard
           totalBalance={stats.totalBalance}
-          availableBalance={stats.totalIncoming}
-          transitBalance={stats.totalOutgoing}
+          availableBalance={stats.totalBalance - stats.inTransit}
+          transitBalance={stats.inTransit}
         />
         <TransactionChart data={chartData} />
       </div>

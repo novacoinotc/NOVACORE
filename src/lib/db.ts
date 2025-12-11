@@ -331,6 +331,7 @@ export interface DbUser {
   password: string;
   name: string;
   role: string;
+  company_id: string | null;
   permissions: string[];
   avatar: string | null;
   isActive: boolean;
@@ -1014,6 +1015,7 @@ export interface DashboardStats {
   pendingCount: number;
   clientsCount: number;
   totalBalance: number;
+  inTransit: number;
   incomingChange: number;
   outgoingChange: number;
   weeklyData: { name: string; incoming: number; outgoing: number }[];
@@ -1042,6 +1044,7 @@ export async function getDashboardStats(companyId?: string): Promise<DashboardSt
         pendingCount: 0,
         clientsCount: 0,
         totalBalance: 0,
+        inTransit: 0,
         incomingChange: 0,
         outgoingChange: 0,
         weeklyData: [],
@@ -1078,6 +1081,16 @@ export async function getDashboardStats(companyId?: string): Promise<DashboardSt
     ${sql.unsafe(clabeFilter)}
   `;
 
+  // Get "in transit" amount - outgoing transactions that haven't settled yet
+  // Includes: pending_confirmation (grace period), pending, sent, queued
+  const inTransitResult = await sql`
+    SELECT COALESCE(SUM(amount), 0) as in_transit
+    FROM transactions
+    WHERE type = 'outgoing'
+    AND status IN ('pending_confirmation', 'pending', 'sent', 'queued')
+    ${sql.unsafe(clabeFilter)}
+  `;
+
   // Get weekly data for chart
   const weeklyResult = await sql`
     SELECT
@@ -1111,12 +1124,15 @@ export async function getDashboardStats(companyId?: string): Promise<DashboardSt
   const incomingChange = prevIncoming > 0 ? ((currentIncoming - prevIncoming) / prevIncoming) * 100 : 0;
   const outgoingChange = prevOutgoing > 0 ? ((currentOutgoing - prevOutgoing) / prevOutgoing) * 100 : 0;
 
+  const inTransit = parseFloat(inTransitResult[0]?.in_transit || '0');
+
   return {
     totalIncoming: currentIncoming,
     totalOutgoing: currentOutgoing,
     pendingCount: parseInt(currentStatsResult[0]?.pending_count || '0'),
     clientsCount: parseInt(clientsResult[0]?.count || '0'),
     totalBalance: currentIncoming - currentOutgoing,
+    inTransit,
     incomingChange: Math.round(incomingChange * 10) / 10,
     outgoingChange: Math.round(outgoingChange * 10) / 10,
     weeklyData,

@@ -202,12 +202,31 @@ export default function ClabeAccountsPage() {
   // Save CLABE (create or update)
   const handleSave = async () => {
     // For company_admin, use their companyId automatically
-    const effectiveCompanyId = formData.companyId ||
-      (currentUser?.role === 'company_admin' ? currentUser.companyId : '');
+    // Also try to get company from existing CLABE accounts if user's companyId is not set
+    let effectiveCompanyId = formData.companyId;
 
-    // Validation
-    if (!effectiveCompanyId || !formData.alias) {
-      setError('Empresa y alias son requeridos');
+    if (!effectiveCompanyId && currentUser?.role === 'company_admin') {
+      // Try from user profile first
+      effectiveCompanyId = currentUser.companyId || '';
+
+      // If still empty, try to get from existing CLABE accounts
+      if (!effectiveCompanyId && clabeAccounts.length > 0) {
+        effectiveCompanyId = clabeAccounts[0].companyId;
+      }
+    }
+
+    // Validation - show more specific errors
+    if (!formData.alias) {
+      setError('El alias es requerido');
+      return;
+    }
+
+    if (!effectiveCompanyId) {
+      if (currentUser?.role === 'company_admin') {
+        setError('No se pudo detectar tu empresa. Por favor cierra sesión e inicia sesión nuevamente.');
+      } else {
+        setError('Selecciona una empresa');
+      }
       return;
     }
 

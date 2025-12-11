@@ -32,10 +32,13 @@ export async function POST(request: NextRequest) {
     const { companyId, alias, description, isActive } = body;
 
     // Get current user for authorization
+    console.log('Step 1: Getting current user...');
     const currentUser = await getCurrentUser(request);
+    console.log('Current user:', currentUser ? { id: currentUser.id, role: currentUser.role, company_id: currentUser.company_id } : 'null');
 
     // Validation
     if (!companyId || !alias) {
+      console.log('Validation failed: missing companyId or alias');
       return NextResponse.json(
         { error: 'Empresa y alias son requeridos' },
         { status: 400 }
@@ -43,25 +46,31 @@ export async function POST(request: NextRequest) {
     }
 
     // Authorization: super_admin can create for any company, company_admin only for their own
+    console.log('Step 2: Checking authorization...');
     if (currentUser) {
       if (currentUser.role === 'company_admin') {
         // company_admin can only create CLABEs for their own company
         if (currentUser.company_id !== companyId) {
+          console.log('Authorization failed: company_admin trying to create for different company');
           return NextResponse.json(
             { error: 'Solo puedes crear cuentas CLABE para tu propia empresa' },
             { status: 403 }
           );
         }
       } else if (currentUser.role !== 'super_admin') {
+        console.log('Authorization failed: user role is', currentUser.role);
         return NextResponse.json(
           { error: 'No tienes permiso para crear cuentas CLABE' },
           { status: 403 }
         );
       }
     }
+    console.log('Authorization passed');
 
     // Get company information
+    console.log('Step 3: Getting company by ID:', companyId);
     const company = await getCompanyById(companyId);
+    console.log('Company found:', company ? { id: company.id, name: company.name, rfc: company.rfc, is_active: company.is_active } : 'null');
     if (!company) {
       return NextResponse.json(
         { error: 'Empresa no encontrada' },
@@ -71,6 +80,7 @@ export async function POST(request: NextRequest) {
 
     // Check if company is active
     if (!company.is_active) {
+      console.log('Company is not active');
       return NextResponse.json(
         { error: 'No se pueden crear cuentas CLABE para empresas inactivas' },
         { status: 400 }
@@ -78,6 +88,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Build request for OPM API
+    console.log('Step 4: Building OPM request...');
     const opmRequest: CreateVirtualClabeRequest = {
       name: company.name,
       businessName: company.business_name,

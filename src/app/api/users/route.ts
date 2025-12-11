@@ -41,6 +41,7 @@ export async function GET(request: NextRequest) {
         email: u.email,
         name: u.name,
         role: u.role as UserRole,
+        companyId: u.company_id,
         permissions: u.role === 'super_admin'
           ? Object.keys(ALL_PERMISSIONS) as Permission[]
           : u.permissions as Permission[],
@@ -68,7 +69,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { email, password, name, role, permissions, clabeAccountIds, isActive } = body;
+    const { email, password, name, role, companyId, permissions, clabeAccountIds, isActive } = body;
 
     // Get current user for authorization
     const currentUser = await getCurrentUser(request);
@@ -117,6 +118,7 @@ export async function POST(request: NextRequest) {
       password: hashedPassword,
       name,
       role,
+      companyId: companyId || null,
       permissions: permissions || [],
       isActive: isActive ?? true,
     });
@@ -136,6 +138,7 @@ export async function POST(request: NextRequest) {
       email: dbUser.email,
       name: dbUser.name,
       role: dbUser.role as UserRole,
+      companyId: dbUser.company_id,
       permissions: dbUser.role === 'super_admin'
         ? Object.keys(ALL_PERMISSIONS) as Permission[]
         : dbUser.permissions as Permission[],

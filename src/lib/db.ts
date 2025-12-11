@@ -633,13 +633,14 @@ export async function createUser(user: {
   password: string;
   name: string;
   role: string;
+  companyId?: string | null;
   permissions: string[];
   isActive?: boolean;
 }): Promise<DbUser> {
   const now = new Date();
   const result = await sql`
-    INSERT INTO users (id, email, password, name, role, permissions, "isActive", "createdAt", "updatedAt")
-    VALUES (${user.id}, ${user.email}, ${user.password}, ${user.name}, ${user.role}, ${user.permissions}, ${user.isActive ?? true}, ${now}, ${now})
+    INSERT INTO users (id, email, password, name, role, company_id, permissions, "isActive", "createdAt", "updatedAt")
+    VALUES (${user.id}, ${user.email}, ${user.password}, ${user.name}, ${user.role}, ${user.companyId || null}, ${user.permissions}, ${user.isActive ?? true}, ${now}, ${now})
     RETURNING *
   `;
   return result[0] as DbUser;
@@ -673,6 +674,7 @@ export async function updateUser(
     password: string;
     name: string;
     role: string;
+    companyId: string | null;
     permissions: string[];
     isActive: boolean;
     lastLogin: Date;
@@ -685,6 +687,7 @@ export async function updateUser(
         password = COALESCE(${updates.password}, password),
         name = COALESCE(${updates.name}, name),
         role = COALESCE(${updates.role}, role),
+        company_id = COALESCE(${updates.companyId}, company_id),
         permissions = COALESCE(${updates.permissions}, permissions),
         "isActive" = COALESCE(${updates.isActive}, "isActive"),
         "lastLogin" = COALESCE(${updates.lastLogin}, "lastLogin"),

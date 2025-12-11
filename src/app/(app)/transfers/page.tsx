@@ -741,28 +741,6 @@ export default function TransfersPage() {
                   hint={`${formData.concept.length}/40 caracteres`}
                 />
 
-                {/* 2FA Code Input - Always visible */}
-                <div className="p-4 rounded-lg bg-purple-500/5 border border-purple-500/20">
-                  <div className="flex items-center gap-2 mb-3">
-                    <Shield className="w-4 h-4 text-purple-400" />
-                    <span className="text-sm text-white/80 font-medium">Codigo de Verificacion 2FA</span>
-                  </div>
-                  <p className="text-xs text-white/40 mb-3">
-                    Ingresa el codigo de 6 digitos de Google Authenticator
-                  </p>
-                  <Input
-                    value={totpCode}
-                    onChange={(e) => {
-                      setTotpCode(e.target.value.replace(/\D/g, '').slice(0, 6));
-                      if (errors.submit) setErrors({});
-                    }}
-                    placeholder="000000"
-                    className="font-mono text-center text-lg tracking-widest"
-                    maxLength={6}
-                    error={errors.totpCode}
-                  />
-                </div>
-
                 {errors.submit && (
                   <div className="p-3 rounded-md bg-red-500/10 border border-red-500/20 text-red-400 text-sm">
                     {errors.submit}
@@ -1035,6 +1013,27 @@ export default function TransfersPage() {
             </div>
           </div>
 
+          {/* 2FA Code Input */}
+          <div className="p-4 rounded-lg bg-purple-500/5 border border-purple-500/20">
+            <div className="flex items-center gap-2 mb-3">
+              <Shield className="w-4 h-4 text-purple-400" />
+              <span className="text-sm text-white/80 font-medium">Codigo de Verificacion 2FA</span>
+            </div>
+            <p className="text-xs text-white/40 mb-3">
+              Ingresa el codigo de 6 digitos de Google Authenticator
+            </p>
+            <Input
+              value={totpCode}
+              onChange={(e) => {
+                setTotpCode(e.target.value.replace(/\D/g, '').slice(0, 6));
+                if (errors.submit) setErrors({});
+              }}
+              placeholder="000000"
+              className="font-mono text-center text-lg tracking-widest"
+              maxLength={6}
+            />
+          </div>
+
           {errors.submit && (
             <div className="p-3 rounded-md bg-red-500/10 border border-red-500/20 text-red-400 text-sm">
               {errors.submit}
@@ -1047,6 +1046,7 @@ export default function TransfersPage() {
               className="flex-1"
               onClick={() => {
                 setShowConfirmModal(false);
+                setTotpCode('');
                 setErrors({});
               }}
               disabled={isProcessing}
@@ -1057,6 +1057,7 @@ export default function TransfersPage() {
               className="flex-1"
               onClick={handleConfirmTransfer}
               isLoading={isProcessing}
+              disabled={totpCode.length !== 6}
               leftIcon={isProcessing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Shield className="w-4 h-4" />}
             >
               {isProcessing ? 'Procesando...' : 'Confirmar Envio'}

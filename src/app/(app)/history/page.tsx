@@ -117,6 +117,40 @@ export default function HistoryPage() {
   const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
 
+  // CEP state
+  const [loadingCep, setLoadingCep] = useState(false);
+
+  // Fetch CEP from Banxico
+  const handleGetCep = async (transaction: Transaction) => {
+    if (!transaction.opmOrderId) {
+      alert('Esta transacción no tiene ID de orden OPM');
+      return;
+    }
+
+    setLoadingCep(true);
+    try {
+      const response = await fetch(`/api/orders/${transaction.opmOrderId}/cep`);
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Error al obtener CEP');
+      }
+
+      // OPM returns the CEP URL in the response
+      if (data.data?.cepUrl || data.cepUrl) {
+        const cepUrl = data.data?.cepUrl || data.cepUrl;
+        window.open(cepUrl, '_blank');
+      } else {
+        alert('CEP no disponible aún. Por favor intenta más tarde.');
+      }
+    } catch (error) {
+      console.error('CEP error:', error);
+      alert(error instanceof Error ? error.message : 'Error al obtener CEP');
+    } finally {
+      setLoadingCep(false);
+    }
+  };
+
   // Fetch transactions from API
   const fetchTransactions = useCallback(async () => {
     setIsLoading(true);
@@ -573,12 +607,12 @@ export default function HistoryPage() {
 
             {/* Details Grid */}
             <div className="grid grid-cols-2 gap-3">
-              <div className="p-3 rounded-md bg-white/[0.02] border border-white/[0.06]">
+              <div className="col-span-2 p-3 rounded-md bg-white/[0.02] border border-white/[0.06]">
                 <p className="text-xs text-white/30 mb-1">Clave de Rastreo</p>
                 <div className="flex items-center gap-2">
-                  <p className="font-mono text-sm text-white/70">{selectedTransaction.trackingKey}</p>
+                  <p className="font-mono text-sm text-white/70 break-all">{selectedTransaction.trackingKey}</p>
                   <button
-                    className="p-1 hover:bg-white/5 rounded"
+                    className="p-1 hover:bg-white/5 rounded flex-shrink-0"
                     onClick={() => copyToClipboard(selectedTransaction.trackingKey)}
                   >
                     <Copy className="w-3 h-3 text-white/30" />
@@ -648,19 +682,21 @@ export default function HistoryPage() {
                 className="flex-1"
                 leftIcon={<Copy className="w-4 h-4" />}
                 onClick={() => {
-                  const data = `Clave: ${selectedTransaction.trackingKey}\nMonto: ${formatCurrency(selectedTransaction.amount)}\nBeneficiario: ${selectedTransaction.beneficiaryName}`;
+                  const data = `Clave: ${selectedTransaction.trackingKey}\nMonto: ${formatCurrency(selectedTransaction.amount)}\nBeneficiario: ${selectedTransaction.beneficiaryName || selectedTransaction.payerName}`;
                   copyToClipboard(data);
                 }}
               >
                 Copiar Datos
               </Button>
-              {selectedTransaction.cepUrl && (
+              {selectedTransaction.status === 'scattered' && selectedTransaction.type === 'outgoing' && (
                 <Button
                   variant="primary"
                   className="flex-1"
-                  onClick={() => window.open(selectedTransaction.cepUrl!, '_blank')}
+                  onClick={() => handleGetCep(selectedTransaction)}
+                  disabled={loadingCep}
+                  leftIcon={loadingCep ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
                 >
-                  Ver CEP
+                  {loadingCep ? 'Obteniendo...' : 'Obtener CEP'}
                 </Button>
               )}
             </div>

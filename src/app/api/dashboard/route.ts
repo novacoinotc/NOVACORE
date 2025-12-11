@@ -58,6 +58,7 @@ export async function GET(request: NextRequest) {
         pendingCount: stats.pendingCount,
         clientsCount: stats.clientsCount,
         totalBalance: stats.totalBalance,
+        inTransit: stats.inTransit,
         incomingChange: stats.incomingChange,
         outgoingChange: stats.outgoingChange,
       },

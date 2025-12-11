@@ -835,7 +835,7 @@ export default function TransfersPage() {
           </div>
         </div>
       ) : (
-        <div className="max-w-lg">
+        <div className="max-w-2xl">
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
@@ -844,45 +844,60 @@ export default function TransfersPage() {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-6">
-              <div className="text-center py-6">
+              <div className="text-center py-4">
                 <div className="w-16 h-16 mx-auto mb-4 rounded-lg bg-white/[0.04] border border-white/[0.08] flex items-center justify-center">
                   <Building2 className="w-8 h-8 text-white/40" />
                 </div>
-                <h3 className="text-lg font-medium text-white/90 mb-1">Tu cuenta CLABE</h3>
+                <h3 className="text-lg font-medium text-white/90 mb-1">Tus cuentas CLABE</h3>
                 <p className="text-sm text-white/40 max-w-sm mx-auto">
-                  Comparte esta CLABE para recibir transferencias SPEI
+                  Comparte estas CLABEs para recibir transferencias SPEI
                 </p>
               </div>
 
-              <div className="p-4 rounded-lg bg-white/[0.02] border border-white/[0.08]">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-xs text-white/30 mb-1">CLABE Interbancaria</p>
-                    <p className="font-mono text-xl text-white/90">
-                      684 180 017 00000 0001
-                    </p>
-                  </div>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    leftIcon={<Copy className="w-4 h-4" />}
-                    onClick={() => copyToClipboard('684180017000000001')}
-                  >
-                    Copiar
-                  </Button>
+              {isLoadingClabeAccounts ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="w-6 h-6 animate-spin text-purple-400" />
                 </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div className="p-3 rounded-md bg-white/[0.02] border border-white/[0.06]">
-                  <p className="text-xs text-white/30">Banco</p>
-                  <p className="text-sm text-white/80">OPM/TRANSFER</p>
+              ) : clabeAccounts.length === 0 ? (
+                <div className="text-center py-8">
+                  <p className="text-white/40 text-sm">No tienes cuentas CLABE registradas</p>
+                  <p className="text-white/30 text-xs mt-1">Ve a "Cuentas CLABE" para agregar una</p>
                 </div>
-                <div className="p-3 rounded-md bg-white/[0.02] border border-white/[0.06]">
-                  <p className="text-xs text-white/30">Titular</p>
-                  <p className="text-sm text-white/80">NOVACORP SA DE CV</p>
+              ) : (
+                <div className="space-y-4">
+                  {clabeAccounts.map((account) => (
+                    <div key={account.id} className="p-4 rounded-lg bg-white/[0.02] border border-white/[0.08]">
+                      <div className="flex items-center justify-between mb-3">
+                        <span className="text-sm font-medium text-purple-400">{account.alias}</span>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          leftIcon={<Copy className="w-4 h-4" />}
+                          onClick={() => copyToClipboard(account.clabe)}
+                        >
+                          Copiar
+                        </Button>
+                      </div>
+                      <div>
+                        <p className="text-xs text-white/30 mb-1">CLABE Interbancaria</p>
+                        <p className="font-mono text-lg text-white/90">
+                          {formatClabe(account.clabe)}
+                        </p>
+                      </div>
+                      <div className="grid grid-cols-2 gap-3 mt-3">
+                        <div className="p-2 rounded-md bg-white/[0.02] border border-white/[0.06]">
+                          <p className="text-xs text-white/30">Banco</p>
+                          <p className="text-sm text-white/80">OPM/TRANSFER</p>
+                        </div>
+                        <div className="p-2 rounded-md bg-white/[0.02] border border-white/[0.06]">
+                          <p className="text-xs text-white/30">Código Banco</p>
+                          <p className="text-sm text-white/80">90684</p>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              </div>
+              )}
 
               <div className="flex items-center gap-2 p-3 rounded-md bg-yellow-500/5 border border-yellow-500/10">
                 <AlertTriangle className="w-4 h-4 text-yellow-400/60" />

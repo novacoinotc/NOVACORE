@@ -40,12 +40,22 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Authorization: only super_admin can generate CLABE accounts
-    if (currentUser && currentUser.role !== 'super_admin') {
-      return NextResponse.json(
-        { error: 'No tienes permiso para crear cuentas CLABE' },
-        { status: 403 }
-      );
+    // Authorization: super_admin can create for any company, company_admin only for their own
+    if (currentUser) {
+      if (currentUser.role === 'company_admin') {
+        // company_admin can only create CLABEs for their own company
+        if (currentUser.company_id !== companyId) {
+          return NextResponse.json(
+            { error: 'Solo puedes crear cuentas CLABE para tu propia empresa' },
+            { status: 403 }
+          );
+        }
+      } else if (currentUser.role !== 'super_admin') {
+        return NextResponse.json(
+          { error: 'No tienes permiso para crear cuentas CLABE' },
+          { status: 403 }
+        );
+      }
     }
 
     // Get company information

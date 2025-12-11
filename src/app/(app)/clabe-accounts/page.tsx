@@ -201,8 +201,12 @@ export default function ClabeAccountsPage() {
 
   // Save CLABE (create or update)
   const handleSave = async () => {
+    // For company_admin, use their companyId automatically
+    const effectiveCompanyId = formData.companyId ||
+      (currentUser?.role === 'company_admin' ? currentUser.companyId : '');
+
     // Validation
-    if (!formData.companyId || !formData.alias) {
+    if (!effectiveCompanyId || !formData.alias) {
       setError('Empresa y alias son requeridos');
       return;
     }
@@ -226,12 +230,18 @@ export default function ClabeAccountsPage() {
       setSaving(true);
       setError('');
 
+      // Headers for API calls (include user ID for authorization)
+      const headers: HeadersInit = {
+        'Content-Type': 'application/json',
+        ...(currentUser?.id && { 'x-user-id': currentUser.id }),
+      };
+
       let response;
       if (selectedClabe) {
         // Update existing CLABE (cannot change clabe number or company)
         response = await fetch(`/api/clabe-accounts/${selectedClabe.id}`, {
           method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
+          headers,
           body: JSON.stringify({
             alias: formData.alias,
             description: formData.description || undefined,
@@ -242,9 +252,9 @@ export default function ClabeAccountsPage() {
         // Create new CLABE with manual entry
         response = await fetch('/api/clabe-accounts', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers,
           body: JSON.stringify({
-            companyId: formData.companyId,
+            companyId: effectiveCompanyId,
             clabe: formData.clabe,
             alias: formData.alias,
             description: formData.description || undefined,
@@ -255,9 +265,9 @@ export default function ClabeAccountsPage() {
         // Create new CLABE - OPM auto-generates the CLABE number
         response = await fetch('/api/clabe-accounts/generate', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers,
           body: JSON.stringify({
-            companyId: formData.companyId,
+            companyId: effectiveCompanyId,
             alias: formData.alias,
             description: formData.description || undefined,
             isActive: formData.isActive,

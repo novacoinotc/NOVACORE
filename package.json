@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "sync-opm": "npx tsx src/scripts/sync-opm-transactions.ts"
+    "sync-opm": "npx tsx src/scripts/run-sync.ts"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.0.2",

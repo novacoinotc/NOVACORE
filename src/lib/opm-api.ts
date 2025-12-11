@@ -346,7 +346,7 @@ export async function createClient(
   clientData: Client,
   apiKey?: string
 ): Promise<ApiResponse<Client>> {
-  return fetchApi<Client>('indirectParticipantClients', {
+  return fetchApi<Client>('indirectParticipantClients/', {
     method: 'POST',
     body: JSON.stringify(clientData),
   }, apiKey);
@@ -393,7 +393,7 @@ export async function createSignedClient(
     signature,
   };
 
-  return fetchApi<Client>('indirectParticipantClients', {
+  return fetchApi<Client>('indirectParticipantClients/', {
     method: 'POST',
     body: JSON.stringify(signedClientData),
   }, apiKey);
@@ -425,6 +425,16 @@ export async function listClients(
 
   const query = queryParams.toString();
   return fetchApi<Client[]>(`indirectParticipantClients/${query ? `?${query}` : ''}`, {
+    method: 'GET',
+  }, apiKey);
+}
+
+// Get single client by ID
+export async function getClientById(
+  clientId: string,
+  apiKey?: string
+): Promise<ApiResponse<Client>> {
+  return fetchApi<Client>(`indirectParticipantClients/${clientId}`, {
     method: 'GET',
   }, apiKey);
 }

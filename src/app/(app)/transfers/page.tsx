@@ -43,7 +43,6 @@ export default function TransfersPage() {
   const [isProcessing, setIsProcessing] = useState(false);
 
   // Grace period state (20 second countdown)
-  const [showGracePeriodModal, setShowGracePeriodModal] = useState(false);
   const [gracePeriodData, setGracePeriodData] = useState<{
     transactionId: string;
     confirmationDeadline: string;
@@ -158,7 +157,7 @@ export default function TransfersPage() {
 
   // Grace period countdown effect
   useEffect(() => {
-    if (!showGracePeriodModal || !gracePeriodData || cancelSuccess) return;
+    if (!gracePeriodData || cancelSuccess) return;
 
     // Initial countdown from grace period data
     const deadline = new Date(gracePeriodData.confirmationDeadline).getTime();
@@ -177,7 +176,7 @@ export default function TransfersPage() {
     const interval = setInterval(updateCountdown, 1000);
 
     return () => clearInterval(interval);
-  }, [showGracePeriodModal, gracePeriodData, cancelSuccess]);
+  }, [gracePeriodData, cancelSuccess]);
 
   // Handle grace period expiration
   const handleGracePeriodExpired = async () => {
@@ -192,7 +191,6 @@ export default function TransfersPage() {
         trackingKey: gracePeriodData.trackingKey,
         orderId: gracePeriodData.orderId,
       });
-      setShowGracePeriodModal(false);
       setShowSuccessModal(true);
       setGracePeriodData(null);
     } catch (error) {
@@ -202,8 +200,8 @@ export default function TransfersPage() {
         trackingKey: gracePeriodData.trackingKey,
         orderId: gracePeriodData.orderId,
       });
-      setShowGracePeriodModal(false);
       setShowSuccessModal(true);
+      setGracePeriodData(null);
     }
   };
 
@@ -227,9 +225,8 @@ export default function TransfersPage() {
       // Show cancel success
       setCancelSuccess(true);
 
-      // After 2 seconds, close modal and reset form
+      // After 2 seconds, reset and allow new transfer
       setTimeout(() => {
-        setShowGracePeriodModal(false);
         setCancelSuccess(false);
         setGracePeriodData(null);
         resetForm();
@@ -442,7 +439,7 @@ export default function TransfersPage() {
 
       // Check if grace period data is included in response
       if (data.gracePeriod) {
-        // Show grace period modal with countdown
+        // Show grace period card in sidebar with countdown
         setGracePeriodData({
           transactionId: data.gracePeriod.transactionId,
           confirmationDeadline: data.gracePeriod.confirmationDeadline,
@@ -452,7 +449,6 @@ export default function TransfersPage() {
         });
         setCountdown(data.gracePeriod.secondsRemaining);
         setShowConfirmModal(false);
-        setShowGracePeriodModal(true);
         setTotpCode('');
         setRequires2FA(false);
       } else {
@@ -745,6 +741,28 @@ export default function TransfersPage() {
                   hint={`${formData.concept.length}/40 caracteres`}
                 />
 
+                {/* 2FA Code Input - Always visible */}
+                <div className="p-4 rounded-lg bg-purple-500/5 border border-purple-500/20">
+                  <div className="flex items-center gap-2 mb-3">
+                    <Shield className="w-4 h-4 text-purple-400" />
+                    <span className="text-sm text-white/80 font-medium">Codigo de Verificacion 2FA</span>
+                  </div>
+                  <p className="text-xs text-white/40 mb-3">
+                    Ingresa el codigo de 6 digitos de Google Authenticator
+                  </p>
+                  <Input
+                    value={totpCode}
+                    onChange={(e) => {
+                      setTotpCode(e.target.value.replace(/\D/g, '').slice(0, 6));
+                      if (errors.submit) setErrors({});
+                    }}
+                    placeholder="000000"
+                    className="font-mono text-center text-lg tracking-widest"
+                    maxLength={6}
+                    error={errors.totpCode}
+                  />
+                </div>
+
                 {errors.submit && (
                   <div className="p-3 rounded-md bg-red-500/10 border border-red-500/20 text-red-400 text-sm">
                     {errors.submit}
@@ -832,6 +850,79 @@ export default function TransfersPage() {
                 )}
               </CardContent>
             </Card>
+
+            {/* Grace Period Card - Shows during 20 second countdown */}
+            {gracePeriodData && !cancelSuccess && (
+              <Card className="border-amber-500/30 bg-amber-500/5">
+                <CardContent className="py-4">
+                  <div className="text-center">
+                    <div className="w-16 h-16 mx-auto mb-3 rounded-full bg-amber-500/10 border-2 border-amber-500/30 flex items-center justify-center relative">
+                      <Clock className="w-5 h-5 text-amber-400 absolute opacity-30" />
+                      <span className="text-2xl font-bold text-amber-400">{countdown}</span>
+                    </div>
+
+                    <h4 className="text-sm font-medium text-white/90 mb-1">Transferencia Programada</h4>
+                    <p className="text-xs text-white/40 mb-3">
+                      Se enviara en <span className="text-amber-400 font-semibold">{countdown}s</span>
+                    </p>
+
+                    {/* Progress bar */}
+                    <div className="w-full h-1.5 bg-white/[0.06] rounded-full mb-3 overflow-hidden">
+                      <div
+                        className="h-full bg-gradient-to-r from-amber-500 to-amber-400 transition-all duration-1000 ease-linear"
+                        style={{ width: `${(countdown / 20) * 100}%` }}
+                      />
+                    </div>
+
+                    {/* Transfer summary */}
+                    <div className="p-2 rounded bg-white/[0.02] border border-white/[0.06] mb-3 text-left text-xs">
+                      <div className="flex justify-between mb-1">
+                        <span className="text-white/40">A:</span>
+                        <span className="text-white/70 truncate ml-2">{formData.beneficiaryName}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-white/40">Monto:</span>
+                        <span className="font-mono text-white/90">
+                          {formatCurrency(parseFloat(formData.amount || '0'))}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Cancel button */}
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      className="w-full bg-red-500/10 hover:bg-red-500/20 border-red-500/30 text-red-400 hover:text-red-300"
+                      onClick={handleCancelTransfer}
+                      isLoading={isCanceling}
+                      disabled={isCanceling || countdown <= 0}
+                      leftIcon={isCanceling ? <Loader2 className="w-4 h-4 animate-spin" /> : <XCircle className="w-4 h-4" />}
+                    >
+                      {isCanceling ? 'Cancelando...' : 'Cancelar'}
+                    </Button>
+
+                    <p className="text-[10px] text-white/20 mt-2">
+                      Se confirma automaticamente
+                    </p>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Cancel Success Card */}
+            {cancelSuccess && (
+              <Card className="border-green-500/30 bg-green-500/5">
+                <CardContent className="py-4">
+                  <div className="text-center">
+                    <div className="w-12 h-12 mx-auto mb-3 rounded-full bg-green-500/10 border border-green-500/30 flex items-center justify-center">
+                      <Ban className="w-6 h-6 text-green-400" />
+                    </div>
+                    <h4 className="text-sm font-medium text-white/90">Transferencia Cancelada</h4>
+                    <p className="text-xs text-white/40 mt-1">Cancelada exitosamente</p>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
           </div>
         </div>
       ) : (
@@ -944,29 +1035,6 @@ export default function TransfersPage() {
             </div>
           </div>
 
-          {/* 2FA Code Input - Shows when required */}
-          {requires2FA && (
-            <div className="p-4 rounded-lg bg-yellow-500/5 border border-yellow-500/20">
-              <div className="flex items-center gap-2 mb-3">
-                <Shield className="w-4 h-4 text-yellow-400" />
-                <span className="text-sm text-white/80 font-medium">Verificación 2FA requerida</span>
-              </div>
-              <p className="text-xs text-white/40 mb-3">
-                Ingresa el código de 6 dígitos de Google Authenticator
-              </p>
-              <Input
-                value={totpCode}
-                onChange={(e) => {
-                  setTotpCode(e.target.value.replace(/\D/g, '').slice(0, 6));
-                  if (errors.submit) setErrors({});
-                }}
-                placeholder="000000"
-                className="font-mono text-center text-lg tracking-widest"
-                maxLength={6}
-              />
-            </div>
-          )}
-
           {errors.submit && (
             <div className="p-3 rounded-md bg-red-500/10 border border-red-500/20 text-red-400 text-sm">
               {errors.submit}
@@ -979,8 +1047,6 @@ export default function TransfersPage() {
               className="flex-1"
               onClick={() => {
                 setShowConfirmModal(false);
-                setTotpCode('');
-                setRequires2FA(false);
                 setErrors({});
               }}
               disabled={isProcessing}
@@ -991,99 +1057,11 @@ export default function TransfersPage() {
               className="flex-1"
               onClick={handleConfirmTransfer}
               isLoading={isProcessing}
-              disabled={requires2FA && totpCode.length !== 6}
               leftIcon={isProcessing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Shield className="w-4 h-4" />}
             >
-              {isProcessing ? 'Procesando...' : requires2FA ? 'Verificar y Enviar' : 'Confirmar'}
+              {isProcessing ? 'Procesando...' : 'Confirmar Envio'}
             </Button>
           </div>
-        </div>
-      </Modal>
-
-      {/* Grace Period Modal - 20 second countdown */}
-      <Modal
-        isOpen={showGracePeriodModal}
-        onClose={() => {}} // Prevent closing by clicking outside
-        size="md"
-        showCloseButton={false}
-      >
-        <div className="text-center py-4">
-          {cancelSuccess ? (
-            // Cancel success state
-            <>
-              <div className="w-20 h-20 mx-auto mb-4 rounded-full bg-green-500/10 border-2 border-green-500/30 flex items-center justify-center">
-                <Ban className="w-10 h-10 text-green-400" />
-              </div>
-              <h3 className="text-xl font-medium text-white/90 mb-2">Transferencia Cancelada</h3>
-              <p className="text-sm text-white/40">
-                La transferencia ha sido cancelada exitosamente
-              </p>
-            </>
-          ) : (
-            // Countdown state
-            <>
-              <div className="w-24 h-24 mx-auto mb-4 rounded-full bg-amber-500/10 border-4 border-amber-500/30 flex items-center justify-center relative">
-                <Clock className="w-8 h-8 text-amber-400 absolute opacity-30" />
-                <span className="text-4xl font-bold text-amber-400">{countdown}</span>
-              </div>
-
-              <h3 className="text-xl font-medium text-white/90 mb-2">Transferencia Programada</h3>
-              <p className="text-sm text-white/40 mb-2">
-                Se enviara en <span className="text-amber-400 font-semibold">{countdown} segundos</span>
-              </p>
-              <p className="text-xs text-white/30 mb-6">
-                Puedes cancelar la transferencia durante este tiempo
-              </p>
-
-              {/* Progress bar */}
-              <div className="w-full h-2 bg-white/[0.06] rounded-full mb-6 overflow-hidden">
-                <div
-                  className="h-full bg-gradient-to-r from-amber-500 to-amber-400 transition-all duration-1000 ease-linear"
-                  style={{ width: `${(countdown / 20) * 100}%` }}
-                />
-              </div>
-
-              {/* Transfer details */}
-              <div className="p-4 rounded-lg bg-white/[0.02] border border-white/[0.06] mb-6 text-left">
-                <div className="flex justify-between text-sm mb-2">
-                  <span className="text-white/40">Beneficiario</span>
-                  <span className="text-white/80">{formData.beneficiaryName}</span>
-                </div>
-                <div className="flex justify-between text-sm mb-2">
-                  <span className="text-white/40">Cuenta</span>
-                  <span className="font-mono text-white/60 text-xs">{formatClabe(formData.beneficiaryAccount)}</span>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-white/40">Monto</span>
-                  <span className="font-mono text-lg text-white/90">
-                    {formatCurrency(parseFloat(formData.amount || '0'))}
-                  </span>
-                </div>
-              </div>
-
-              {errors.submit && (
-                <div className="p-3 rounded-md bg-red-500/10 border border-red-500/20 text-red-400 text-sm mb-4">
-                  {errors.submit}
-                </div>
-              )}
-
-              {/* Cancel button */}
-              <Button
-                variant="secondary"
-                className="w-full py-4 text-lg bg-red-500/10 hover:bg-red-500/20 border-red-500/30 text-red-400 hover:text-red-300"
-                onClick={handleCancelTransfer}
-                isLoading={isCanceling}
-                disabled={isCanceling || countdown <= 0}
-                leftIcon={isCanceling ? <Loader2 className="w-5 h-5 animate-spin" /> : <XCircle className="w-5 h-5" />}
-              >
-                {isCanceling ? 'Cancelando...' : 'CANCELAR TRANSFERENCIA'}
-              </Button>
-
-              <p className="text-xs text-white/20 mt-4">
-                La transferencia se confirmara automaticamente al terminar el contador
-              </p>
-            </>
-          )}
         </div>
       </Modal>
 

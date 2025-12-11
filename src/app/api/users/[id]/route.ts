@@ -44,6 +44,7 @@ export async function GET(
       email: dbUser.email,
       name: dbUser.name,
       role: dbUser.role as UserRole,
+      companyId: dbUser.company_id,
       permissions: dbUser.role === 'super_admin'
         ? Object.keys(ALL_PERMISSIONS) as Permission[]
         : dbUser.permissions as Permission[],
@@ -71,7 +72,7 @@ export async function PUT(
 ) {
   try {
     const body = await request.json();
-    const { email, password, name, role, permissions, clabeAccountIds, isActive } = body;
+    const { email, password, name, role, companyId, permissions, clabeAccountIds, isActive } = body;
 
     // Get current user for authorization
     const currentUser = await getCurrentUser(request);
@@ -131,6 +132,7 @@ export async function PUT(
     if (email) updates.email = email;
     if (name) updates.name = name;
     if (role) updates.role = role;
+    if (companyId !== undefined) updates.companyId = companyId;
     if (permissions) updates.permissions = permissions;
     if (isActive !== undefined) updates.isActive = isActive;
 
@@ -161,6 +163,7 @@ export async function PUT(
       email: dbUser.email,
       name: dbUser.name,
       role: dbUser.role as UserRole,
+      companyId: dbUser.company_id,
       permissions: dbUser.role === 'super_admin'
         ? Object.keys(ALL_PERMISSIONS) as Permission[]
         : dbUser.permissions as Permission[],

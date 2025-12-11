@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getPendingConfirmationTransactions, updateTransactionStatus } from '@/lib/db';
-import { getOrder } from '@/lib/opm-api';
+import { getPendingConfirmationTransactions, confirmPendingTransaction, updateTransactionStatus } from '@/lib/db';
+import { createOrder, buildOrderOriginalString } from '@/lib/opm-api';
+import { signWithPrivateKey } from '@/lib/crypto';
+import { CreateOrderRequest } from '@/types';
 
 /**
  * POST /api/orders/confirm-pending
@@ -11,8 +13,8 @@ import { getOrder } from '@/lib/opm-api';
  *
  * For each transaction:
  * 1. Check if grace period has expired
- * 2. Fetch current status from OPM API
- * 3. Update local status to match OPM (sent, scattered, etc.)
+ * 2. Send the order to OPM API (order is created NOW, not before)
+ * 3. Update local transaction with OPM order ID and status
  */
 export async function POST(request: NextRequest) {
   console.log('=== PROCESSING PENDING CONFIRMATIONS ===');
@@ -27,63 +29,119 @@ export async function POST(request: NextRequest) {
     const results = {
       processed: 0,
       confirmed: 0,
+      failed: 0,
       errors: [] as string[],
     };
 
+    const apiKey = process.env.OPM_API_KEY;
+    const privateKey = process.env.OPM_PRIVATE_KEY;
+
+    if (!apiKey || !privateKey) {
+      console.error('Missing OPM_API_KEY or OPM_PRIVATE_KEY');
+      return NextResponse.json(
+        { error: 'OPM API configuration missing' },
+        { status: 500 }
+      );
+    }
+
     for (const tx of pendingTransactions) {
       try {
-        console.log(`Processing transaction ${tx.id} (OPM: ${tx.opm_order_id})`);
+        console.log(`Processing transaction ${tx.id}`);
 
-        // Default to 'sent' status after grace period
-        let newStatus = 'sent';
+        // Get the stored order data
+        const orderData = tx.pending_order_data as Record<string, unknown> | null;
 
-        // Try to get current status from OPM
-        if (tx.opm_order_id) {
-          try {
-            const opmResponse = await getOrder(tx.opm_order_id);
-
-            if ((opmResponse.code === 200 || opmResponse.code === 0) && opmResponse.data) {
-              const opmOrder = opmResponse.data;
-
-              // Determine status from OPM order
-              if (opmOrder.canceled) newStatus = 'canceled';
-              else if (opmOrder.returned) newStatus = 'returned';
-              else if (opmOrder.scattered) newStatus = 'scattered';
-              else if (opmOrder.sent) newStatus = 'sent';
-              else newStatus = 'pending';
-
-              console.log(`OPM status for ${tx.opm_order_id}: ${newStatus}`);
-            }
-          } catch (opmError) {
-            console.error(`Error fetching OPM status for ${tx.opm_order_id}:`, opmError);
-            // Continue with default 'sent' status
-          }
+        if (!orderData) {
+          // Transaction already has opm_order_id, just update status to sent
+          console.log(`Transaction ${tx.id} has no pending order data, marking as sent`);
+          await updateTransactionStatus(tx.id, 'sent');
+          results.confirmed++;
+          results.processed++;
+          continue;
         }
 
-        // Update local transaction
-        const updated = await updateTransactionStatus(tx.id, newStatus);
+        console.log(`Sending order to OPM for transaction ${tx.id}...`);
+        console.log('Order data:', JSON.stringify(orderData, null, 2));
 
-        if (updated) {
-          results.confirmed++;
-          console.log(`Transaction ${tx.id} confirmed with status: ${newStatus}`);
+        // Set payment day to NOW (when actually sending)
+        const fullOrderData = {
+          ...orderData,
+          paymentDay: Date.now(),
+        };
+
+        // Build original string and sign
+        const originalString = buildOrderOriginalString(fullOrderData as Parameters<typeof buildOrderOriginalString>[0]);
+        const sign = await signWithPrivateKey(originalString, privateKey);
+
+        // Create the order request
+        const orderRequest: CreateOrderRequest = {
+          ...(fullOrderData as Omit<CreateOrderRequest, 'sign'>),
+          sign,
+        };
+
+        console.log('Calling OPM createOrder API...');
+        const opmResponse = await createOrder(orderRequest, apiKey);
+        console.log('OPM Response:', JSON.stringify(opmResponse, null, 2));
+
+        if ((opmResponse.code === 200 || opmResponse.code === 0) && opmResponse.data) {
+          const opmOrder = opmResponse.data;
+
+          // Determine initial status from OPM response
+          let newStatus = 'sent';
+          if (opmOrder.scattered) newStatus = 'scattered';
+          else if (opmOrder.sent) newStatus = 'sent';
+          else if (opmOrder.canceled) newStatus = 'canceled';
+          else if (opmOrder.returned) newStatus = 'returned';
+
+          // Update transaction with OPM order ID
+          const updated = await confirmPendingTransaction(
+            tx.id,
+            opmOrder.id,
+            newStatus,
+            opmOrder.trackingKey
+          );
+
+          if (updated) {
+            results.confirmed++;
+            console.log(`Transaction ${tx.id} sent to OPM successfully. OPM Order ID: ${opmOrder.id}, Status: ${newStatus}`);
+          } else {
+            results.errors.push(`Failed to update transaction ${tx.id} after OPM success`);
+          }
         } else {
-          results.errors.push(`Failed to update transaction ${tx.id}`);
+          // OPM rejected the order
+          const errorDetail = opmResponse.error || `OPM returned code ${opmResponse.code}`;
+          console.error(`OPM rejected order for transaction ${tx.id}:`, errorDetail);
+
+          // Mark as failed
+          await updateTransactionStatus(tx.id, 'failed', errorDetail);
+          results.failed++;
+          results.errors.push(`Transaction ${tx.id}: OPM error - ${errorDetail}`);
         }
 
         results.processed++;
       } catch (error) {
         const errorMsg = `Error processing transaction ${tx.id}: ${error instanceof Error ? error.message : 'Unknown error'}`;
         console.error(errorMsg);
+        console.error('Stack:', error instanceof Error ? error.stack : 'No stack');
+
+        // Mark as failed
+        try {
+          await updateTransactionStatus(tx.id, 'failed', error instanceof Error ? error.message : 'Unknown error');
+        } catch (updateError) {
+          console.error('Failed to update transaction status:', updateError);
+        }
+
+        results.failed++;
         results.errors.push(errorMsg);
         results.processed++;
       }
     }
 
     console.log('=== CONFIRMATION PROCESSING COMPLETE ===');
-    console.log(`Processed: ${results.processed}, Confirmed: ${results.confirmed}, Errors: ${results.errors.length}`);
+    console.log(`Processed: ${results.processed}, Confirmed: ${results.confirmed}, Failed: ${results.failed}, Errors: ${results.errors.length}`);
 
     return NextResponse.json({
-      success: true,
+      success: results.failed === 0,
       results,
       timestamp: new Date().toISOString(),
     });

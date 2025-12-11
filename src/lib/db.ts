@@ -369,6 +369,7 @@ export interface DbTransaction {
   updated_at: Date;
   settled_at: Date | null;
   confirmation_deadline: Date | null;
+  pending_order_data: Record<string, unknown> | null;
 }
 
 export interface DbSavedAccount {
@@ -803,13 +804,14 @@ export async function createTransaction(transaction: {
   payerUid?: string;
   opmOrderId?: string;
   confirmationDeadline?: Date;
+  pendingOrderData?: Record<string, unknown>;
 }): Promise<DbTransaction> {
   const result = await sql`
     INSERT INTO transactions (
       id, clabe_account_id, type, status, amount, concept, tracking_key,
       numerical_reference, beneficiary_account, beneficiary_bank, beneficiary_name,
       beneficiary_uid, payer_account, payer_bank, payer_name, payer_uid, opm_order_id,
-      confirmation_deadline
+      confirmation_deadline, pending_order_data
     )
     VALUES (
       ${transaction.id},
@@ -829,7 +831,8 @@ export async function createTransaction(transaction: {
       ${transaction.payerName || null},
       ${transaction.payerUid || null},
       ${transaction.opmOrderId || null},
-      ${transaction.confirmationDeadline?.toISOString() || null}
+      ${transaction.confirmationDeadline?.toISOString() || null},
+      ${transaction.pendingOrderData ? JSON.stringify(transaction.pendingOrderData) : null}
     )
     RETURNING *
   `;
@@ -938,6 +941,26 @@ export async function updateTransactionByTrackingKey(
         settled_at = CASE WHEN ${updates.status} = 'scattered' THEN CURRENT_TIMESTAMP ELSE settled_at END,
         updated_at = CURRENT_TIMESTAMP
     WHERE tracking_key = ${trackingKey}
+    RETURNING *
+  `;
+  return result[0] as DbTransaction | null;
+}
+
+// Confirm a pending transaction after OPM order is created
+export async function confirmPendingTransaction(
+  id: string,
+  opmOrderId: string,
+  status: string,
+  trackingKey?: string
+): Promise<DbTransaction | null> {
+  const result = await sql`
+    UPDATE transactions
+    SET opm_order_id = ${opmOrderId},
+        status = ${status},
+        tracking_key = COALESCE(${trackingKey || null}, tracking_key),
+        pending_order_data = NULL,
+        updated_at = CURRENT_TIMESTAMP
+    WHERE id = ${id}
     RETURNING *
   `;
   return result[0] as DbTransaction | null;

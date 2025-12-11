@@ -25,8 +25,10 @@ async function getCurrentUser(request: NextRequest) {
  * to create the virtual account in OPM.
  */
 export async function POST(request: NextRequest) {
+  console.log('=== CLABE GENERATE ENDPOINT CALLED ===');
   try {
     const body = await request.json();
+    console.log('Request body:', JSON.stringify(body, null, 2));
     const { companyId, alias, description, isActive } = body;
 
     // Get current user for authorization

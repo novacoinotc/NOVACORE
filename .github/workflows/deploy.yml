@@ -8,6 +8,8 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    env:
+      GH_PAT: ${{ secrets.GH_PAT }}
 
     steps:
       - name: Checkout code
@@ -19,6 +21,7 @@ jobs:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USERNAME }}
           key: ${{ secrets.EC2_SSH_KEY }}
+          envs: GH_PAT
           script: |
             set -e
             echo "🚀 Starting deployment of NOVACORP..."
@@ -27,13 +30,20 @@ jobs:
 
             echo "📦 Saving local changes..."
             git add -A
-            git stash
+            git stash || true
+
+            echo "🔧 Configuring git authentication..."
+            # Configure git to use token for this repository
+            git config --local url."https://${GH_PAT}@github.com/".insteadOf "https://github.com/"
 
             echo "⬇️  Fetching latest changes from GitHub..."
             git fetch origin main
 
             echo "🔄 Resetting to match GitHub (force sync)..."
             git reset --hard origin/main
+
+            echo "🔧 Removing temporary git config..."
+            git config --local --unset url."https://${GH_PAT}@github.com/".insteadOf || true
 
             echo "📚 Installing dependencies..."
             npm install

@@ -468,17 +468,17 @@ export async function updateClientStatus(
 /**
  * Create a virtual CLABE account via OPM API
  *
- * This function creates an indirect participant client in OPM, which
- * automatically generates a virtual CLABE account number.
+ * UPDATED: Now uses the virtualAccounts endpoint instead of indirectParticipantClients
+ * The virtualAccounts endpoint was discovered through API probing and returns 200.
  *
- * Based on Especificacion api.pdf Section 4.14:
- * - POST /api/1.0/indirectParticipantClients
- * - If virtualAccountNumber is NOT provided, OPM auto-generates it
- * - Response includes virtualAccount.accountNumber with the generated CLABE
+ * Based on API discovery:
+ * - POST /api/1.0/virtualAccounts
+ * - Creates a virtual/reference account (cuenta referenciadora)
+ * - Response includes the generated CLABE in virtualAccountNumber
  *
  * @param clientData - Client data for the virtual account
  * @param apiKey - Optional API key
- * @returns Created client with generated virtualAccountNumber (CLABE)
+ * @returns Created virtual account with generated virtualAccountNumber (CLABE)
  */
 export interface CreateVirtualClabeRequest {
   name: string;              // Account holder name (person or company name)
@@ -499,13 +499,27 @@ export interface CreateVirtualClabeRequest {
   alias?: string;            // Friendly name for the CLABE (internal use)
 }
 
+/**
+ * Virtual Account response from OPM API
+ */
+export interface VirtualAccount {
+  id?: string;
+  virtualAccountNumber?: string;  // The generated 18-digit CLABE
+  accountNumber?: string;         // Alternative field for CLABE
+  name?: string;
+  businessName?: string;
+  rfc?: string;
+  status?: string;
+  createdAt?: string;
+  [key: string]: any;  // Allow additional fields from API
+}
+
 export async function createVirtualClabe(
   request: CreateVirtualClabeRequest,
   apiKey?: string
-): Promise<ApiResponse<Client>> {
-  // Build client data for OPM API
-  // Note: We do NOT send virtualAccountNumber so OPM auto-generates the CLABE
-  const clientData: Client = {
+): Promise<ApiResponse<VirtualAccount>> {
+  // Build request data for virtualAccounts endpoint
+  const virtualAccountData = {
     name: request.name,
     lastName: request.lastName || '',
     secondLastName: request.secondLastName || '',
@@ -522,10 +536,71 @@ export async function createVirtualClabe(
     country: request.country || 'MX',
     nationality: request.nationality || 'MX',
     status: 'ACTIVE',
+    alias: request.alias || '',
   };
 
-  // Use signed client creation for production (required by OPM API)
-  return createSignedClient(clientData, apiKey);
+  // Build signature for the request
+  const originalString = buildVirtualAccountOriginalString(virtualAccountData);
+  const signature = signWithRSA(originalString);
+
+  const signedData = {
+    ...virtualAccountData,
+    signature,
+  };
+
+  console.log('Creating virtual account via virtualAccounts endpoint...');
+  console.log('Request data:', JSON.stringify(signedData, null, 2));
+
+  // Use virtualAccounts endpoint (discovered via API probing)
+  return fetchApi<VirtualAccount>('virtualAccounts', {
+    method: 'POST',
+    body: JSON.stringify(signedData),
+  }, apiKey);
+}
+
+/**
+ * Build original string for virtual account signature
+ */
+export function buildVirtualAccountOriginalString(data: {
+  name: string;
+  businessName?: string;
+  commercialActivity?: string;
+  rfc: string;
+  curp: string;
+  address: string;
+  email: string;
+  mobileNumber: string;
+  birthDate: string;
+}): string {
+  return `||${data.name}|${data.businessName || ''}|${data.commercialActivity || ''}|${data.rfc}|${data.curp}|${data.address}|${data.email}|${data.mobileNumber}|${data.birthDate}||`;
+}
+
+/**
+ * List virtual accounts from OPM API
+ */
+export async function listVirtualAccounts(
+  params?: {
+    page?: number;
+    itemsPerPage?: number;
+    virtualAccountNumber?: string;
+    rfc?: string;
+  },
+  apiKey?: string
+): Promise<ApiResponse<VirtualAccount[]>> {
+  const queryParams = new URLSearchParams();
+
+  if (params) {
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== undefined) {
+        queryParams.append(key, value.toString());
+      }
+    });
+  }
+
+  const query = queryParams.toString();
+  return fetchApi<VirtualAccount[]>(`virtualAccounts${query ? `?${query}` : ''}`, {
+    method: 'GET',
+  }, apiKey);
 }
 
 /**
@@ -538,15 +613,15 @@ export async function createVirtualClabe(
  * @param count - Number of subaccounts to create
  * @param aliasPrefix - Prefix for subaccount aliases (e.g., "Centro de Costos")
  * @param apiKey - Optional API key
- * @returns Array of created clients with their generated CLABEs
+ * @returns Array of created virtual accounts with their generated CLABEs
  */
 export async function createVirtualClabeSubaccounts(
   baseData: CreateVirtualClabeRequest,
   count: number,
   aliasPrefix: string = 'Subcuenta',
   apiKey?: string
-): Promise<ApiResponse<Client>[]> {
-  const results: ApiResponse<Client>[] = [];
+): Promise<ApiResponse<VirtualAccount>[]> {
+  const results: ApiResponse<VirtualAccount>[] = [];
 
   for (let i = 1; i <= count; i++) {
     const subaccountData = {

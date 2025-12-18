@@ -126,7 +126,7 @@ export async function POST(request: NextRequest) {
       console.log('OPM API response:', JSON.stringify(opmResponse, null, 2));
 
       // Check for the virtualAccountNumber in the response data
-      // OPM API returns the created client with the generated CLABE in virtualAccountNumber
+      // OPM virtualAccounts endpoint returns the generated CLABE
       if (!opmResponse.data) {
         return NextResponse.json(
           {
@@ -137,18 +137,23 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      if (!opmResponse.data.virtualAccountNumber) {
+      // The CLABE can be in different fields depending on API response
+      const clabeNumber = opmResponse.data.virtualAccountNumber ||
+                          opmResponse.data.accountNumber ||
+                          opmResponse.data.clabe;
+
+      if (!clabeNumber) {
         return NextResponse.json(
           {
             error: 'OPM no devolvió un número de cuenta CLABE',
-            detail: 'El campo virtualAccountNumber no está presente en la respuesta',
+            detail: 'No se encontró virtualAccountNumber, accountNumber o clabe en la respuesta',
             opmData: opmResponse.data,
           },
           { status: 500 }
         );
       }
 
-      generatedClabe = opmResponse.data.virtualAccountNumber;
+      generatedClabe = clabeNumber;
     } catch (opmError: any) {
       console.error('OPM API error:', opmError);
       return NextResponse.json(

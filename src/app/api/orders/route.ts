@@ -242,8 +242,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Grace period configuration: 20 seconds before order is sent to OPM
-    const GRACE_PERIOD_SECONDS = 20;
+    // Grace period configuration: 8 seconds before order is sent to OPM
+    const GRACE_PERIOD_SECONDS = 8;
 
     // Build order data to be sent to OPM AFTER grace period
     // Note: paymentDay will be set when actually sending to OPM

@@ -518,43 +518,29 @@ export async function createVirtualClabe(
   request: CreateVirtualClabeRequest,
   apiKey?: string
 ): Promise<ApiResponse<VirtualAccount>> {
-  // Build request data for virtualAccounts endpoint
-  const virtualAccountData = {
-    name: request.name,
-    lastName: request.lastName || '',
-    secondLastName: request.secondLastName || '',
-    businessName: request.businessName || request.name,
-    commercialActivity: request.commercialActivity || 'Servicios financieros',
-    rfc: request.rfc,
-    curp: request.curp || 'XEXX010101HNEXXXA4', // Generic CURP for companies
-    address: request.address,
-    email: request.email,
-    mobileNumber: request.mobileNumber,
-    birthDate: request.birthDate || '1990-01-01',
-    gender: request.gender || 'M',
-    state: request.state,
-    country: request.country || 'MX',
-    nationality: request.nationality || 'MX',
-    status: 'ACTIVE',
-    alias: request.alias || '',
-  };
-
-  // Build signature for the request
-  const originalString = buildVirtualAccountOriginalString(virtualAccountData);
-  const signature = signWithRSA(originalString);
-
-  const signedData = {
-    ...virtualAccountData,
-    signature,
+  // The virtualAccounts endpoint accepts an empty body or optional metadata
+  // It auto-generates a CLABE based on the authenticated account
+  const requestBody = {
+    // Store client info in metadata for our records (optional)
+    metadata: {
+      name: request.name,
+      businessName: request.businessName || request.name,
+      rfc: request.rfc,
+      email: request.email,
+      alias: request.alias || '',
+    },
+    // externalId can be used to link to our internal records
+    externalId: request.alias || null,
   };
 
   console.log('Creating virtual account via virtualAccounts endpoint...');
-  console.log('Request data:', JSON.stringify(signedData, null, 2));
+  console.log('Request data:', JSON.stringify(requestBody, null, 2));
 
   // Use virtualAccounts endpoint (discovered via API probing)
+  // This endpoint auto-generates a CLABE subaccount
   return fetchApi<VirtualAccount>('virtualAccounts', {
     method: 'POST',
-    body: JSON.stringify(signedData),
+    body: JSON.stringify(requestBody),
   }, apiKey);
 }
 

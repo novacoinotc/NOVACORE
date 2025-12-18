@@ -129,6 +129,7 @@ export interface ClabeAccount {
   alias: string;             // Friendly name (e.g., "Sucursal Norte")
   description?: string;
   isActive: boolean;
+  isMain: boolean;           // true = concentrator account, false = reference sub-account
   createdAt: number;
   updatedAt: number;
   // Populated fields

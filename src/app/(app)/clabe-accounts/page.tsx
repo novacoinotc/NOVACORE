@@ -25,6 +25,7 @@ interface ClabeFormData {
   alias: string;
   description: string;
   isActive: boolean;
+  isMain: boolean;
   inputMode: 'generate' | 'manual'; // New: toggle between auto-generate and manual entry
 }
 
@@ -35,6 +36,7 @@ const defaultFormData: ClabeFormData = {
   alias: '',
   description: '',
   isActive: true,
+  isMain: false,
   inputMode: 'manual', // Default to manual entry (OPM auto-generate not enabled for this account)
 };
 
@@ -161,6 +163,7 @@ export default function ClabeAccountsPage() {
       alias: clabeAccount.alias,
       description: clabeAccount.description || '',
       isActive: clabeAccount.isActive,
+      isMain: clabeAccount.isMain || false,
       inputMode: 'manual', // Not used for editing, but required by type
     });
     setError('');
@@ -265,6 +268,7 @@ export default function ClabeAccountsPage() {
             alias: formData.alias,
             description: formData.description || undefined,
             isActive: formData.isActive,
+            isMain: formData.isMain,
           }),
         });
       } else {
@@ -279,6 +283,7 @@ export default function ClabeAccountsPage() {
             alias: formData.alias,
             description: formData.description || undefined,
             isActive: formData.isActive,
+            isMain: formData.isMain,
           }),
         });
       }
@@ -412,7 +417,14 @@ export default function ClabeAccountsPage() {
                   </td>
                   <td className="px-6 py-4">
                     <div>
-                      <p className="text-white font-medium">{clabeAccount.alias}</p>
+                      <div className="flex items-center gap-2">
+                        <p className="text-white font-medium">{clabeAccount.alias}</p>
+                        {clabeAccount.isMain && (
+                          <span className="px-2 py-0.5 bg-purple-500/20 text-purple-400 text-xs font-medium rounded-full border border-purple-500/30">
+                            Principal
+                          </span>
+                        )}
+                      </div>
                       {clabeAccount.description && (
                         <p className="text-white/40 text-sm">{clabeAccount.description}</p>
                       )}
@@ -647,6 +659,35 @@ export default function ClabeAccountsPage() {
                   <span className="text-white/60 text-sm">
                     Cuenta {formData.isActive ? 'activa' : 'inactiva'}
                   </span>
+                </div>
+
+                {/* Main account toggle */}
+                <div className="flex items-center gap-3 pt-2">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setFormData((prev) => ({ ...prev, isMain: !prev.isMain }))
+                    }
+                    className={`relative w-11 h-6 rounded-full transition-colors ${
+                      formData.isMain ? 'bg-purple-500' : 'bg-white/20'
+                    }`}
+                  >
+                    <span
+                      className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-transform ${
+                        formData.isMain ? 'left-6' : 'left-1'
+                      }`}
+                    />
+                  </button>
+                  <div>
+                    <span className="text-white/60 text-sm">
+                      Cuenta {formData.isMain ? 'principal (concentradora)' : 'secundaria'}
+                    </span>
+                    {formData.isMain && (
+                      <p className="text-purple-400/60 text-xs">
+                        Las transferencias salientes se realizan desde esta cuenta
+                      </p>
+                    )}
+                  </div>
                 </div>
               </div>
 

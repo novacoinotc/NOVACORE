@@ -44,6 +44,7 @@ export async function GET(
       alias: dbClabeAccount.alias,
       description: dbClabeAccount.description,
       isActive: dbClabeAccount.is_active,
+      isMain: dbClabeAccount.is_main,
       createdAt: new Date(dbClabeAccount.created_at).getTime(),
       updatedAt: new Date(dbClabeAccount.updated_at).getTime(),
       company,
@@ -66,7 +67,7 @@ export async function PUT(
 ) {
   try {
     const body = await request.json();
-    const { alias, description, isActive } = body;
+    const { alias, description, isActive, isMain } = body;
 
     // Get current user for authorization
     const currentUser = await getCurrentUser(request);
@@ -94,6 +95,7 @@ export async function PUT(
       alias,
       description,
       isActive,
+      isMain,
     });
 
     if (!dbClabeAccount) {
@@ -110,6 +112,7 @@ export async function PUT(
       alias: dbClabeAccount.alias,
       description: dbClabeAccount.description,
       isActive: dbClabeAccount.is_active,
+      isMain: dbClabeAccount.is_main,
       createdAt: new Date(dbClabeAccount.created_at).getTime(),
       updatedAt: new Date(dbClabeAccount.updated_at).getTime(),
     };

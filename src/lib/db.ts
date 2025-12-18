@@ -96,10 +96,18 @@ export async function initializeDatabase() {
         alias TEXT NOT NULL,
         description TEXT,
         is_active BOOLEAN DEFAULT true,
+        is_main BOOLEAN DEFAULT false,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `;
+
+    // Add is_main column if it doesn't exist (migration)
+    try {
+      await sql`ALTER TABLE clabe_accounts ADD COLUMN IF NOT EXISTS is_main BOOLEAN DEFAULT false`;
+    } catch (e) {
+      // Column might already exist
+    }
 
     // Create users table with company_id reference
     await sql`
@@ -320,6 +328,7 @@ export interface DbClabeAccount {
   alias: string;
   description: string | null;
   is_active: boolean;
+  is_main: boolean;
   created_at: Date;
   updated_at: Date;
 }
@@ -512,13 +521,22 @@ export async function createClabeAccount(clabeAccount: {
   alias: string;
   description?: string;
   isActive?: boolean;
+  isMain?: boolean;
 }): Promise<DbClabeAccount> {
   const result = await sql`
-    INSERT INTO clabe_accounts (id, company_id, clabe, alias, description, is_active)
-    VALUES (${clabeAccount.id}, ${clabeAccount.companyId}, ${clabeAccount.clabe}, ${clabeAccount.alias}, ${clabeAccount.description || null}, ${clabeAccount.isActive ?? true})
+    INSERT INTO clabe_accounts (id, company_id, clabe, alias, description, is_active, is_main)
+    VALUES (${clabeAccount.id}, ${clabeAccount.companyId}, ${clabeAccount.clabe}, ${clabeAccount.alias}, ${clabeAccount.description || null}, ${clabeAccount.isActive ?? true}, ${clabeAccount.isMain ?? false})
     RETURNING *
   `;
   return result[0] as DbClabeAccount;
+}
+
+// Get the main CLABE account for a company (concentrator account)
+export async function getMainClabeAccount(companyId: string): Promise<DbClabeAccount | null> {
+  const result = await sql`
+    SELECT * FROM clabe_accounts WHERE company_id = ${companyId} AND is_main = true LIMIT 1
+  `;
+  return result[0] as DbClabeAccount | null;
 }
 
 export async function getClabeAccountById(id: string): Promise<DbClabeAccount | null> {
@@ -555,6 +573,7 @@ export async function updateClabeAccount(
     alias: string;
     description: string;
     isActive: boolean;
+    isMain: boolean;
   }>
 ): Promise<DbClabeAccount | null> {
   const result = await sql`
@@ -562,6 +581,7 @@ export async function updateClabeAccount(
     SET alias = COALESCE(${updates.alias}, alias),
         description = COALESCE(${updates.description}, description),
         is_active = COALESCE(${updates.isActive}, is_active),
+        is_main = COALESCE(${updates.isMain}, is_main),
         updated_at = CURRENT_TIMESTAMP
     WHERE id = ${id}
     RETURNING *

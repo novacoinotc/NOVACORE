@@ -31,6 +31,7 @@ export async function GET(request: NextRequest) {
       alias: ca.alias,
       description: ca.description,
       isActive: ca.is_active,
+      isMain: ca.is_main,
       createdAt: new Date(ca.created_at).getTime(),
       updatedAt: new Date(ca.updated_at).getTime(),
     }));
@@ -49,7 +50,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { companyId, clabe, alias, description, isActive } = body;
+    const { companyId, clabe, alias, description, isActive, isMain } = body;
 
     // Get current user for authorization
     const currentUser = await getCurrentUser(request);
@@ -131,6 +132,7 @@ export async function POST(request: NextRequest) {
       alias,
       description,
       isActive: isActive ?? true,
+      isMain: isMain ?? false,
     });
 
     // Return CLABE account
@@ -141,6 +143,7 @@ export async function POST(request: NextRequest) {
       alias: dbClabeAccount.alias,
       description: dbClabeAccount.description,
       isActive: dbClabeAccount.is_active,
+      isMain: dbClabeAccount.is_main,
       createdAt: new Date(dbClabeAccount.created_at).getTime(),
       updatedAt: new Date(dbClabeAccount.updated_at).getTime(),
     };

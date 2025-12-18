@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClabeAccount, getCompanyById, getUserById } from '@/lib/db';
+import { createClabeAccount, getCompanyById, getUserById, getMainClabeAccount } from '@/lib/db';
 import { createVirtualClabe, CreateVirtualClabeRequest } from '@/lib/opm-api';
 
 // Helper to get current user from request headers
@@ -87,6 +87,23 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Check if company has a main CLABE account (concentrator)
+    console.log('Step 4: Checking for main CLABE account...');
+    const mainClabeAccount = await getMainClabeAccount(companyId);
+    console.log('Main CLABE account:', mainClabeAccount ? { clabe: mainClabeAccount.clabe, alias: mainClabeAccount.alias } : 'null');
+
+    if (!mainClabeAccount) {
+      console.log('No main CLABE account found for company');
+      return NextResponse.json(
+        {
+          error: 'La empresa no tiene una cuenta CLABE principal configurada',
+          detail: 'Primero debes crear o marcar una cuenta CLABE como principal (concentradora) antes de generar sub-cuentas',
+          hint: 'Ve a Gestión de CLABEs y marca una cuenta como principal'
+        },
+        { status: 400 }
+      );
+    }
+
     // Build request for OPM API
     console.log('Step 4: Building OPM request...');
     const opmRequest: CreateVirtualClabeRequest = {
@@ -144,7 +161,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Save the generated CLABE to our database
+    // Save the generated CLABE to our database (always as sub-account, not main)
     const dbClabeAccount = await createClabeAccount({
       id: 'clabe_' + Date.now(),
       companyId,
@@ -152,9 +169,10 @@ export async function POST(request: NextRequest) {
       alias,
       description,
       isActive: isActive ?? true,
+      isMain: false, // Sub-accounts are never the main account
     });
 
-    // Return CLABE account
+    // Return CLABE account with reference to main account
     const clabeAccount = {
       id: dbClabeAccount.id,
       companyId: dbClabeAccount.company_id,
@@ -162,9 +180,15 @@ export async function POST(request: NextRequest) {
       alias: dbClabeAccount.alias,
       description: dbClabeAccount.description,
       isActive: dbClabeAccount.is_active,
+      isMain: dbClabeAccount.is_main,
       createdAt: new Date(dbClabeAccount.created_at).getTime(),
       updatedAt: new Date(dbClabeAccount.updated_at).getTime(),
       generatedViaOpm: true, // Flag to indicate this was auto-generated
+      // Reference to the main/concentrator account
+      mainAccount: {
+        clabe: mainClabeAccount.clabe,
+        alias: mainClabeAccount.alias,
+      },
     };
 
     return NextResponse.json(clabeAccount, { status: 201 });

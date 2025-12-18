@@ -81,12 +81,22 @@ export async function PUT(
       );
     }
 
-    // Authorization: only super_admin can update CLABE accounts
-    if (currentUser && currentUser.role !== 'super_admin') {
-      return NextResponse.json(
-        { error: 'No tienes permiso para actualizar cuentas CLABE' },
-        { status: 403 }
-      );
+    // Authorization: super_admin can update any CLABE, company_admin only their own company's
+    if (currentUser) {
+      if (currentUser.role === 'company_admin') {
+        // company_admin can only update CLABEs for their own company
+        if (currentUser.company_id !== existingClabeAccount.company_id) {
+          return NextResponse.json(
+            { error: 'Solo puedes actualizar cuentas CLABE de tu propia empresa' },
+            { status: 403 }
+          );
+        }
+      } else if (currentUser.role !== 'super_admin') {
+        return NextResponse.json(
+          { error: 'No tienes permiso para actualizar cuentas CLABE' },
+          { status: 403 }
+        );
+      }
     }
 
     // Note: CLABE number and companyId cannot be changed once created

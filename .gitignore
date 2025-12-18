@@ -28,6 +28,8 @@ yarn-error.log*
 
 # OPM API Keys (NEVER commit these)
 mds_keys/
+mds_keys-*/
+mds_keys-*.zip
 *.pem
 *.key
 

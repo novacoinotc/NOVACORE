@@ -35,7 +35,7 @@ const defaultFormData: ClabeFormData = {
   alias: '',
   description: '',
   isActive: true,
-  inputMode: 'generate', // Default to auto-generate
+  inputMode: 'manual', // Default to manual entry (OPM auto-generate not enabled for this account)
 };
 
 export default function ClabeAccountsPage() {
@@ -267,26 +267,15 @@ export default function ClabeAccountsPage() {
             isActive: formData.isActive,
           }),
         });
-      } else if (formData.inputMode === 'manual') {
+      } else {
         // Create new CLABE with manual entry
+        // Note: OPM auto-generate (indirectParticipantClients) not available for this account
         response = await fetch('/api/clabe-accounts', {
           method: 'POST',
           headers,
           body: JSON.stringify({
             companyId: effectiveCompanyId,
             clabe: formData.clabe,
-            alias: formData.alias,
-            description: formData.description || undefined,
-            isActive: formData.isActive,
-          }),
-        });
-      } else {
-        // Create new CLABE - OPM auto-generates the CLABE number
-        response = await fetch('/api/clabe-accounts/generate', {
-          method: 'POST',
-          headers,
-          body: JSON.stringify({
-            companyId: effectiveCompanyId,
             alias: formData.alias,
             description: formData.description || undefined,
             isActive: formData.isActive,
@@ -567,71 +556,27 @@ export default function ClabeAccountsPage() {
                 {/* Input mode toggle for new CLABEs */}
                 {!selectedClabe && (
                   <div className="space-y-3">
-                    <label className="text-white/40 text-xs uppercase tracking-wider">
-                      Modo de creación
-                    </label>
-                    <div className="flex gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setFormData(prev => ({ ...prev, inputMode: 'generate', clabe: '' }))}
-                        className={`flex-1 px-4 py-3 rounded-lg border text-sm font-medium transition-all ${
-                          formData.inputMode === 'generate'
-                            ? 'bg-purple-600/20 border-purple-500/50 text-purple-300'
-                            : 'bg-white/[0.02] border-white/[0.08] text-white/60 hover:border-white/20'
-                        }`}
-                      >
-                        Generar automáticamente
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setFormData(prev => ({ ...prev, inputMode: 'manual' }))}
-                        className={`flex-1 px-4 py-3 rounded-lg border text-sm font-medium transition-all ${
-                          formData.inputMode === 'manual'
-                            ? 'bg-purple-600/20 border-purple-500/50 text-purple-300'
-                            : 'bg-white/[0.02] border-white/[0.08] text-white/60 hover:border-white/20'
-                        }`}
-                      >
-                        Ingresar manualmente
-                      </button>
+                    {/* Manual CLABE entry - OPM auto-generate not available */}
+                    <div className="space-y-1.5">
+                      <label className="text-white/40 text-xs uppercase tracking-wider">
+                        Número CLABE (18 dígitos)
+                      </label>
+                      <input
+                        type="text"
+                        value={formData.clabe}
+                        onChange={(e) => {
+                          // Only allow digits, max 18
+                          const value = e.target.value.replace(/\D/g, '').slice(0, 18);
+                          setFormData((prev) => ({ ...prev, clabe: value }));
+                        }}
+                        placeholder="Ej: 684180327000000003"
+                        maxLength={18}
+                        className="w-full bg-white/[0.03] border border-white/[0.08] rounded-lg py-2.5 px-4 text-white text-sm font-mono placeholder:text-white/30 focus:outline-none focus:border-purple-500/50 transition-colors"
+                      />
+                      <p className="text-white/30 text-xs">
+                        Ingresa tu cuenta CLABE concentradora proporcionada por OPM
+                      </p>
                     </div>
-
-                    {/* Info message based on mode */}
-                    {formData.inputMode === 'generate' ? (
-                      <div className="p-4 bg-purple-500/10 border border-purple-500/20 rounded-lg">
-                        <div className="flex items-start gap-3">
-                          <CreditCard className="w-5 h-5 text-purple-400 mt-0.5 flex-shrink-0" />
-                          <div>
-                            <p className="text-purple-300 text-sm font-medium">
-                              CLABE generada automáticamente
-                            </p>
-                            <p className="text-white/50 text-xs mt-1">
-                              OPM generará automáticamente un número CLABE de 18 dígitos para esta cuenta virtual.
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="space-y-1.5">
-                        <label className="text-white/40 text-xs uppercase tracking-wider">
-                          Número CLABE (18 dígitos)
-                        </label>
-                        <input
-                          type="text"
-                          value={formData.clabe}
-                          onChange={(e) => {
-                            // Only allow digits, max 18
-                            const value = e.target.value.replace(/\D/g, '').slice(0, 18);
-                            setFormData((prev) => ({ ...prev, clabe: value }));
-                          }}
-                          placeholder="Ej: 684180327000000003"
-                          maxLength={18}
-                          className="w-full bg-white/[0.03] border border-white/[0.08] rounded-lg py-2.5 px-4 text-white text-sm font-mono placeholder:text-white/30 focus:outline-none focus:border-purple-500/50 transition-colors"
-                        />
-                        <p className="text-white/30 text-xs">
-                          Ingresa una CLABE existente proporcionada por OPM (ej: cuenta principal de tu empresa)
-                        </p>
-                      </div>
-                    )}
                   </div>
                 )}
 
@@ -722,10 +667,10 @@ export default function ClabeAccountsPage() {
                 >
                   {saving && <Loader2 className="w-4 h-4 animate-spin" />}
                   {saving && !selectedClabe
-                    ? formData.inputMode === 'manual' ? 'Guardando CLABE...' : 'Generando CLABE...'
+                    ? 'Guardando CLABE...'
                     : selectedClabe
                     ? 'Guardar cambios'
-                    : formData.inputMode === 'manual' ? 'Registrar cuenta CLABE' : 'Generar cuenta CLABE'}
+                    : 'Registrar cuenta CLABE'}
                 </motion.button>
               </div>
             </motion.div>

@@ -42,7 +42,7 @@ export default function TransfersPage() {
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
 
-  // Grace period state (20 second countdown)
+  // Grace period state (8 second countdown)
   const [gracePeriodData, setGracePeriodData] = useState<{
     transactionId: string;
     confirmationDeadline: string;
@@ -50,7 +50,7 @@ export default function TransfersPage() {
     trackingKey: string;
     orderId: string;
   } | null>(null);
-  const [countdown, setCountdown] = useState(20);
+  const [countdown, setCountdown] = useState(8);
   const [isCanceling, setIsCanceling] = useState(false);
   const [cancelSuccess, setCancelSuccess] = useState(false);
 
@@ -829,7 +829,7 @@ export default function TransfersPage() {
               </CardContent>
             </Card>
 
-            {/* Grace Period Card - Shows during 20 second countdown */}
+            {/* Grace Period Card - Shows during 8 second countdown */}
             {gracePeriodData && !cancelSuccess && (
               <Card className="border-amber-500/30 bg-amber-500/5">
                 <CardContent className="py-4">
@@ -848,7 +848,7 @@ export default function TransfersPage() {
                     <div className="w-full h-1.5 bg-white/[0.06] rounded-full mb-3 overflow-hidden">
                       <div
                         className="h-full bg-gradient-to-r from-amber-500 to-amber-400 transition-all duration-1000 ease-linear"
-                        style={{ width: `${(countdown / 20) * 100}%` }}
+                        style={{ width: `${(countdown / 8) * 100}%` }}
                       />
                     </div>
 

@@ -15,9 +15,11 @@ import {
   Copy,
   Check,
   Sparkles,
+  Eye,
 } from 'lucide-react';
 import { useAuth, useRequirePermission } from '@/context/AuthContext';
 import { ClabeAccount, Company } from '@/types';
+import Link from 'next/link';
 
 interface ClabeFormData {
   id: string;
@@ -538,6 +540,13 @@ export default function ClabeAccountsPage() {
                   </td>
                   <td className="px-6 py-4">
                     <div className="flex items-center justify-end gap-2">
+                      <Link
+                        href={`/clabe-accounts/${clabeAccount.id}`}
+                        className="p-2 text-white/40 hover:text-purple-400 hover:bg-purple-500/10 rounded-lg transition-colors"
+                        title="Ver Dashboard"
+                      >
+                        <Eye className="w-4 h-4" />
+                      </Link>
                       {hasPermission('clabe.update') && (
                         <button
                           onClick={() => handleEdit(clabeAccount)}

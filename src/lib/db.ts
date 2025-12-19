@@ -2,10 +2,19 @@ import { Pool, QueryResult } from 'pg';
 import crypto from 'crypto';
 
 // Create PostgreSQL connection pool for AWS RDS
+// SECURITY: SSL is REQUIRED for production database connections
+const isProduction = process.env.NODE_ENV === 'production';
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: {
-    rejectUnauthorized: false, // Required for AWS RDS
+  ssl: isProduction ? {
+    // SECURITY: In production, ALWAYS verify SSL certificates
+    // This prevents MITM attacks on database connections
+    rejectUnauthorized: true,
+    // AWS RDS uses certificates from Amazon Trust Services
+    // Node.js trusts these by default, no need to specify ca
+  } : {
+    // Development: Allow self-signed certificates
+    rejectUnauthorized: false,
   },
   max: 20, // Maximum number of clients in the pool
   idleTimeoutMillis: 30000,
@@ -2091,4 +2100,305 @@ export async function getCriticalAuditLogs(limit: number = 50): Promise<DbAuditL
     LIMIT ${limit}
   `;
   return result as DbAuditLog[];
+}
+
+// ==================== WEBHOOK IDEMPOTENCY OPERATIONS ====================
+
+export interface DbProcessedWebhook {
+  id: string;
+  webhook_type: 'deposit' | 'order-status' | 'cash';
+  tracking_key: string;
+  opm_order_id: string | null;
+  received_at: Date;
+  processed_at: Date;
+  source_ip: string | null;
+  payload_hash: string;
+  result: 'success' | 'failed' | 'duplicate';
+}
+
+/**
+ * Check if a webhook has already been processed (idempotency check)
+ * SECURITY: Prevents duplicate processing and replay attacks
+ *
+ * @param webhookType - Type of webhook (deposit, order-status, cash)
+ * @param trackingKey - The tracking key from the webhook payload
+ * @returns The processed webhook record if exists, null otherwise
+ */
+export async function getProcessedWebhook(
+  webhookType: 'deposit' | 'order-status' | 'cash',
+  trackingKey: string
+): Promise<DbProcessedWebhook | null> {
+  try {
+    const result = await sql`
+      SELECT * FROM processed_webhooks
+      WHERE webhook_type = ${webhookType} AND tracking_key = ${trackingKey}
+    `;
+    return result[0] as DbProcessedWebhook | null;
+  } catch (error) {
+    // Table might not exist yet
+    console.log('Webhook idempotency table not available:', error);
+    return null;
+  }
+}
+
+/**
+ * Record a processed webhook for idempotency
+ * SECURITY: Creates idempotency record to prevent duplicate processing
+ *
+ * @param webhook - Webhook processing record
+ * @returns The created record
+ */
+export async function recordProcessedWebhook(webhook: {
+  id: string;
+  webhookType: 'deposit' | 'order-status' | 'cash';
+  trackingKey: string;
+  opmOrderId?: string;
+  sourceIp?: string;
+  payloadHash: string;
+  result: 'success' | 'failed' | 'duplicate';
+}): Promise<DbProcessedWebhook | null> {
+  try {
+    const result = await sql`
+      INSERT INTO processed_webhooks (id, webhook_type, tracking_key, opm_order_id, source_ip, payload_hash, result)
+      VALUES (${webhook.id}, ${webhook.webhookType}, ${webhook.trackingKey}, ${webhook.opmOrderId || null}, ${webhook.sourceIp || null}, ${webhook.payloadHash}, ${webhook.result})
+      ON CONFLICT (webhook_type, tracking_key) DO UPDATE
+      SET processed_at = CURRENT_TIMESTAMP, result = ${webhook.result}
+      RETURNING *
+    `;
+    return result[0] as DbProcessedWebhook | null;
+  } catch (error) {
+    console.error('Failed to record processed webhook:', error);
+    return null;
+  }
+}
+
+/**
+ * Generate a hash of webhook payload for idempotency
+ */
+export function hashWebhookPayload(payload: unknown): string {
+  const payloadString = JSON.stringify(payload);
+  return crypto.createHash('sha256').update(payloadString).digest('hex');
+}
+
+// ==================== STATE TRANSITION VALIDATION ====================
+
+/**
+ * Valid state transitions for transactions
+ * SECURITY: Enforces state machine to prevent invalid status changes
+ */
+const VALID_STATE_TRANSITIONS: Record<string, string[]> = {
+  'pending_confirmation': ['canceled', 'pending', 'sent', 'failed'],
+  'pending': ['sent', 'failed', 'canceled'],
+  'sent': ['scattered', 'returned', 'failed'],
+  'queued': ['sent', 'scattered', 'failed', 'canceled'],
+  'scattered': ['returned'], // Only refund is valid from completed
+  'canceled': [], // Terminal state
+  'returned': [], // Terminal state
+  'failed': ['pending'], // Allow retry
+};
+
+/**
+ * Check if a state transition is valid
+ * SECURITY: Validates that state changes follow the defined state machine
+ *
+ * @param currentStatus - Current transaction status
+ * @param newStatus - Proposed new status
+ * @returns true if transition is valid
+ */
+export function isValidStateTransition(currentStatus: string, newStatus: string): boolean {
+  // Same status is always valid (idempotent)
+  if (currentStatus === newStatus) return true;
+
+  const allowedTransitions = VALID_STATE_TRANSITIONS[currentStatus];
+  if (!allowedTransitions) {
+    console.error(`[SECURITY] Unknown status: ${currentStatus}`);
+    return false;
+  }
+
+  return allowedTransitions.includes(newStatus);
+}
+
+/**
+ * Log a state transition
+ * SECURITY: Creates immutable audit trail of status changes
+ */
+export async function logStateTransition(params: {
+  transactionId: string;
+  previousStatus: string;
+  newStatus: string;
+  changedBy?: string;
+  changeSource: 'api' | 'webhook' | 'cron' | 'manual';
+  ipAddress?: string;
+  metadata?: Record<string, unknown>;
+}): Promise<void> {
+  try {
+    await sql`
+      INSERT INTO transaction_state_log (id, transaction_id, previous_status, new_status, changed_by, change_source, ip_address, metadata)
+      VALUES (
+        ${`stl_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`},
+        ${params.transactionId},
+        ${params.previousStatus},
+        ${params.newStatus},
+        ${params.changedBy || 'system'},
+        ${params.changeSource},
+        ${params.ipAddress || null},
+        ${params.metadata ? JSON.stringify(params.metadata) : '{}'}
+      )
+    `;
+  } catch (error) {
+    console.error('Failed to log state transition:', error);
+    // Don't throw - logging failure should not block transaction processing
+  }
+}
+
+/**
+ * Update transaction status with validation
+ * SECURITY: Validates state transition before updating
+ *
+ * @param id - Transaction ID
+ * @param newStatus - New status to set
+ * @param options - Additional options (error detail, change source, etc.)
+ * @returns Updated transaction or null if invalid transition
+ */
+export async function updateTransactionStatusValidated(
+  id: string,
+  newStatus: string,
+  options?: {
+    errorDetail?: string;
+    changedBy?: string;
+    changeSource?: 'api' | 'webhook' | 'cron' | 'manual';
+    ipAddress?: string;
+  }
+): Promise<{ success: true; transaction: DbTransaction } | { success: false; error: string }> {
+  // Get current transaction
+  const current = await getTransactionById(id);
+  if (!current) {
+    return { success: false, error: 'Transaction not found' };
+  }
+
+  // Validate state transition
+  if (!isValidStateTransition(current.status, newStatus)) {
+    console.error(`[SECURITY] Invalid state transition: ${current.status} -> ${newStatus} for tx ${id}`);
+
+    // Log the invalid attempt
+    await createAuditLogEntry({
+      id: `audit_${crypto.randomUUID()}`,
+      action: 'INVALID_STATE_TRANSITION',
+      userId: options?.changedBy,
+      details: {
+        transactionId: id,
+        currentStatus: current.status,
+        attemptedStatus: newStatus,
+      },
+      severity: 'warning',
+      ipAddress: options?.ipAddress,
+    }).catch(() => {});
+
+    return {
+      success: false,
+      error: `Invalid state transition: ${current.status} -> ${newStatus}`,
+    };
+  }
+
+  // Update the transaction
+  const updated = await updateTransactionStatus(id, newStatus, options?.errorDetail);
+  if (!updated) {
+    return { success: false, error: 'Failed to update transaction' };
+  }
+
+  // Log the state transition
+  await logStateTransition({
+    transactionId: id,
+    previousStatus: current.status,
+    newStatus,
+    changedBy: options?.changedBy,
+    changeSource: options?.changeSource || 'api',
+    ipAddress: options?.ipAddress,
+  });
+
+  return { success: true, transaction: updated };
+}
+
+/**
+ * Get transaction state history
+ * SECURITY: Provides audit trail for forensic analysis
+ */
+export async function getTransactionStateHistory(transactionId: string): Promise<{
+  transaction_id: string;
+  previous_status: string;
+  new_status: string;
+  changed_at: Date;
+  changed_by: string | null;
+  change_source: string;
+  ip_address: string | null;
+  metadata: Record<string, unknown> | null;
+}[]> {
+  try {
+    const result = await sql`
+      SELECT * FROM transaction_state_log
+      WHERE transaction_id = ${transactionId}
+      ORDER BY changed_at ASC
+    `;
+    return result as any[];
+  } catch (error) {
+    console.log('State log table not available:', error);
+    return [];
+  }
+}
+
+// ==================== DATABASE INITIALIZATION (SECURITY TABLES) ====================
+
+/**
+ * Initialize security-related tables
+ * Call this after the main initializeDatabase()
+ */
+export async function initializeSecurityTables(): Promise<void> {
+  try {
+    // Create processed_webhooks table for idempotency
+    await sql`
+      CREATE TABLE IF NOT EXISTS processed_webhooks (
+        id TEXT PRIMARY KEY,
+        webhook_type TEXT NOT NULL CHECK (webhook_type IN ('deposit', 'order-status', 'cash')),
+        tracking_key TEXT NOT NULL,
+        opm_order_id TEXT,
+        received_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+        processed_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+        source_ip TEXT,
+        payload_hash TEXT NOT NULL,
+        result TEXT CHECK (result IN ('success', 'failed', 'duplicate')),
+        UNIQUE (webhook_type, tracking_key)
+      )
+    `;
+
+    // Create transaction_state_log table
+    await sql`
+      CREATE TABLE IF NOT EXISTS transaction_state_log (
+        id TEXT PRIMARY KEY,
+        transaction_id TEXT NOT NULL,
+        previous_status TEXT NOT NULL,
+        new_status TEXT NOT NULL,
+        changed_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+        changed_by TEXT,
+        change_source TEXT NOT NULL CHECK (change_source IN ('api', 'webhook', 'cron', 'manual')),
+        ip_address TEXT,
+        metadata JSONB DEFAULT '{}'
+      )
+    `;
+
+    // Add signature column to transactions if not exists
+    try {
+      await sql`ALTER TABLE transactions ADD COLUMN IF NOT EXISTS signature TEXT`;
+    } catch (e) {
+      // Column might already exist
+    }
+
+    // Create indexes
+    await sql`CREATE INDEX IF NOT EXISTS idx_processed_webhooks_lookup ON processed_webhooks (webhook_type, tracking_key)`;
+    await sql`CREATE INDEX IF NOT EXISTS idx_state_log_transaction ON transaction_state_log (transaction_id, changed_at DESC)`;
+
+    console.log('Security tables initialized successfully');
+  } catch (error) {
+    console.error('Error initializing security tables:', error);
+    // Don't throw - security tables are optional enhancements
+  }
 }

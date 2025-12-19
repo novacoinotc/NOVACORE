@@ -305,8 +305,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Grace period configuration: 8 seconds before order is sent to OPM
-    const GRACE_PERIOD_SECONDS = 8;
+    // Grace period configuration: seconds before order is sent to OPM
+    // This gives users time to cancel a transfer before it's irreversible
+    // SECURITY: Can be configured via environment variable (default 8 seconds)
+    const GRACE_PERIOD_SECONDS = parseInt(process.env.GRACE_PERIOD_SECONDS || '8', 10);
 
     // Build order data to be sent to OPM AFTER grace period
     // Note: paymentDay will be set when actually sending to OPM

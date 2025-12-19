@@ -1,25 +1,40 @@
 /**
  * Webhook Security Utilities
  *
- * Since OPM doesn't provide a signature key for webhook validation,
- * we implement alternative security measures:
- * - IP whitelisting (MANDATORY - OPM IP hardcoded)
- * - Rate limiting
- * - Basic payload validation
- * - Audit logging
+ * CRITICAL SECURITY: OPM does NOT provide RSA signature for webhooks
+ * We MUST rely on strict IP whitelisting as the PRIMARY security measure
+ *
+ * Security measures implemented:
+ * - STRICT IP whitelisting (OPM IP hardcoded - NOT configurable via env)
+ * - Rate limiting per IP
+ * - Payload structure validation
+ * - Comprehensive audit logging
+ * - Request fingerprinting
  */
 
 import { NextRequest } from 'next/server';
 import crypto from 'crypto';
 import { createAuditLogEntry } from './db';
 
-// OPM's verified IP address - HARDCODED for security
-// This is OPM's production IP that sends webhooks
-const OPM_HARDCODED_IP = '35.171.132.81';
+// =============================================================================
+// CRITICAL: OPM's verified production IP addresses
+// =============================================================================
+// These are OPM's ONLY authorized IPs for sending webhooks
+// DO NOT add IPs here without explicit verification from OPM
+// Any request from other IPs is AUTOMATICALLY REJECTED
+// =============================================================================
+const OPM_PRODUCTION_IPS = [
+  '35.171.132.81',  // OPM Primary Production IP
+] as const;
 
-// Additional IPs can be configured via environment (for testing/staging)
-const additionalIPs = process.env.OPM_WEBHOOK_IPS?.split(',').map(ip => ip.trim()).filter(ip => ip) || [];
-const OPM_WEBHOOK_IPS = [OPM_HARDCODED_IP, ...additionalIPs];
+// SECURITY: In production, ONLY allow OPM IPs - no env overrides
+// Additional IPs only allowed in development/staging for testing
+const isProduction = process.env.NODE_ENV === 'production';
+const stagingIPs = !isProduction
+  ? (process.env.OPM_WEBHOOK_IPS?.split(',').map(ip => ip.trim()).filter(ip => ip) || [])
+  : [];
+
+const OPM_WEBHOOK_IPS: readonly string[] = [...OPM_PRODUCTION_IPS, ...stagingIPs];
 
 // Rate limiting store (in-memory, consider Redis for production)
 const rateLimitStore: Map<string, { count: number; resetAt: number }> = new Map();
@@ -76,35 +91,48 @@ export function getClientIpFromWebhook(request: NextRequest): string {
 
 /**
  * Check if the webhook request is from an allowed source
- * IP whitelist is MANDATORY - webhooks only accepted from OPM's IP
+ * IP whitelist is MANDATORY and STRICT - webhooks ONLY accepted from OPM's verified IPs
+ *
+ * SECURITY: This is our PRIMARY defense since OPM doesn't provide signature validation
  */
 export async function validateWebhookSource(request: NextRequest): Promise<WebhookSecurityResult> {
   const clientIp = getClientIpFromWebhook(request);
 
-  // MANDATORY IP whitelist check - OPM IP is hardcoded for security
-  // This is the primary security measure since OPM doesn't provide signature keys
-  if (!OPM_WEBHOOK_IPS.includes(clientIp)) {
-    // Log blocked attempt with secure ID
+  // CRITICAL: Strict IP whitelist check
+  // OPM IP is HARDCODED - this is our only security measure for incoming webhooks
+  // DO NOT remove or weaken this check under any circumstances
+  const isAuthorizedIP = OPM_WEBHOOK_IPS.includes(clientIp);
+
+  if (!isAuthorizedIP) {
+    // Log blocked attempt with full details for security analysis
     await createAuditLogEntry({
       id: `audit_${crypto.randomUUID()}`,
-      action: 'WEBHOOK_BLOCKED',
+      action: 'WEBHOOK_BLOCKED_UNAUTHORIZED_IP',
       ipAddress: clientIp,
       details: {
-        reason: 'IP not in whitelist',
+        reason: 'IP not in OPM whitelist',
         receivedIp: clientIp,
-        expectedIp: OPM_HARDCODED_IP,
+        authorizedIps: OPM_PRODUCTION_IPS,
+        userAgent: request.headers.get('user-agent') || 'unknown',
+        contentType: request.headers.get('content-type') || 'unknown',
+        timestamp: new Date().toISOString(),
       },
-      severity: 'warning',
-    }).catch(() => {}); // Don't fail if audit log fails
+      severity: 'critical', // Elevated to critical - potential attack
+    }).catch((err) => {
+      console.error('[SECURITY] Failed to log blocked webhook:', err);
+    });
 
-    console.warn(`[SECURITY] Webhook blocked from unauthorized IP: ${clientIp}`);
+    console.error(`[SECURITY ALERT] Webhook BLOCKED from unauthorized IP: ${clientIp}`);
+    console.error(`[SECURITY ALERT] Authorized IPs: ${OPM_PRODUCTION_IPS.join(', ')}`);
 
     return {
       allowed: false,
-      reason: 'IP address not authorized',
+      reason: 'IP address not authorized - only OPM IPs are allowed',
       clientIp,
     };
   }
+
+  console.log(`[SECURITY] Webhook accepted from verified OPM IP: ${clientIp}`);
 
   // Check rate limit
   const now = Date.now();

@@ -60,8 +60,17 @@ const DEFAULT_SUPER_ADMIN_PERMISSIONS = [
 
 async function createSuperAdmin() {
   const email = 'direccion@novacorp.mx';
-  const password = 'IssacVM98.';
   const name = 'Director General';
+
+  // SECURITY: Password must be provided via environment variable
+  const password = process.env.SUPER_ADMIN_PASSWORD;
+
+  if (!password || password.length < 12) {
+    console.error('❌ ERROR: SUPER_ADMIN_PASSWORD environment variable is required');
+    console.error('   Password must be at least 12 characters long');
+    console.error('   Usage: SUPER_ADMIN_PASSWORD="YourSecurePassword123!" node scripts/create-super-admin.js');
+    process.exit(1);
+  }
 
   try {
     console.log('🔄 Checking if user exists...');
@@ -74,8 +83,8 @@ async function createSuperAdmin() {
     if (existing.length > 0) {
       console.log('⚠️  User already exists, updating password...');
 
-      // Update existing user
-      const hashedPassword = await bcrypt.hash(password, 10);
+      // SECURITY: Use bcrypt with 12 rounds (not 10)
+      const hashedPassword = await bcrypt.hash(password, 12);
       await sql`
         UPDATE users
         SET password = ${hashedPassword},
@@ -90,8 +99,8 @@ async function createSuperAdmin() {
     } else {
       console.log('🔄 Creating new super admin user...');
 
-      // Hash password
-      const hashedPassword = await bcrypt.hash(password, 10);
+      // SECURITY: Use bcrypt with 12 rounds (not 10)
+      const hashedPassword = await bcrypt.hash(password, 12);
       const userId = `super_admin_${Date.now()}`;
 
       // Create user
@@ -104,7 +113,7 @@ async function createSuperAdmin() {
     }
 
     console.log('\n📧 Email:', email);
-    console.log('🔐 Password: [hidden]');
+    console.log('🔐 Password: [provided via environment variable]');
     console.log('👤 Role: super_admin');
     console.log('\n🎉 You can now login at https://novacorp.mx/login');
 

@@ -1,5 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { updateTransactionStatusByOpmOrderId, getTransactionByOpmOrderId, getTransactionByTrackingKey } from '@/lib/db';
+import crypto from 'crypto';
+import {
+  updateTransactionStatusByOpmOrderId,
+  getTransactionByOpmOrderId,
+  getTransactionByTrackingKey,
+  getProcessedWebhook,
+  recordProcessedWebhook,
+  hashWebhookPayload,
+  updateTransactionStatusValidated,
+} from '@/lib/db';
 import { verifySignature } from '@/lib/crypto';
 import { buildOrderStatusOriginalString } from '@/lib/opm-api';
 import {
@@ -94,8 +103,49 @@ export async function POST(request: NextRequest) {
     if (orderData) {
       console.log('Extracted order status data:', orderData);
 
+      // SECURITY: Idempotency check using orderId + status as the unique key
+      // Note: For order-status, we use orderId_status as tracking key since
+      // the same order can have multiple status updates (pending -> sent -> scattered)
+      const idempotencyKey = `${orderData.orderId}_${orderData.status}`;
+      const payloadHash = hashWebhookPayload(body);
+      const existingWebhook = await getProcessedWebhook('order-status', idempotencyKey);
+
+      if (existingWebhook) {
+        console.log(`[SECURITY] Duplicate order-status webhook detected: ${idempotencyKey}`);
+        // Record the duplicate attempt
+        await recordProcessedWebhook({
+          id: `wh_${crypto.randomUUID()}`,
+          webhookType: 'order-status',
+          trackingKey: idempotencyKey,
+          opmOrderId: orderData.orderId,
+          sourceIp: securityCheck.clientIp,
+          payloadHash,
+          result: 'duplicate',
+        });
+
+        return NextResponse.json({
+          received: true,
+          timestamp,
+          processed: false,
+          orderId: orderData.orderId,
+          status: orderData.status,
+          message: 'Status update already processed (idempotency check)',
+        });
+      }
+
       // Attempt to process the status update
-      const result = await processOrderStatus(orderData);
+      const result = await processOrderStatus(orderData, securityCheck.clientIp);
+
+      // Record the webhook processing result
+      await recordProcessedWebhook({
+        id: `wh_${crypto.randomUUID()}`,
+        webhookType: 'order-status',
+        trackingKey: idempotencyKey,
+        opmOrderId: orderData.orderId,
+        sourceIp: securityCheck.clientIp,
+        payloadHash,
+        result: result.success ? 'success' : 'failed',
+      });
 
       return NextResponse.json({
         received: true,
@@ -278,8 +328,9 @@ interface ProcessResult {
 
 /**
  * Process the order status update
+ * SECURITY: Uses validated state transitions to prevent invalid status changes
  */
-async function processOrderStatus(data: OrderStatusData): Promise<ProcessResult> {
+async function processOrderStatus(data: OrderStatusData, clientIp?: string): Promise<ProcessResult> {
   try {
     // Log the status change
     console.log('Processing order status update:', {
@@ -292,6 +343,7 @@ async function processOrderStatus(data: OrderStatusData): Promise<ProcessResult>
     // Try to find and update the transaction in our database
     let transactionUpdated = false;
     let foundBy = '';
+    let validationError = '';
 
     try {
       // First try to find by OPM order ID
@@ -310,13 +362,23 @@ async function processOrderStatus(data: OrderStatusData): Promise<ProcessResult>
       }
 
       if (transaction) {
-        // Update the transaction status
-        const updated = await updateTransactionStatusByOpmOrderId(data.orderId, data.status, data.detail);
-        if (updated) {
+        // SECURITY: Use validated state transition update
+        const updateResult = await updateTransactionStatusValidated(
+          transaction.id,
+          data.status,
+          {
+            errorDetail: data.detail,
+            changeSource: 'webhook',
+            ipAddress: clientIp,
+          }
+        );
+
+        if (updateResult.success) {
           transactionUpdated = true;
           console.log(`Transaction ${transaction.id} (OPM: ${data.orderId}) status updated to ${data.status}`);
         } else {
-          console.warn(`Failed to update transaction for order ID: ${data.orderId}`);
+          validationError = updateResult.error;
+          console.warn(`State transition rejected: ${updateResult.error}`);
         }
       } else {
         console.warn(`Transaction not found for order ID: ${data.orderId} or tracking key: ${data.trackingKey || 'N/A'}`);
@@ -359,7 +421,9 @@ async function processOrderStatus(data: OrderStatusData): Promise<ProcessResult>
       success: transactionUpdated,
       message: transactionUpdated
         ? `Transaction updated to ${data.status} (found by ${foundBy})`
-        : `Status update logged but transaction not found in database`,
+        : validationError
+          ? `State transition rejected: ${validationError}`
+          : `Status update logged but transaction not found in database`,
     };
 
   } catch (error) {

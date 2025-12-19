@@ -5,6 +5,9 @@ import {
   createTransaction,
   getTransactionByTrackingKey,
   getCompanyById,
+  getProcessedWebhook,
+  recordProcessedWebhook,
+  hashWebhookPayload,
 } from '@/lib/db';
 import { processCommission, canReceiveSpei } from '@/lib/commissions';
 import { verifySignature } from '@/lib/crypto';
@@ -112,8 +115,43 @@ export async function POST(request: NextRequest) {
     if (depositData) {
       console.log('Extracted deposit data:', depositData);
 
+      // SECURITY: Idempotency check to prevent duplicate processing
+      const payloadHash = hashWebhookPayload(body);
+      const existingWebhook = await getProcessedWebhook('deposit', depositData.trackingKey);
+
+      if (existingWebhook) {
+        console.log(`[SECURITY] Duplicate webhook detected: ${depositData.trackingKey}`);
+        // Record the duplicate attempt
+        await recordProcessedWebhook({
+          id: `wh_${crypto.randomUUID()}`,
+          webhookType: 'deposit',
+          trackingKey: depositData.trackingKey,
+          sourceIp: securityCheck.clientIp,
+          payloadHash,
+          result: 'duplicate',
+        });
+
+        return NextResponse.json({
+          received: true,
+          timestamp,
+          processed: false,
+          returnCode: 12,
+          message: 'Webhook already processed (idempotency check)',
+        });
+      }
+
       // Attempt to process the deposit
       const result = await processDeposit(depositData);
+
+      // Record the webhook processing result
+      await recordProcessedWebhook({
+        id: `wh_${crypto.randomUUID()}`,
+        webhookType: 'deposit',
+        trackingKey: depositData.trackingKey,
+        sourceIp: securityCheck.clientIp,
+        payloadHash,
+        result: result.success ? 'success' : 'failed',
+      });
 
       return NextResponse.json({
         received: true,

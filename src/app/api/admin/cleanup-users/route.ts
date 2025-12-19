@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getUserById, getAllUsers, deleteUser } from '@/lib/db';
+import { getAllUsers, deleteUser } from '@/lib/db';
+import { authenticateRequest } from '@/lib/auth-middleware';
 
 /**
  * POST /api/admin/cleanup-users
@@ -11,17 +12,17 @@ import { getUserById, getAllUsers, deleteUser } from '@/lib/db';
  */
 export async function POST(request: NextRequest) {
   try {
-    // Check authorization
-    const userId = request.headers.get('x-user-id');
-    if (!userId) {
+    // SECURITY FIX: Use proper authentication instead of trusting x-user-id header
+    const authResult = await authenticateRequest(request);
+    if (!authResult.success || !authResult.user) {
       return NextResponse.json(
-        { error: 'No autorizado' },
-        { status: 401 }
+        { error: authResult.error || 'No autorizado' },
+        { status: authResult.statusCode || 401 }
       );
     }
+    const currentUser = authResult.user;
 
-    const currentUser = await getUserById(userId);
-    if (!currentUser || currentUser.role !== 'super_admin') {
+    if (currentUser.role !== 'super_admin') {
       return NextResponse.json(
         { error: 'Solo super_admin puede ejecutar esta operación' },
         { status: 403 }
@@ -93,17 +94,17 @@ export async function POST(request: NextRequest) {
  */
 export async function GET(request: NextRequest) {
   try {
-    // Check authorization
-    const userId = request.headers.get('x-user-id');
-    if (!userId) {
+    // SECURITY FIX: Use proper authentication instead of trusting x-user-id header
+    const authResult = await authenticateRequest(request);
+    if (!authResult.success || !authResult.user) {
       return NextResponse.json(
-        { error: 'No autorizado' },
-        { status: 401 }
+        { error: authResult.error || 'No autorizado' },
+        { status: authResult.statusCode || 401 }
       );
     }
+    const currentUser = authResult.user;
 
-    const currentUser = await getUserById(userId);
-    if (!currentUser || currentUser.role !== 'super_admin') {
+    if (currentUser.role !== 'super_admin') {
       return NextResponse.json(
         { error: 'Solo super_admin puede ver esta información' },
         { status: 403 }

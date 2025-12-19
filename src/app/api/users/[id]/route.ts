@@ -2,13 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
 import { getUserById, updateUser, deleteUser, getUserByEmail, setUserClabeAccess, getUserClabeAccess } from '@/lib/db';
 import { ALL_PERMISSIONS, Permission, UserRole } from '@/types';
-
-// Helper to get current user from request headers
-async function getCurrentUser(request: NextRequest) {
-  const userId = request.headers.get('x-user-id');
-  if (!userId) return null;
-  return await getUserById(userId);
-}
+import { authenticateRequest } from '@/lib/auth-middleware';
 
 // GET /api/users/[id] - Get single user
 export async function GET(
@@ -16,8 +10,15 @@ export async function GET(
   { params }: { params: { id: string } }
 ) {
   try {
-    // Get current user for authorization
-    const currentUser = await getCurrentUser(request);
+    // SECURITY FIX: Use proper authentication instead of trusting x-user-id header
+    const authResult = await authenticateRequest(request);
+    if (!authResult.success || !authResult.user) {
+      return NextResponse.json(
+        { error: authResult.error || 'No autorizado' },
+        { status: authResult.statusCode || 401 }
+      );
+    }
+    const currentUser = authResult.user;
 
     const dbUser = await getUserById(params.id);
 
@@ -28,12 +29,20 @@ export async function GET(
       );
     }
 
-    // Authorization: only super_admin can view other users
-    if (currentUser && currentUser.role !== 'super_admin' && currentUser.id !== params.id) {
-      return NextResponse.json(
-        { error: 'No tienes permiso para ver este usuario' },
-        { status: 403 }
-      );
+    // Authorization: super_admin can view any user, others can only view themselves
+    // company_admin can also view users in their company
+    if (currentUser.role !== 'super_admin') {
+      if (currentUser.id !== params.id) {
+        // Check if company_admin viewing user from same company
+        if (currentUser.role === 'company_admin' && dbUser.company_id === currentUser.companyId) {
+          // Allowed - company admin viewing user from their company
+        } else {
+          return NextResponse.json(
+            { error: 'No tienes permiso para ver este usuario' },
+            { status: 403 }
+          );
+        }
+      }
     }
 
     // Get CLABE account access
@@ -71,11 +80,18 @@ export async function PUT(
   { params }: { params: { id: string } }
 ) {
   try {
+    // SECURITY FIX: Use proper authentication instead of trusting x-user-id header
+    const authResult = await authenticateRequest(request);
+    if (!authResult.success || !authResult.user) {
+      return NextResponse.json(
+        { error: authResult.error || 'No autorizado' },
+        { status: authResult.statusCode || 401 }
+      );
+    }
+    const currentUser = authResult.user;
+
     const body = await request.json();
     const { email, password, name, role, companyId, permissions, clabeAccountIds, isActive } = body;
-
-    // Get current user for authorization
-    const currentUser = await getCurrentUser(request);
 
     // Check if user exists
     const existingUser = await getUserById(params.id);
@@ -86,21 +102,45 @@ export async function PUT(
       );
     }
 
-    // Authorization: only super_admin can update other users
-    if (currentUser && currentUser.role !== 'super_admin') {
-      // Regular users can only update themselves
-      if (params.id !== currentUser.id) {
-        return NextResponse.json(
-          { error: 'No tienes permiso para modificar otros usuarios' },
-          { status: 403 }
-        );
-      }
-      // Cannot change their own role
-      if (role) {
-        return NextResponse.json(
-          { error: 'No tienes permiso para cambiar tu rol' },
-          { status: 403 }
-        );
+    // Authorization: super_admin can update any user, company_admin can update users in their company
+    if (currentUser.role !== 'super_admin') {
+      if (currentUser.role === 'company_admin') {
+        // company_admin can update users in their company
+        if (existingUser.company_id !== currentUser.companyId) {
+          return NextResponse.json(
+            { error: 'Solo puedes modificar usuarios de tu propia empresa' },
+            { status: 403 }
+          );
+        }
+        // Cannot change user to super_admin
+        if (role === 'super_admin') {
+          return NextResponse.json(
+            { error: 'No puedes asignar el rol super_admin' },
+            { status: 403 }
+          );
+        }
+        // Cannot change company of user
+        if (companyId && companyId !== currentUser.companyId) {
+          return NextResponse.json(
+            { error: 'No puedes mover usuarios a otra empresa' },
+            { status: 403 }
+          );
+        }
+      } else {
+        // Regular users can only update themselves
+        if (params.id !== currentUser.id) {
+          return NextResponse.json(
+            { error: 'No tienes permiso para modificar otros usuarios' },
+            { status: 403 }
+          );
+        }
+        // Cannot change their own role
+        if (role) {
+          return NextResponse.json(
+            { error: 'No tienes permiso para cambiar tu rol' },
+            { status: 403 }
+          );
+        }
       }
     }
 
@@ -136,9 +176,9 @@ export async function PUT(
     if (permissions) updates.permissions = permissions;
     if (isActive !== undefined) updates.isActive = isActive;
 
-    // Hash new password if provided
+    // Hash new password if provided - SECURITY: Use 12 rounds for production security
     if (password) {
-      updates.password = await bcrypt.hash(password, 10);
+      updates.password = await bcrypt.hash(password, 12);
     }
 
     const dbUser = await updateUser(params.id, updates);
@@ -190,8 +230,15 @@ export async function DELETE(
   { params }: { params: { id: string } }
 ) {
   try {
-    // Get current user for authorization
-    const currentUser = await getCurrentUser(request);
+    // SECURITY FIX: Use proper authentication instead of trusting x-user-id header
+    const authResult = await authenticateRequest(request);
+    if (!authResult.success || !authResult.user) {
+      return NextResponse.json(
+        { error: authResult.error || 'No autorizado' },
+        { status: authResult.statusCode || 401 }
+      );
+    }
+    const currentUser = authResult.user;
 
     // Check if user exists
     const existingUser = await getUserById(params.id);
@@ -203,7 +250,7 @@ export async function DELETE(
     }
 
     // Authorization: only super_admin can delete users
-    if (currentUser && currentUser.role !== 'super_admin') {
+    if (currentUser.role !== 'super_admin') {
       return NextResponse.json(
         { error: 'No tienes permiso para eliminar usuarios' },
         { status: 403 }
@@ -211,7 +258,7 @@ export async function DELETE(
     }
 
     // Cannot delete yourself
-    if (currentUser && existingUser.id === currentUser.id) {
+    if (existingUser.id === currentUser.id) {
       return NextResponse.json(
         { error: 'No puedes eliminarte a ti mismo' },
         { status: 400 }

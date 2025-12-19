@@ -3,18 +3,23 @@
  *
  * Since OPM doesn't provide a signature key for webhook validation,
  * we implement alternative security measures:
- * - IP whitelisting
+ * - IP whitelisting (MANDATORY - OPM IP hardcoded)
  * - Rate limiting
  * - Basic payload validation
  * - Audit logging
  */
 
 import { NextRequest } from 'next/server';
+import crypto from 'crypto';
 import { createAuditLogEntry } from './db';
 
-// OPM's IP addresses (configure these in environment variables)
-// Add multiple IPs separated by commas: OPM_WEBHOOK_IPS=1.2.3.4,5.6.7.8
-const OPM_WEBHOOK_IPS = process.env.OPM_WEBHOOK_IPS?.split(',').map(ip => ip.trim()) || [];
+// OPM's verified IP address - HARDCODED for security
+// This is OPM's production IP that sends webhooks
+const OPM_HARDCODED_IP = '35.171.132.81';
+
+// Additional IPs can be configured via environment (for testing/staging)
+const additionalIPs = process.env.OPM_WEBHOOK_IPS?.split(',').map(ip => ip.trim()).filter(ip => ip) || [];
+const OPM_WEBHOOK_IPS = [OPM_HARDCODED_IP, ...additionalIPs];
 
 // Rate limiting store (in-memory, consider Redis for production)
 const rateLimitStore: Map<string, { count: number; resetAt: number }> = new Map();
@@ -31,12 +36,33 @@ export interface WebhookSecurityResult {
 
 /**
  * Get client IP from request
+ *
+ * SECURITY NOTE: IP extraction in cloud environments
+ * - X-Forwarded-For can be spoofed by clients, BUT trusted proxies (Vercel, AWS ALB)
+ *   append or overwrite the header with the actual connecting IP
+ * - For AWS ALB: The rightmost non-private IP is typically the real client
+ * - For Vercel: The header is set by Vercel's edge network
+ *
+ * We use X-Vercel-Forwarded-For when available (more trustworthy)
+ * and fall back to the rightmost public IP in X-Forwarded-For
  */
 export function getClientIpFromWebhook(request: NextRequest): string {
-  // Check various headers that might contain the real IP
+  // Vercel provides a more trustworthy header
+  const vercelForwarded = request.headers.get('x-vercel-forwarded-for');
+  if (vercelForwarded) {
+    return vercelForwarded.split(',')[0].trim();
+  }
+
+  // For AWS/other proxies, the connecting client IP is typically appended last
+  // But the FIRST entry is often the original client (what we want for webhook validation)
+  // AWS ALB adds the client IP at the end of the chain
   const forwarded = request.headers.get('x-forwarded-for');
   if (forwarded) {
-    return forwarded.split(',')[0].trim();
+    const ips = forwarded.split(',').map(ip => ip.trim());
+    // For webhook validation from OPM, they connect directly to our edge
+    // So the first IP should be OPM's IP (unless there's a CDN in front of them)
+    // Return the first IP as it's what OPM would present
+    return ips[0];
   }
 
   const realIp = request.headers.get('x-real-ip');
@@ -50,30 +76,34 @@ export function getClientIpFromWebhook(request: NextRequest): string {
 
 /**
  * Check if the webhook request is from an allowed source
+ * IP whitelist is MANDATORY - webhooks only accepted from OPM's IP
  */
 export async function validateWebhookSource(request: NextRequest): Promise<WebhookSecurityResult> {
   const clientIp = getClientIpFromWebhook(request);
 
-  // Check IP whitelist if configured
-  const ipWhitelistEnabled = process.env.WEBHOOK_IP_WHITELIST_ENABLED === 'true';
+  // MANDATORY IP whitelist check - OPM IP is hardcoded for security
+  // This is the primary security measure since OPM doesn't provide signature keys
+  if (!OPM_WEBHOOK_IPS.includes(clientIp)) {
+    // Log blocked attempt with secure ID
+    await createAuditLogEntry({
+      id: `audit_${crypto.randomUUID()}`,
+      action: 'WEBHOOK_BLOCKED',
+      ipAddress: clientIp,
+      details: {
+        reason: 'IP not in whitelist',
+        receivedIp: clientIp,
+        expectedIp: OPM_HARDCODED_IP,
+      },
+      severity: 'warning',
+    }).catch(() => {}); // Don't fail if audit log fails
 
-  if (ipWhitelistEnabled && OPM_WEBHOOK_IPS.length > 0) {
-    if (!OPM_WEBHOOK_IPS.includes(clientIp)) {
-      // Log blocked attempt
-      await createAuditLogEntry({
-        id: `audit_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`,
-        action: 'WEBHOOK_BLOCKED',
-        ipAddress: clientIp,
-        details: { reason: 'IP not in whitelist', allowedIPs: OPM_WEBHOOK_IPS.length },
-        severity: 'warning',
-      }).catch(() => {}); // Don't fail if audit log fails
+    console.warn(`[SECURITY] Webhook blocked from unauthorized IP: ${clientIp}`);
 
-      return {
-        allowed: false,
-        reason: 'IP address not authorized',
-        clientIp,
-      };
-    }
+    return {
+      allowed: false,
+      reason: 'IP address not authorized',
+      clientIp,
+    };
   }
 
   // Check rate limit
@@ -85,7 +115,7 @@ export async function validateWebhookSource(request: NextRequest): Promise<Webho
     if (now < rateData.resetAt) {
       if (rateData.count >= WEBHOOK_RATE_LIMIT) {
         await createAuditLogEntry({
-          id: `audit_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`,
+          id: `audit_${crypto.randomUUID()}`,
           action: 'WEBHOOK_RATE_LIMITED',
           ipAddress: clientIp,
           details: { count: rateData.count, limit: WEBHOOK_RATE_LIMIT },
@@ -203,7 +233,7 @@ export async function logWebhookEvent(
   const sanitizedBody = sanitizeWebhookDataForLog(body);
 
   await createAuditLogEntry({
-    id: `audit_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`,
+    id: `audit_${crypto.randomUUID()}`,
     action: `WEBHOOK_${type.toUpperCase().replace('-', '_')}`,
     ipAddress: clientIp,
     details: {

@@ -1,11 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient, listClients, createVirtualClabe, CreateVirtualClabeRequest } from '@/lib/opm-api';
 import { Client } from '@/types';
+import { authenticateRequest } from '@/lib/auth-middleware';
 
 /**
  * GET /api/clients
  *
  * List OPM indirect participant clients (virtual CLABE accounts)
+ *
+ * SECURITY: Requires authentication. Only super_admin and company_admin can list clients.
  *
  * Query parameters:
  * - virtualAccountNumber: Filter by CLABE number
@@ -17,6 +20,27 @@ import { Client } from '@/types';
  */
 export async function GET(request: NextRequest) {
   try {
+    // ============================================
+    // SECURITY: Authenticate user via session token
+    // ============================================
+    const authResult = await authenticateRequest(request);
+    if (!authResult.success || !authResult.user) {
+      return NextResponse.json(
+        { error: authResult.error || 'No autorizado' },
+        { status: authResult.statusCode || 401 }
+      );
+    }
+
+    const authenticatedUser = authResult.user;
+
+    // Only super_admin and company_admin can list clients
+    if (!['super_admin', 'company_admin'].includes(authenticatedUser.role)) {
+      return NextResponse.json(
+        { error: 'No tienes permiso para ver clientes' },
+        { status: 403 }
+      );
+    }
+
     const { searchParams } = new URL(request.url);
 
     const params: Record<string, string | number | undefined> = {};
@@ -57,6 +81,8 @@ export async function GET(request: NextRequest) {
  *
  * Create a new OPM indirect participant client (virtual CLABE account)
  *
+ * SECURITY: Requires authentication. Only super_admin and company_admin can create clients.
+ *
  * If virtualAccountNumber is not provided, OPM will auto-generate a CLABE.
  *
  * Required fields:
@@ -74,6 +100,27 @@ export async function GET(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   try {
+    // ============================================
+    // SECURITY: Authenticate user via session token
+    // ============================================
+    const authResult = await authenticateRequest(request);
+    if (!authResult.success || !authResult.user) {
+      return NextResponse.json(
+        { error: authResult.error || 'No autorizado' },
+        { status: authResult.statusCode || 401 }
+      );
+    }
+
+    const authenticatedUser = authResult.user;
+
+    // Only super_admin and company_admin can create clients
+    if (!['super_admin', 'company_admin'].includes(authenticatedUser.role)) {
+      return NextResponse.json(
+        { error: 'No tienes permiso para crear clientes' },
+        { status: 403 }
+      );
+    }
+
     const body = await request.json();
 
     // Check if this is a simplified request (for virtual CLABE generation)

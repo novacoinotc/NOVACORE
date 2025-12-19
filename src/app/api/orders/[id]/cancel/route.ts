@@ -1,20 +1,29 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getTransactionForCancel, updateTransactionStatus, getTransactionById } from '@/lib/db';
+import crypto from 'crypto';
+import { getTransactionForCancel, updateTransactionStatus, getTransactionById, createAuditLogEntry } from '@/lib/db';
+import { authenticateRequest, validateClabeAccess } from '@/lib/auth-middleware';
+import { getClientIP, getUserAgent } from '@/lib/security';
 
 /**
  * POST /api/orders/[id]/cancel
  *
  * Cancel a transfer during the 20-second grace period.
  *
+ * SECURITY: Requires authentication and validates user has access to the transaction's CLABE
+ *
  * This endpoint:
- * 1. Verifies the transaction is still in grace period (status = pending_confirmation)
- * 2. Updates local transaction status to 'canceled'
+ * 1. Authenticates the user via session token
+ * 2. Validates user has access to the source CLABE account
+ * 3. Verifies the transaction is still in grace period (status = pending_confirmation)
+ * 4. Updates local transaction status to 'canceled'
  *
  * NOTE: Since orders are only sent to OPM AFTER the grace period,
  * cancellation during the grace period only needs to update local status.
  * No OPM API call is needed.
  *
  * Returns error if:
+ * - User not authenticated
+ * - User doesn't have access to the transaction's CLABE
  * - Transaction not found
  * - Grace period has expired (order already sent to OPM)
  */
@@ -23,27 +32,76 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id: transactionId } = await params;
+  const clientIP = getClientIP(request);
+  const userAgent = getUserAgent(request);
 
   console.log('=== CANCEL TRANSFER REQUEST ===');
   console.log('Transaction ID:', transactionId);
   console.log('Timestamp:', new Date().toISOString());
 
   try {
-    // Step 1: Check if transaction exists and is still cancelable
+    // ============================================
+    // SECURITY: Authenticate user via session token
+    // ============================================
+    const authResult = await authenticateRequest(request);
+    if (!authResult.success || !authResult.user) {
+      console.error('CANCEL ERROR: Authentication failed');
+      return NextResponse.json(
+        { error: authResult.error || 'No autorizado' },
+        { status: authResult.statusCode || 401 }
+      );
+    }
+
+    const authenticatedUser = authResult.user;
+    console.log('Authenticated User ID:', authenticatedUser.id);
+
+    // Step 1: Check if transaction exists at all (before checking cancelability)
+    const existingTx = await getTransactionById(transactionId);
+
+    if (!existingTx) {
+      console.log('Transaction not found:', transactionId);
+      return NextResponse.json(
+        { error: 'Transacción no encontrada' },
+        { status: 404 }
+      );
+    }
+
+    // ============================================
+    // SECURITY: Validate user has access to the transaction's CLABE
+    // ============================================
+    if (existingTx.clabe_account_id) {
+      const hasAccess = await validateClabeAccess(
+        authenticatedUser.id,
+        existingTx.clabe_account_id,
+        authenticatedUser.role
+      );
+
+      if (!hasAccess) {
+        console.error('CANCEL ERROR: User does not have access to transaction CLABE');
+        await createAuditLogEntry({
+          id: `audit_${crypto.randomUUID()}`,
+          action: 'SUSPICIOUS_ACTIVITY',
+          userId: authenticatedUser.id,
+          userEmail: authenticatedUser.email,
+          ipAddress: clientIP,
+          userAgent,
+          details: {
+            reason: 'Attempted to cancel transaction from unauthorized CLABE',
+            transactionId,
+          },
+          severity: 'critical',
+        });
+        return NextResponse.json(
+          { error: 'No tienes permiso para cancelar esta transacción' },
+          { status: 403 }
+        );
+      }
+    }
+
+    // Step 2: Check if transaction is still cancelable
     const transaction = await getTransactionForCancel(transactionId);
 
     if (!transaction) {
-      // Check if transaction exists at all
-      const existingTx = await getTransactionById(transactionId);
-
-      if (!existingTx) {
-        console.log('Transaction not found:', transactionId);
-        return NextResponse.json(
-          { error: 'Transacción no encontrada' },
-          { status: 404 }
-        );
-      }
-
       // Transaction exists but is not cancelable
       if (existingTx.status === 'canceled') {
         console.log('Transaction already canceled:', transactionId);
@@ -120,6 +178,7 @@ export async function POST(
  * GET /api/orders/[id]/cancel
  *
  * Check if a transaction can still be canceled.
+ * SECURITY: Requires authentication and validates user has access to the transaction's CLABE
  */
 export async function GET(
   request: NextRequest,
@@ -128,18 +187,50 @@ export async function GET(
   const { id: transactionId } = await params;
 
   try {
+    // ============================================
+    // SECURITY: Authenticate user via session token
+    // ============================================
+    const authResult = await authenticateRequest(request);
+    if (!authResult.success || !authResult.user) {
+      return NextResponse.json(
+        { error: authResult.error || 'No autorizado' },
+        { status: authResult.statusCode || 401 }
+      );
+    }
+
+    const authenticatedUser = authResult.user;
+
+    // First check if transaction exists
+    const existingTx = await getTransactionById(transactionId);
+
+    if (!existingTx) {
+      return NextResponse.json(
+        { canCancel: false, reason: 'Transaction not found' },
+        { status: 404 }
+      );
+    }
+
+    // ============================================
+    // SECURITY: Validate user has access to the transaction's CLABE
+    // ============================================
+    if (existingTx.clabe_account_id) {
+      const hasAccess = await validateClabeAccess(
+        authenticatedUser.id,
+        existingTx.clabe_account_id,
+        authenticatedUser.role
+      );
+
+      if (!hasAccess) {
+        return NextResponse.json(
+          { error: 'No tienes permiso para ver esta transacción' },
+          { status: 403 }
+        );
+      }
+    }
+
     const transaction = await getTransactionForCancel(transactionId);
 
     if (!transaction) {
-      const existingTx = await getTransactionById(transactionId);
-
-      if (!existingTx) {
-        return NextResponse.json(
-          { canCancel: false, reason: 'Transaction not found' },
-          { status: 404 }
-        );
-      }
-
       return NextResponse.json({
         canCancel: false,
         reason: existingTx.status === 'canceled'

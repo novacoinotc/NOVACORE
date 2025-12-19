@@ -1,13 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClabeAccount, getCompanyById, getUserById, getMainClabeAccount } from '@/lib/db';
+import crypto from 'crypto';
+import { createClabeAccount, getCompanyById, getMainClabeAccount } from '@/lib/db';
 import { createVirtualClabe, CreateVirtualClabeRequest } from '@/lib/opm-api';
-
-// Helper to get current user from request headers
-async function getCurrentUser(request: NextRequest) {
-  const userId = request.headers.get('x-user-id');
-  if (!userId) return null;
-  return await getUserById(userId);
-}
+import { authenticateRequest } from '@/lib/auth-middleware';
 
 /**
  * POST /api/clabe-accounts/generate - Generate a new CLABE via OPM API
@@ -27,14 +22,20 @@ async function getCurrentUser(request: NextRequest) {
 export async function POST(request: NextRequest) {
   console.log('=== CLABE GENERATE ENDPOINT CALLED ===');
   try {
+    // SECURITY FIX: Use proper authentication instead of trusting x-user-id header
+    const authResult = await authenticateRequest(request);
+    if (!authResult.success || !authResult.user) {
+      return NextResponse.json(
+        { error: authResult.error || 'No autorizado' },
+        { status: authResult.statusCode || 401 }
+      );
+    }
+    const currentUser = authResult.user;
+    console.log('Current user (authenticated):', { id: currentUser.id, role: currentUser.role, company_id: currentUser.companyId });
+
     const body = await request.json();
     console.log('Request body:', JSON.stringify(body, null, 2));
     const { companyId, alias, description, isActive } = body;
-
-    // Get current user for authorization
-    console.log('Step 1: Getting current user...');
-    const currentUser = await getCurrentUser(request);
-    console.log('Current user:', currentUser ? { id: currentUser.id, role: currentUser.role, company_id: currentUser.company_id } : 'null');
 
     // Validation
     if (!companyId || !alias) {
@@ -47,23 +48,21 @@ export async function POST(request: NextRequest) {
 
     // Authorization: super_admin can create for any company, company_admin only for their own
     console.log('Step 2: Checking authorization...');
-    if (currentUser) {
-      if (currentUser.role === 'company_admin') {
-        // company_admin can only create CLABEs for their own company
-        if (currentUser.company_id !== companyId) {
-          console.log('Authorization failed: company_admin trying to create for different company');
-          return NextResponse.json(
-            { error: 'Solo puedes crear cuentas CLABE para tu propia empresa' },
-            { status: 403 }
-          );
-        }
-      } else if (currentUser.role !== 'super_admin') {
-        console.log('Authorization failed: user role is', currentUser.role);
+    if (currentUser.role === 'company_admin') {
+      // company_admin can only create CLABEs for their own company
+      if (currentUser.companyId !== companyId) {
+        console.log('Authorization failed: company_admin trying to create for different company');
         return NextResponse.json(
-          { error: 'No tienes permiso para crear cuentas CLABE' },
+          { error: 'Solo puedes crear cuentas CLABE para tu propia empresa' },
           { status: 403 }
         );
       }
+    } else if (currentUser.role !== 'super_admin') {
+      console.log('Authorization failed: user role is', currentUser.role);
+      return NextResponse.json(
+        { error: 'No tienes permiso para crear cuentas CLABE' },
+        { status: 403 }
+      );
     }
     console.log('Authorization passed');
 
@@ -162,8 +161,9 @@ export async function POST(request: NextRequest) {
     }
 
     // Save the generated CLABE to our database (always as sub-account, not main)
+    // SECURITY FIX: Use crypto.randomUUID() for secure ID generation
     const dbClabeAccount = await createClabeAccount({
-      id: 'clabe_' + Date.now(),
+      id: `clabe_${crypto.randomUUID()}`,
       companyId,
       clabe: generatedClabe,
       alias,

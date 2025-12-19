@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { syncOpmTransactions } from '@/scripts/sync-opm-transactions';
-import { getUserById } from '@/lib/db';
+import { authenticateRequest } from '@/lib/auth-middleware';
 
 /**
  * POST /api/admin/sync-transactions
@@ -11,39 +11,30 @@ import { getUserById } from '@/lib/db';
  * Request body (optional):
  * - account: string - Specific CLABE account to check balance for
  *
- * Requires admin authentication via x-user-id header.
+ * Requires admin authentication (super_admin role).
  */
 export async function POST(request: NextRequest) {
   console.log('=== ADMIN SYNC TRANSACTIONS REQUEST ===');
   console.log('Timestamp:', new Date().toISOString());
 
   try {
-    // Check admin authentication
-    const userId = request.headers.get('x-user-id');
-    if (!userId) {
+    // SECURITY FIX: Use proper authentication instead of trusting x-user-id header
+    const authResult = await authenticateRequest(request);
+    if (!authResult.success || !authResult.user) {
       return NextResponse.json(
-        { error: 'Authentication required' },
-        { status: 401 }
+        { error: authResult.error || 'Authentication required' },
+        { status: authResult.statusCode || 401 }
       );
     }
+    const user = authResult.user;
 
-    // Verify user exists and has admin role
-    const user = await getUserById(userId);
-    if (!user) {
+    // SECURITY FIX: Only super_admin can run sync
+    if (user.role !== 'super_admin') {
       return NextResponse.json(
-        { error: 'User not found' },
-        { status: 401 }
+        { error: 'Admin access required' },
+        { status: 403 }
       );
     }
-
-    // Check if user is admin (assuming there's a role field or email check)
-    // For now, allow any authenticated user - add role check if needed
-    // if (user.role !== 'admin') {
-    //   return NextResponse.json(
-    //     { error: 'Admin access required' },
-    //     { status: 403 }
-    //   );
-    // }
 
     // Parse optional request body
     let account: string | undefined;
@@ -102,12 +93,20 @@ export async function POST(request: NextRequest) {
  */
 export async function GET(request: NextRequest) {
   try {
-    // Check authentication
-    const userId = request.headers.get('x-user-id');
-    if (!userId) {
+    // SECURITY FIX: Use proper authentication instead of trusting x-user-id header
+    const authResult = await authenticateRequest(request);
+    if (!authResult.success || !authResult.user) {
       return NextResponse.json(
-        { error: 'Authentication required' },
-        { status: 401 }
+        { error: authResult.error || 'Authentication required' },
+        { status: authResult.statusCode || 401 }
+      );
+    }
+
+    // SECURITY FIX: Only super_admin can view sync info
+    if (authResult.user.role !== 'super_admin') {
+      return NextResponse.json(
+        { error: 'Admin access required' },
+        { status: 403 }
       );
     }
 

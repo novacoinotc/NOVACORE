@@ -1,5 +1,5 @@
 // Cryptographic utilities for RSA signing (OPM API)
-import { createSign, createVerify, createPrivateKey, createPublicKey } from 'crypto';
+import { createSign, createVerify, createPrivateKey, createPublicKey, randomBytes, randomInt } from 'crypto';
 
 // Note: This file handles RSA-SHA256 signing for OPM API
 // The private key should NEVER be exposed to the client
@@ -109,17 +109,24 @@ export async function verifySignature(
 }
 
 /**
- * Generate a random numerical reference (7 digits)
+ * Generate a cryptographically secure random numerical reference (7 digits)
+ * SECURITY FIX: Uses crypto.randomInt() instead of Math.random()
  */
 export function generateNumericalReference(): number {
-  return Math.floor(1000000 + Math.random() * 9000000);
+  // Generate a secure random number between 1000000 and 9999999 (7 digits)
+  return randomInt(1000000, 10000000);
 }
 
 /**
- * Generate a tracking key (alphanumeric, max 30 chars)
+ * Generate a cryptographically secure tracking key (alphanumeric, max 30 chars)
+ * SECURITY FIX: Uses crypto.randomBytes() instead of Math.random()
+ *
+ * Format: PREFIX + TIMESTAMP(base36) + RANDOM(hex from crypto)
+ * This ensures uniqueness and unpredictability for SPEI tracking keys
  */
 export function generateTrackingKey(prefix: string = 'NC'): string {
   const timestamp = Date.now().toString(36).toUpperCase();
-  const random = Math.random().toString(36).substring(2, 10).toUpperCase();
-  return `${prefix}${timestamp}${random}`.substring(0, 30);
+  // Use crypto.randomBytes for secure random generation
+  const randomHex = randomBytes(8).toString('hex').toUpperCase();
+  return `${prefix}${timestamp}${randomHex}`.substring(0, 30);
 }

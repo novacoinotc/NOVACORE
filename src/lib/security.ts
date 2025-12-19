@@ -5,10 +5,10 @@
  * - Rate limiting for brute force protection
  * - Account lockout after failed attempts
  * - Audit logging
- * - 2FA TOTP validation
+ * - 2FA TOTP validation (with timing-safe comparison)
  */
 
-import { createHmac } from 'crypto';
+import { createHmac, timingSafeEqual, randomUUID } from 'crypto';
 
 // ==================== RATE LIMITING ====================
 
@@ -200,10 +200,11 @@ export interface AuditLogEntry {
 /**
  * Create an audit log entry
  * In production, this should write to a database table
+ * SECURITY FIX: Uses crypto.randomUUID() for secure ID generation
  */
 export async function createAuditLog(entry: Omit<AuditLogEntry, 'id' | 'timestamp'>): Promise<void> {
   const logEntry: AuditLogEntry = {
-    id: `audit_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`,
+    id: `audit_${randomUUID()}`,
     timestamp: new Date(),
     ...entry,
   };
@@ -250,10 +251,19 @@ export function generateTOTPUri(secret: string, email: string, issuer: string = 
 }
 
 /**
- * Verify a TOTP code
+ * Verify a TOTP code using timing-safe comparison
  * Allows for 1 period before and after current time (90 second window)
+ *
+ * SECURITY FIX: Uses crypto.timingSafeEqual() to prevent timing attacks
+ * Timing attacks can reveal information about the expected code by measuring
+ * how long the comparison takes
  */
 export function verifyTOTP(secret: string, code: string): boolean {
+  // Validate code format first (must be 6 digits)
+  if (!code || code.length !== 6 || !/^\d{6}$/.test(code)) {
+    return false;
+  }
+
   const now = Math.floor(Date.now() / 1000);
   const period = 30;
 
@@ -261,7 +271,14 @@ export function verifyTOTP(secret: string, code: string): boolean {
   for (let i = -1; i <= 1; i++) {
     const counter = Math.floor((now + i * period) / period);
     const expectedCode = generateTOTPCode(secret, counter);
-    if (expectedCode === code) {
+
+    // SECURITY: Use timing-safe comparison to prevent timing attacks
+    // Both strings must be the same length for timingSafeEqual
+    const expectedBuffer = Buffer.from(expectedCode, 'utf8');
+    const codeBuffer = Buffer.from(code, 'utf8');
+
+    if (expectedBuffer.length === codeBuffer.length &&
+        timingSafeEqual(expectedBuffer, codeBuffer)) {
       return true;
     }
   }

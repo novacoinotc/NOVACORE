@@ -1,13 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getUserById, getClabeAccountById, getClabeAccountsByCompanyId, getUserClabeAccess, sql } from '@/lib/db';
 import { getBankName } from '@/lib/banks';
-
-// Helper to get current user from request headers
-async function getCurrentUser(request: NextRequest) {
-  const userId = request.headers.get('x-user-id');
-  if (!userId) return null;
-  return await getUserById(userId);
-}
+import { authenticateRequest } from '@/lib/auth-middleware';
 
 // Get dashboard stats filtered by CLABE IDs
 async function getDashboardStatsForClabes(clabeIds: string[]) {
@@ -31,9 +25,7 @@ async function getDashboardStatsForClabes(clabeIds: string[]) {
   const sixtyDaysAgo = new Date();
   sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60);
 
-  const clabeIdsStr = clabeIds.map(id => `'${id}'`).join(',');
-  const clabeFilter = `AND clabe_account_id IN (${clabeIdsStr})`;
-
+  // SECURITY FIX: Use parameterized query with ANY() instead of sql.unsafe()
   // Current period stats
   const currentStatsResult = await sql`
     SELECT
@@ -42,7 +34,7 @@ async function getDashboardStatsForClabes(clabeIds: string[]) {
       COUNT(CASE WHEN status = 'pending' THEN 1 END) as pending_count
     FROM transactions
     WHERE created_at >= ${thirtyDaysAgo.toISOString()}
-    ${sql.unsafe(clabeFilter)}
+    AND clabe_account_id = ANY(${clabeIds}::text[])
   `;
 
   // Previous period stats (for comparison)
@@ -52,7 +44,7 @@ async function getDashboardStatsForClabes(clabeIds: string[]) {
       COALESCE(SUM(CASE WHEN type = 'outgoing' AND status IN ('sent', 'scattered') THEN amount ELSE 0 END), 0) as outgoing
     FROM transactions
     WHERE created_at >= ${sixtyDaysAgo.toISOString()} AND created_at < ${thirtyDaysAgo.toISOString()}
-    ${sql.unsafe(clabeFilter)}
+    AND clabe_account_id = ANY(${clabeIds}::text[])
   `;
 
   // Get unique clients count
@@ -60,7 +52,7 @@ async function getDashboardStatsForClabes(clabeIds: string[]) {
     SELECT COUNT(DISTINCT payer_name) as count
     FROM transactions
     WHERE type = 'incoming' AND payer_name IS NOT NULL
-    ${sql.unsafe(clabeFilter)}
+    AND clabe_account_id = ANY(${clabeIds}::text[])
   `;
 
   // Get "in transit" amount
@@ -69,7 +61,7 @@ async function getDashboardStatsForClabes(clabeIds: string[]) {
     FROM transactions
     WHERE type = 'outgoing'
     AND status IN ('pending_confirmation', 'pending', 'sent', 'queued')
-    ${sql.unsafe(clabeFilter)}
+    AND clabe_account_id = ANY(${clabeIds}::text[])
   `;
 
   // Get weekly data for chart
@@ -81,7 +73,7 @@ async function getDashboardStatsForClabes(clabeIds: string[]) {
       COALESCE(SUM(CASE WHEN type = 'outgoing' AND status IN ('sent', 'scattered') THEN amount ELSE 0 END), 0) as outgoing
     FROM transactions
     WHERE created_at >= ${new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()}
-    ${sql.unsafe(clabeFilter)}
+    AND clabe_account_id = ANY(${clabeIds}::text[])
     GROUP BY DATE_TRUNC('day', created_at), EXTRACT(DOW FROM created_at)
     ORDER BY DATE_TRUNC('day', created_at)
   `;
@@ -125,12 +117,10 @@ async function getRecentTransactionsForClabes(clabeIds: string[], limit: number 
     return [];
   }
 
-  const clabeIdsStr = clabeIds.map(id => `'${id}'`).join(',');
-  const clabeFilter = `WHERE clabe_account_id IN (${clabeIdsStr})`;
-
+  // SECURITY FIX: Use parameterized query with ANY() instead of sql.unsafe()
   const result = await sql`
     SELECT * FROM transactions
-    ${sql.unsafe(clabeFilter)}
+    WHERE clabe_account_id = ANY(${clabeIds}::text[])
     ORDER BY created_at DESC
     LIMIT ${limit}
   `;
@@ -141,25 +131,30 @@ async function getRecentTransactionsForClabes(clabeIds: string[], limit: number 
 // GET /api/dashboard - Get dashboard stats and recent transactions (filtered by user access)
 export async function GET(request: NextRequest) {
   try {
-    // Get current user for authorization
-    const currentUser = await getCurrentUser(request);
+    // SECURITY FIX: Use proper authentication instead of trusting x-user-id header
+    const authResult = await authenticateRequest(request);
+    if (!authResult.success || !authResult.user) {
+      return NextResponse.json(
+        { error: authResult.error || 'No autorizado' },
+        { status: authResult.statusCode || 401 }
+      );
+    }
+    const currentUser = authResult.user;
 
     // Get allowed CLABE account IDs for this user
     let allowedClabeIds: string[] = [];
     let useGlobalStats = false;
 
-    if (currentUser) {
-      if (currentUser.role === 'super_admin') {
-        // Super admin can see all
-        useGlobalStats = true;
-      } else if (currentUser.role === 'company_admin' && currentUser.company_id) {
-        // Company admin sees all CLABEs from their company
-        const companyClabes = await getClabeAccountsByCompanyId(currentUser.company_id);
-        allowedClabeIds = companyClabes.map(c => c.id);
-      } else {
-        // Regular user sees only assigned CLABEs
-        allowedClabeIds = await getUserClabeAccess(currentUser.id);
-      }
+    if (currentUser.role === 'super_admin') {
+      // Super admin can see all
+      useGlobalStats = true;
+    } else if (currentUser.role === 'company_admin' && currentUser.companyId) {
+      // Company admin sees all CLABEs from their company
+      const companyClabes = await getClabeAccountsByCompanyId(currentUser.companyId);
+      allowedClabeIds = companyClabes.map(c => c.id);
+    } else {
+      // Regular user sees only assigned CLABEs
+      allowedClabeIds = await getUserClabeAccess(currentUser.id);
     }
 
     // If user has no CLABEs assigned and is not super_admin, return empty stats

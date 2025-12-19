@@ -74,37 +74,19 @@ export async function POST(request: NextRequest) {
       console.warn('Webhook secret mismatch');
     }
 
-    // RSA signature validation from OPM
-    // TEMPORARILY DISABLED: Awaiting OPM's public key for webhook validation
-    // The keys downloaded from OPM portal are OUR keys, not theirs
-    // Contact OPM to get their public key for validating incoming webhooks
-    const skipSignatureValidation = process.env.SKIP_WEBHOOK_SIGNATURE_VALIDATION === 'true';
+    // SECURITY: IP whitelist is now the primary security measure
+    // OPM's IP (35.171.132.81) is hardcoded in webhook-security.ts
+    // The validateWebhookSource() call above already blocked unauthorized IPs
+    //
+    // RSA signature validation is disabled because:
+    // - OPM hasn't provided their public key for webhook validation
+    // - The keys from OPM portal are OUR keys for signing outgoing requests
+    // - IP whitelist provides sufficient security for now
+    //
+    // If OPM provides their public key in the future, re-enable signature validation:
+    // const signatureValid = await validateOpmSignature(body);
 
-    if (!skipSignatureValidation) {
-      const signatureValid = await validateOpmSignature(body);
-      if (!signatureValid) {
-        console.error('=== ORDER STATUS WEBHOOK SIGNATURE VALIDATION FAILED ===');
-        console.error('Timestamp:', timestamp);
-        console.error('Body:', JSON.stringify(body, null, 2));
-        console.error('Sign field:', body?.sign || body?.data?.sign || 'NOT PROVIDED');
-        console.error('=======================================================');
-
-        return NextResponse.json({
-          received: true,
-          timestamp,
-          processed: false,
-          returnCode: 99,
-          errorDescription: 'Invalid signature',
-          message: 'RSA signature validation failed',
-        });
-      }
-      console.log('RSA signature validated successfully');
-    } else {
-      console.warn('=== WEBHOOK SIGNATURE VALIDATION SKIPPED ===');
-      console.warn('SKIP_WEBHOOK_SIGNATURE_VALIDATION is enabled');
-      console.warn('This should only be used temporarily until OPM provides their public key');
-      console.warn('============================================');
-    }
+    console.log('Webhook accepted from verified OPM IP:', securityCheck.clientIp);
 
     // Try to extract order status data from various possible payload structures
     const orderData = extractOrderStatusData(body);

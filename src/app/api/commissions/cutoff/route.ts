@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { processDailyCommissionCutoff } from '@/lib/commissions';
-import { getUserById } from '@/lib/db';
+import { authenticateRequest } from '@/lib/auth-middleware';
 
 /**
  * POST /api/commissions/cutoff
@@ -11,7 +11,7 @@ import { getUserById } from '@/lib/db';
  * Authorization: Requires super_admin role or valid cron secret
  *
  * Headers:
- * - x-user-id: User ID for authentication (super_admin required)
+ * - Authorization: Bearer token (super_admin required)
  * - x-cron-secret: Secret for cron job authentication (alternative to user auth)
  */
 export async function POST(request: NextRequest) {
@@ -19,9 +19,6 @@ export async function POST(request: NextRequest) {
     // Check for cron secret (for automated scheduled jobs)
     const cronSecret = request.headers.get('x-cron-secret');
     const expectedSecret = process.env.CRON_SECRET;
-
-    // Check for user authentication
-    const userId = request.headers.get('x-user-id');
 
     // Verify authorization
     let isAuthorized = false;
@@ -32,12 +29,12 @@ export async function POST(request: NextRequest) {
       console.log('Commission cutoff triggered by cron job');
     }
 
-    // Option 2: Super admin authentication
-    if (!isAuthorized && userId) {
-      const user = await getUserById(userId);
-      if (user && user.role === 'super_admin') {
+    // Option 2: Super admin authentication via proper auth token
+    if (!isAuthorized) {
+      const authResult = await authenticateRequest(request);
+      if (authResult.success && authResult.user && authResult.user.role === 'super_admin') {
         isAuthorized = true;
-        console.log(`Commission cutoff triggered by super_admin: ${user.email}`);
+        console.log(`Commission cutoff triggered by super_admin: ${authResult.user.email}`);
       }
     }
 
@@ -107,17 +104,17 @@ export async function POST(request: NextRequest) {
  */
 export async function GET(request: NextRequest) {
   try {
-    // Check authorization
-    const userId = request.headers.get('x-user-id');
-    if (!userId) {
+    // SECURITY FIX: Use proper authentication instead of trusting x-user-id header
+    const authResult = await authenticateRequest(request);
+    if (!authResult.success || !authResult.user) {
       return NextResponse.json(
-        { error: 'No autorizado' },
-        { status: 401 }
+        { error: authResult.error || 'No autorizado' },
+        { status: authResult.statusCode || 401 }
       );
     }
+    const user = authResult.user;
 
-    const user = await getUserById(userId);
-    if (!user || user.role !== 'super_admin') {
+    if (user.role !== 'super_admin') {
       return NextResponse.json(
         { error: 'Solo super_admin puede ver el estado de los cortes' },
         { status: 403 }

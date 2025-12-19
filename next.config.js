@@ -7,17 +7,20 @@ const nextConfig = {
     },
   },
   // CORS and Security headers
+  // SECURITY: CORS is handled by middleware for dynamic origin validation
+  // Static security headers only in next.config.js
   async headers() {
     return [
       {
         // Apply to all routes
         source: '/:path*',
         headers: [
-          // CORS headers
-          { key: 'Access-Control-Allow-Credentials', value: 'true' },
-          { key: 'Access-Control-Allow-Origin', value: '*' },
-          { key: 'Access-Control-Allow-Methods', value: 'GET,DELETE,PATCH,POST,PUT,OPTIONS' },
-          { key: 'Access-Control-Allow-Headers', value: 'X-Custom-Auth, X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version, x-webhook-secret' },
+          // SECURITY: CORS headers removed from static config
+          // CORS is now handled dynamically in middleware.ts to:
+          // 1. Validate Origin against allowed list
+          // 2. Prevent wildcard with credentials (security vulnerability)
+          // 3. Only allow trusted origins
+
           // Security headers
           { key: 'X-Frame-Options', value: 'DENY' },
           { key: 'X-Content-Type-Options', value: 'nosniff' },

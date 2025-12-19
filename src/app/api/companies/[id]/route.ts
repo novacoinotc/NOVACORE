@@ -1,13 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCompanyById, updateCompany, deleteCompany, getCompanyByRfc, getCompanyWithDetails, getTransactionsByCompanyId, getUserById } from '@/lib/db';
+import { getCompanyById, updateCompany, deleteCompany, getCompanyByRfc, getCompanyWithDetails, getTransactionsByCompanyId } from '@/lib/db';
 import { getBankName } from '@/lib/banks';
-
-// Helper to get current user from request headers
-async function getCurrentUser(request: NextRequest) {
-  const userId = request.headers.get('x-user-id');
-  if (!userId) return null;
-  return await getUserById(userId);
-}
+import { authenticateRequest } from '@/lib/auth-middleware';
 
 // GET /api/companies/[id] - Get single company with optional details
 export async function GET(
@@ -15,18 +9,29 @@ export async function GET(
   { params }: { params: { id: string } }
 ) {
   try {
+    // SECURITY FIX: Use proper authentication instead of trusting x-user-id header
+    const authResult = await authenticateRequest(request);
+    if (!authResult.success || !authResult.user) {
+      return NextResponse.json(
+        { error: authResult.error || 'No autorizado' },
+        { status: authResult.statusCode || 401 }
+      );
+    }
+    const currentUser = authResult.user;
+
     const { searchParams } = new URL(request.url);
     const includeDetails = searchParams.get('details') === 'true';
 
-    // Get current user for authorization
-    const currentUser = await getCurrentUser(request);
-
-    // Authorization: only super_admin can view companies
-    if (currentUser && currentUser.role !== 'super_admin') {
-      return NextResponse.json(
-        { error: 'No tienes permiso para ver esta empresa' },
-        { status: 403 }
-      );
+    // Authorization: super_admin can view any company, company_admin can view their own
+    if (currentUser.role !== 'super_admin') {
+      if (currentUser.role === 'company_admin' && currentUser.companyId === params.id) {
+        // company_admin can view their own company
+      } else {
+        return NextResponse.json(
+          { error: 'No tienes permiso para ver esta empresa' },
+          { status: 403 }
+        );
+      }
     }
 
     if (includeDetails) {
@@ -168,14 +173,21 @@ export async function PUT(
   { params }: { params: { id: string } }
 ) {
   try {
+    // SECURITY FIX: Use proper authentication instead of trusting x-user-id header
+    const authResult = await authenticateRequest(request);
+    if (!authResult.success || !authResult.user) {
+      return NextResponse.json(
+        { error: authResult.error || 'No autorizado' },
+        { status: authResult.statusCode || 401 }
+      );
+    }
+    const currentUser = authResult.user;
+
     const body = await request.json();
     const { name, businessName, rfc, email, phone, address, isActive, speiInEnabled, speiOutEnabled, commissionPercentage, parentClabe } = body;
 
-    // Get current user for authorization
-    const currentUser = await getCurrentUser(request);
-
     // Authorization: only super_admin can modify companies
-    if (currentUser && currentUser.role !== 'super_admin') {
+    if (currentUser.role !== 'super_admin') {
       return NextResponse.json(
         { error: 'No tienes permiso para modificar empresas' },
         { status: 403 }
@@ -275,6 +287,24 @@ export async function DELETE(
   { params }: { params: { id: string } }
 ) {
   try {
+    // SECURITY FIX: Use proper authentication instead of trusting x-user-id header
+    const authResult = await authenticateRequest(request);
+    if (!authResult.success || !authResult.user) {
+      return NextResponse.json(
+        { error: authResult.error || 'No autorizado' },
+        { status: authResult.statusCode || 401 }
+      );
+    }
+    const currentUser = authResult.user;
+
+    // Authorization: only super_admin can delete companies
+    if (currentUser.role !== 'super_admin') {
+      return NextResponse.json(
+        { error: 'No tienes permiso para eliminar empresas' },
+        { status: 403 }
+      );
+    }
+
     // Check if company exists
     const existingCompany = await getCompanyById(params.id);
     if (!existingCompany) {

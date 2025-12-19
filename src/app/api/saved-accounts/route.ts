@@ -1,18 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
+import crypto from 'crypto';
 import {
   getSavedAccountsByUserId,
   createSavedAccount,
   getSavedAccountByUserAndClabe,
-  getUserById
 } from '@/lib/db';
 import { SavedAccount } from '@/types';
-
-// Helper to get current user from request headers
-async function getCurrentUser(request: NextRequest) {
-  const userId = request.headers.get('x-user-id');
-  if (!userId) return null;
-  return await getUserById(userId);
-}
+import { authenticateRequest } from '@/lib/auth-middleware';
 
 // Transform DB saved account to frontend format
 function transformSavedAccount(dbSavedAccount: any): SavedAccount {
@@ -36,14 +30,15 @@ function transformSavedAccount(dbSavedAccount: any): SavedAccount {
 // GET /api/saved-accounts - Get saved accounts for the current user
 export async function GET(request: NextRequest) {
   try {
-    const currentUser = await getCurrentUser(request);
-
-    if (!currentUser) {
+    // SECURITY FIX: Use proper authentication instead of trusting x-user-id header
+    const authResult = await authenticateRequest(request);
+    if (!authResult.success || !authResult.user) {
       return NextResponse.json(
-        { error: 'No autorizado' },
-        { status: 401 }
+        { error: authResult.error || 'No autorizado' },
+        { status: authResult.statusCode || 401 }
       );
     }
+    const currentUser = authResult.user;
 
     // Each user only sees their own saved accounts
     const dbSavedAccounts = await getSavedAccountsByUserId(currentUser.id);
@@ -62,14 +57,15 @@ export async function GET(request: NextRequest) {
 // POST /api/saved-accounts - Create a new saved account
 export async function POST(request: NextRequest) {
   try {
-    const currentUser = await getCurrentUser(request);
-
-    if (!currentUser) {
+    // SECURITY FIX: Use proper authentication instead of trusting x-user-id header
+    const authResult = await authenticateRequest(request);
+    if (!authResult.success || !authResult.user) {
       return NextResponse.json(
-        { error: 'No autorizado' },
-        { status: 401 }
+        { error: authResult.error || 'No autorizado' },
+        { status: authResult.statusCode || 401 }
       );
     }
+    const currentUser = authResult.user;
 
     const body = await request.json();
     const { alias, clabe, bankCode, bankName, beneficiaryName, beneficiaryRfc, accountType, notes } = body;
@@ -99,9 +95,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Create the saved account
+    // Create the saved account - SECURITY FIX: Use crypto.randomUUID() for secure ID generation
     const dbSavedAccount = await createSavedAccount({
-      id: 'saved_' + Date.now() + '_' + Math.random().toString(36).substring(2, 9),
+      id: `saved_${crypto.randomUUID()}`,
       userId: currentUser.id,
       alias,
       clabe,

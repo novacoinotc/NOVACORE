@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
+import crypto from 'crypto';
 import { listOrders } from '@/lib/opm-api';
 import { generateNumericalReference, generateTrackingKey } from '@/lib/crypto';
 import { validateOrderFields, prepareTextForSpei, sanitizeForSpei } from '@/lib/utils';
 import { verifyTOTP, getClientIP, getUserAgent } from '@/lib/security';
-import { getUserTotpSecret, isUserTotpEnabled, createAuditLogEntry, getUserById, createTransaction, getClabeAccountByClabe, getClabeBalanceByClabe } from '@/lib/db';
+import { getUserTotpSecret, isUserTotpEnabled, createAuditLogEntry, getUserById, createOutgoingTransactionAtomic, getClabeAccountByClabe } from '@/lib/db';
 import { authenticateRequest, validateClabeAccess } from '@/lib/auth-middleware';
 
 /**
@@ -140,7 +141,7 @@ export async function POST(request: NextRequest) {
         // Log failed 2FA attempt
         const user = await getUserById(userId);
         await createAuditLogEntry({
-          id: `audit_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`,
+          id: `audit_${crypto.randomUUID()}`,
           action: '2FA_FAILED',
           userId,
           userEmail: user?.email,
@@ -165,7 +166,7 @@ export async function POST(request: NextRequest) {
       // Log successful 2FA verification for transfer
       const user = await getUserById(userId);
       await createAuditLogEntry({
-        id: `audit_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`,
+        id: `audit_${crypto.randomUUID()}`,
         action: 'TRANSFER_INITIATED',
         userId,
         userEmail: user?.email,
@@ -201,93 +202,37 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Parse amount to ensure it's a number
+    // Parse amount to ensure it's a valid, finite number
     const parsedAmount = parseFloat(amount);
-    if (isNaN(parsedAmount)) {
-      console.error('ORDER ERROR: Invalid amount:', amount);
+    // SECURITY: Check for NaN, Infinity, negative, and zero amounts
+    if (isNaN(parsedAmount) || !isFinite(parsedAmount)) {
+      console.error('ORDER ERROR: Invalid amount (NaN or Infinity):', amount);
       return NextResponse.json(
         { error: 'El monto debe ser un número válido', providedAmount: amount },
         { status: 400 }
       );
     }
 
-    // ============================================
-    // CRITICAL: Validate available balance for payer CLABE
-    // Each CLABE can only spend what it has received
-    // ============================================
-    console.log('Validating available balance for payer account:', payerAccount);
-
-    const payerBalance = await getClabeBalanceByClabe(payerAccount);
-
-    if (!payerBalance) {
-      console.error('ORDER ERROR: Payer CLABE account not found:', payerAccount);
+    if (parsedAmount <= 0) {
+      console.error('ORDER ERROR: Amount must be positive:', amount);
       return NextResponse.json(
-        {
-          error: 'La cuenta de origen no está registrada en el sistema',
-          payerAccount,
-        },
+        { error: 'El monto debe ser mayor a cero', providedAmount: amount },
         { status: 400 }
       );
     }
 
-    console.log('Payer balance:', {
-      clabeAccountId: payerBalance.clabeAccountId,
-      settledIncoming: payerBalance.settledIncoming,
-      settledOutgoing: payerBalance.settledOutgoing,
-      inTransit: payerBalance.inTransit,
-      availableBalance: payerBalance.availableBalance,
-    });
-
-    // Check if transfer amount exceeds available balance
-    // We need to consider in-transit amounts too (pending transfers)
-    const effectiveAvailable = payerBalance.availableBalance - payerBalance.inTransit;
-
-    if (parsedAmount > effectiveAvailable) {
-      console.error('ORDER ERROR: Insufficient balance', {
-        requestedAmount: parsedAmount,
-        availableBalance: payerBalance.availableBalance,
-        inTransit: payerBalance.inTransit,
-        effectiveAvailable,
-      });
-
-      // Log the failed attempt
-      const user = await getUserById(userId);
-      await createAuditLogEntry({
-        id: `audit_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`,
-        action: 'TRANSFER_INSUFFICIENT_BALANCE',
-        userId,
-        userEmail: user?.email,
-        ipAddress: clientIP,
-        userAgent,
-        details: {
-          payerAccount,
-          requestedAmount: parsedAmount,
-          availableBalance: payerBalance.availableBalance,
-          inTransit: payerBalance.inTransit,
-          effectiveAvailable,
-        },
-        severity: 'warning',
-      });
-
+    // SECURITY: Maximum transaction limit (prevent overflow attacks)
+    const MAX_TRANSACTION_AMOUNT = 999999999.99; // ~1 billion MXN limit
+    if (parsedAmount > MAX_TRANSACTION_AMOUNT) {
+      console.error('ORDER ERROR: Amount exceeds maximum:', amount);
       return NextResponse.json(
-        {
-          error: 'Saldo insuficiente en la cuenta de origen',
-          details: {
-            requestedAmount: parsedAmount,
-            availableBalance: payerBalance.availableBalance,
-            inTransit: payerBalance.inTransit,
-            effectiveAvailable: Math.max(0, effectiveAvailable),
-          },
-        },
+        { error: 'El monto excede el límite máximo permitido', providedAmount: amount },
         { status: 400 }
       );
     }
 
-    console.log('Balance validation passed:', {
-      requestedAmount: parsedAmount,
-      effectiveAvailable,
-      remainingAfterTransfer: effectiveAvailable - parsedAmount,
-    });
+    // NOTE: Balance validation is now done atomically in createOutgoingTransactionAtomic
+    // to prevent race conditions and double spending
 
     // Sanitize text fields for SPEI (remove accents and special characters)
     const sanitizedBeneficiaryName = prepareTextForSpei(beneficiaryName, 40);
@@ -387,82 +332,103 @@ export async function POST(request: NextRequest) {
       ...(cepPayerAccount && { cepPayerAccount }),
     };
 
-    console.log('=== SAVING TRANSACTION WITH GRACE PERIOD (NOT SENT TO OPM YET) ===');
+    console.log('=== CREATING TRANSACTION WITH ATOMIC BALANCE CHECK ===');
     console.log('Order data (will be sent after grace period):', JSON.stringify(pendingOrderData, null, 2));
 
-    try {
-      // Get the CLABE account ID from payer account
-      const clabeAccount = await getClabeAccountByClabe(resolvedPayerAccount);
+    // Calculate confirmation deadline
+    const confirmationDeadline = new Date(Date.now() + GRACE_PERIOD_SECONDS * 1000);
+    const transactionId = `tx_out_${crypto.randomUUID()}`;
 
-      // Calculate confirmation deadline (20 seconds from now)
-      const confirmationDeadline = new Date(Date.now() + GRACE_PERIOD_SECONDS * 1000);
+    // ============================================
+    // CRITICAL: Use atomic transaction with row locking to prevent double spending
+    // This ensures balance check and transaction creation happen atomically
+    // ============================================
+    const atomicResult = await createOutgoingTransactionAtomic({
+      id: transactionId,
+      clabeAccountId: sourceClabeAccount.id,
+      type: 'outgoing',
+      status: 'pending_confirmation',
+      amount: parsedAmount,
+      concept: sanitizedConcept,
+      trackingKey: finalTrackingKey,
+      numericalReference: finalNumericalReference,
+      beneficiaryAccount,
+      beneficiaryBank,
+      beneficiaryName: sanitizedBeneficiaryName,
+      beneficiaryUid: beneficiaryUid || undefined,
+      payerAccount: resolvedPayerAccount,
+      payerBank: resolvedPayerBank,
+      payerName: sanitizedPayerName,
+      payerUid: payerUid || undefined,
+      confirmationDeadline,
+      pendingOrderData,
+    });
 
-      // All outgoing transactions start as pending_confirmation during grace period
-      const status = 'pending_confirmation';
+    if (!atomicResult.success) {
+      console.error('ORDER ERROR: Atomic transaction failed:', atomicResult.error);
 
-      const transactionId = `tx_out_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+      // Log the failed attempt for insufficient balance
+      if (atomicResult.availableBalance !== undefined) {
+        const user = await getUserById(userId);
+        await createAuditLogEntry({
+          id: `audit_${crypto.randomUUID()}`,
+          action: 'TRANSFER_INSUFFICIENT_BALANCE',
+          userId,
+          userEmail: user?.email,
+          ipAddress: clientIP,
+          userAgent,
+          details: {
+            payerAccount,
+            requestedAmount: parsedAmount,
+            availableBalance: atomicResult.availableBalance,
+          },
+          severity: 'warning',
+        });
+      }
 
-      const savedTransaction = await createTransaction({
-        id: transactionId,
-        clabeAccountId: clabeAccount?.id,
-        type: 'outgoing',
-        status,
-        amount: parsedAmount,
-        concept: sanitizedConcept,
-        trackingKey: finalTrackingKey,
-        numericalReference: finalNumericalReference,
-        beneficiaryAccount,
-        beneficiaryBank,
-        beneficiaryName: sanitizedBeneficiaryName,
-        beneficiaryUid: beneficiaryUid || undefined,
-        payerAccount: resolvedPayerAccount,
-        payerBank: resolvedPayerBank,
-        payerName: sanitizedPayerName,
-        payerUid: payerUid || undefined,
-        // NO opmOrderId yet - will be set after grace period when sent to OPM
-        confirmationDeadline,
-        pendingOrderData, // Store the full order data for later submission
-      });
-
-      console.log('=== TRANSACTION SAVED WITH GRACE PERIOD ===');
-      console.log('Saved transaction ID:', savedTransaction.id);
-      console.log('Tracking Key:', finalTrackingKey);
-      console.log('Confirmation Deadline:', confirmationDeadline.toISOString());
-      console.log('Grace Period:', GRACE_PERIOD_SECONDS, 'seconds');
-      console.log('NOTE: Order will be sent to OPM after grace period expires');
-
-      // Return response with grace period info
-      // Note: No OPM order ID yet since we haven't sent to OPM
-      return NextResponse.json({
-        code: 200,
-        data: {
-          id: transactionId,
-          trackingKey: finalTrackingKey,
-          amount: parsedAmount,
-          beneficiaryName: sanitizedBeneficiaryName,
-          beneficiaryAccount,
-          status: 'pending_confirmation',
-        },
-        gracePeriod: {
-          transactionId: savedTransaction.id,
-          confirmationDeadline: confirmationDeadline.toISOString(),
-          secondsRemaining: GRACE_PERIOD_SECONDS,
-          canCancel: true,
-          message: 'La transferencia se enviará automáticamente en 20 segundos. Puedes cancelar antes de que expire el tiempo.',
-        },
-      });
-    } catch (dbError) {
-      console.error('=== DATABASE SAVE FAILED ===');
-      console.error('Failed to save transaction to database:', dbError);
-      console.error('Error details:', dbError instanceof Error ? dbError.message : String(dbError));
       return NextResponse.json(
         {
-          error: 'Error al guardar la transacción',
-          details: dbError instanceof Error ? dbError.message : 'Error desconocido'
+          error: atomicResult.error,
+          ...(atomicResult.availableBalance !== undefined && {
+            details: {
+              requestedAmount: parsedAmount,
+              availableBalance: atomicResult.availableBalance,
+            },
+          }),
         },
-        { status: 500 }
+        { status: 400 }
       );
     }
+
+    const savedTransaction = atomicResult.transaction;
+
+    console.log('=== TRANSACTION SAVED WITH ATOMIC BALANCE CHECK ===');
+    console.log('Saved transaction ID:', savedTransaction.id);
+    console.log('Tracking Key:', finalTrackingKey);
+    console.log('Confirmation Deadline:', confirmationDeadline.toISOString());
+    console.log('Grace Period:', GRACE_PERIOD_SECONDS, 'seconds');
+    console.log('NOTE: Order will be sent to OPM after grace period expires');
+
+    // Return response with grace period info
+    // Note: No OPM order ID yet since we haven't sent to OPM
+    return NextResponse.json({
+      code: 200,
+      data: {
+        id: transactionId,
+        trackingKey: finalTrackingKey,
+        amount: parsedAmount,
+        beneficiaryName: sanitizedBeneficiaryName,
+        beneficiaryAccount,
+        status: 'pending_confirmation',
+      },
+      gracePeriod: {
+        transactionId: savedTransaction.id,
+        confirmationDeadline: confirmationDeadline.toISOString(),
+        secondsRemaining: GRACE_PERIOD_SECONDS,
+        canCancel: true,
+        message: 'La transferencia se enviará automáticamente en 20 segundos. Puedes cancelar antes de que expire el tiempo.',
+      },
+    });
   } catch (error) {
     console.error('=== ORDER CREATION ERROR ===');
     console.error('Error:', error);
@@ -483,6 +449,8 @@ export async function POST(request: NextRequest) {
  *
  * List orders with optional filters
  *
+ * SECURITY: Requires authentication. Only super_admin and company_admin can list orders.
+ *
  * Query parameters (from Especificacion api.pdf):
  * - type: 0=outgoing (speiOut), 1=incoming (speiIn)
  * - page: Page number (default 1)
@@ -498,6 +466,27 @@ export async function POST(request: NextRequest) {
  */
 export async function GET(request: NextRequest) {
   try {
+    // ============================================
+    // SECURITY: Authenticate user via session token
+    // ============================================
+    const authResult = await authenticateRequest(request);
+    if (!authResult.success || !authResult.user) {
+      return NextResponse.json(
+        { error: authResult.error || 'No autorizado' },
+        { status: authResult.statusCode || 401 }
+      );
+    }
+
+    const authenticatedUser = authResult.user;
+
+    // Only super_admin and company_admin can list orders from OPM
+    if (!['super_admin', 'company_admin'].includes(authenticatedUser.role)) {
+      return NextResponse.json(
+        { error: 'No tienes permiso para ver órdenes' },
+        { status: 403 }
+      );
+    }
+
     const { searchParams } = new URL(request.url);
 
     const type = parseInt(searchParams.get('type') || '0') as 0 | 1;

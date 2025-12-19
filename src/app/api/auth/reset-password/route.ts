@@ -1,14 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
+import crypto from 'crypto';
 import { getUserByEmail, updateUser, disableTotp, createAuditLogEntry } from '@/lib/db';
 import { getClientIP, getUserAgent } from '@/lib/security';
+
+// SECURITY: Bcrypt rounds for password hashing (12+ recommended for production)
+const BCRYPT_ROUNDS = 12;
 
 // Simple in-memory store for reset tokens (in production, use database or Redis)
 const resetTokens = new Map<string, { email: string; expiresAt: number }>();
 
-// Generate a random 6-digit code
+/**
+ * Generate a cryptographically secure reset token
+ * SECURITY FIX: Uses 32-byte hex token instead of 6-digit code
+ * 6-digit codes can be brute-forced in ~500,000 attempts max
+ * 32-byte hex = 256 bits of entropy = computationally infeasible to brute force
+ */
 function generateResetCode(): string {
-  return Math.floor(100000 + Math.random() * 900000).toString();
+  // Generate 32 bytes of random data and convert to hex string
+  // This gives us 64 characters of hex = 256 bits of entropy
+  return crypto.randomBytes(32).toString('hex');
 }
 
 /**
@@ -53,7 +64,7 @@ export async function POST(request: NextRequest) {
 
       // Log the reset request
       await createAuditLogEntry({
-        id: `audit_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`,
+        id: `audit_${crypto.randomUUID()}`,
         action: 'PASSWORD_RESET_REQUESTED',
         userId: user.id,
         userEmail: email,
@@ -117,8 +128,8 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      // Hash new password
-      const hashedPassword = await bcrypt.hash(newPassword, 10);
+      // Hash new password with secure bcrypt rounds
+      const hashedPassword = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
 
       // Update password
       await updateUser(user.id, { password: hashedPassword });
@@ -135,7 +146,7 @@ export async function POST(request: NextRequest) {
 
       // Log the password reset
       await createAuditLogEntry({
-        id: `audit_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`,
+        id: `audit_${crypto.randomUUID()}`,
         action: 'PASSWORD_RESET_COMPLETED',
         userId: user.id,
         userEmail: tokenData.email,

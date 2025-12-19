@@ -1,12 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getClabeAccountById, updateClabeAccount, deleteClabeAccount, getCompanyById, getUserById } from '@/lib/db';
-
-// Helper to get current user from request headers
-async function getCurrentUser(request: NextRequest) {
-  const userId = request.headers.get('x-user-id');
-  if (!userId) return null;
-  return await getUserById(userId);
-}
+import { getClabeAccountById, updateClabeAccount, deleteClabeAccount, getCompanyById } from '@/lib/db';
+import { authenticateRequest, validateClabeAccess } from '@/lib/auth-middleware';
 
 // GET /api/clabe-accounts/[id] - Get single CLABE account
 export async function GET(
@@ -14,12 +8,36 @@ export async function GET(
   { params }: { params: { id: string } }
 ) {
   try {
+    // SECURITY FIX: Use proper authentication instead of trusting x-user-id header
+    const authResult = await authenticateRequest(request);
+    if (!authResult.success || !authResult.user) {
+      return NextResponse.json(
+        { error: authResult.error || 'No autorizado' },
+        { status: authResult.statusCode || 401 }
+      );
+    }
+    const currentUser = authResult.user;
+
     const dbClabeAccount = await getClabeAccountById(params.id);
 
     if (!dbClabeAccount) {
       return NextResponse.json(
         { error: 'Cuenta CLABE no encontrada' },
         { status: 404 }
+      );
+    }
+
+    // SECURITY FIX: Validate user has access to this CLABE account
+    const hasAccess = await validateClabeAccess(
+      currentUser.id,
+      params.id,
+      currentUser.role
+    );
+
+    if (!hasAccess) {
+      return NextResponse.json(
+        { error: 'No tienes permiso para ver esta cuenta CLABE' },
+        { status: 403 }
       );
     }
 
@@ -66,11 +84,18 @@ export async function PUT(
   { params }: { params: { id: string } }
 ) {
   try {
+    // SECURITY FIX: Use proper authentication instead of trusting x-user-id header
+    const authResult = await authenticateRequest(request);
+    if (!authResult.success || !authResult.user) {
+      return NextResponse.json(
+        { error: authResult.error || 'No autorizado' },
+        { status: authResult.statusCode || 401 }
+      );
+    }
+    const currentUser = authResult.user;
+
     const body = await request.json();
     const { alias, description, isActive, isMain } = body;
-
-    // Get current user for authorization
-    const currentUser = await getCurrentUser(request);
 
     // Check if CLABE account exists
     const existingClabeAccount = await getClabeAccountById(params.id);
@@ -82,21 +107,19 @@ export async function PUT(
     }
 
     // Authorization: super_admin can update any CLABE, company_admin only their own company's
-    if (currentUser) {
-      if (currentUser.role === 'company_admin') {
-        // company_admin can only update CLABEs for their own company
-        if (currentUser.company_id !== existingClabeAccount.company_id) {
-          return NextResponse.json(
-            { error: 'Solo puedes actualizar cuentas CLABE de tu propia empresa' },
-            { status: 403 }
-          );
-        }
-      } else if (currentUser.role !== 'super_admin') {
+    if (currentUser.role === 'company_admin') {
+      // company_admin can only update CLABEs for their own company
+      if (currentUser.companyId !== existingClabeAccount.company_id) {
         return NextResponse.json(
-          { error: 'No tienes permiso para actualizar cuentas CLABE' },
+          { error: 'Solo puedes actualizar cuentas CLABE de tu propia empresa' },
           { status: 403 }
         );
       }
+    } else if (currentUser.role !== 'super_admin') {
+      return NextResponse.json(
+        { error: 'No tienes permiso para actualizar cuentas CLABE' },
+        { status: 403 }
+      );
     }
 
     // Note: CLABE number and companyId cannot be changed once created
@@ -143,8 +166,15 @@ export async function DELETE(
   { params }: { params: { id: string } }
 ) {
   try {
-    // Get current user for authorization
-    const currentUser = await getCurrentUser(request);
+    // SECURITY FIX: Use proper authentication instead of trusting x-user-id header
+    const authResult = await authenticateRequest(request);
+    if (!authResult.success || !authResult.user) {
+      return NextResponse.json(
+        { error: authResult.error || 'No autorizado' },
+        { status: authResult.statusCode || 401 }
+      );
+    }
+    const currentUser = authResult.user;
 
     // Check if CLABE account exists
     const existingClabeAccount = await getClabeAccountById(params.id);
@@ -156,7 +186,7 @@ export async function DELETE(
     }
 
     // Authorization: only super_admin can delete CLABE accounts
-    if (currentUser && currentUser.role !== 'super_admin') {
+    if (currentUser.role !== 'super_admin') {
       return NextResponse.json(
         { error: 'No tienes permiso para eliminar cuentas CLABE' },
         { status: 403 }

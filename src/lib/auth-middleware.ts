@@ -13,6 +13,7 @@ export interface AuthenticatedUser {
   email: string;
   name: string;
   role: string;
+  companyId: string | null;
   permissions: string[];
   isActive: boolean;
 }
@@ -113,6 +114,7 @@ export async function authenticateRequest(request: NextRequest): Promise<AuthRes
         email: user.email,
         name: user.name,
         role: user.role,
+        companyId: user.company_id || null,
         permissions: user.permissions || [],
         isActive: user.isActive,
       },

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getAllClabeAccounts, getClabeAccountsByCompanyId, createClabeAccount, getClabeAccountByClabe, getCompanyById, getUserById } from '@/lib/db';
+import { getAllClabeAccounts, getClabeAccountsByCompanyId, createClabeAccount, getClabeAccountByClabe, getCompanyById, getUserById, getClabeAccountsForUser, DbClabeAccount } from '@/lib/db';
 import { validateClabe } from '@/lib/utils';
 
 // Helper to get current user from request headers
@@ -9,18 +9,35 @@ async function getCurrentUser(request: NextRequest) {
   return await getUserById(userId);
 }
 
-// GET /api/clabe-accounts - List CLABE accounts (with optional companyId filter)
+// GET /api/clabe-accounts - List CLABE accounts (filtered by user access)
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const companyId = searchParams.get('companyId');
 
-    let dbClabeAccounts;
+    // Get current user for authorization
+    const currentUser = await getCurrentUser(request);
 
-    if (companyId) {
-      dbClabeAccounts = await getClabeAccountsByCompanyId(companyId);
+    let dbClabeAccounts: DbClabeAccount[] = [];
+
+    if (currentUser) {
+      if (currentUser.role === 'super_admin') {
+        // Super admin sees all CLABE accounts
+        if (companyId) {
+          dbClabeAccounts = await getClabeAccountsByCompanyId(companyId);
+        } else {
+          dbClabeAccounts = await getAllClabeAccounts();
+        }
+      } else if (currentUser.role === 'company_admin' && currentUser.company_id) {
+        // Company admin sees all CLABEs from their company
+        dbClabeAccounts = await getClabeAccountsByCompanyId(currentUser.company_id);
+      } else {
+        // Regular user sees only assigned CLABEs
+        dbClabeAccounts = await getClabeAccountsForUser(currentUser.id);
+      }
     } else {
-      dbClabeAccounts = await getAllClabeAccounts();
+      // No user context - return empty (should not happen in authenticated routes)
+      dbClabeAccounts = [];
     }
 
     // Transform to frontend format

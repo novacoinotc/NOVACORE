@@ -5,8 +5,18 @@ const prisma = new PrismaClient();
 
 async function createAdmin() {
   try {
-    // Hash de la contraseña
-    const hashedPassword = await bcrypt.hash('Admin2024!Secure', 10);
+    // SECURITY: Password must be provided via environment variable
+    const password = process.env.INITIAL_ADMIN_PASSWORD;
+
+    if (!password || password.length < 12) {
+      console.error('❌ ERROR: INITIAL_ADMIN_PASSWORD environment variable is required');
+      console.error('   Password must be at least 12 characters long');
+      console.error('   Usage: INITIAL_ADMIN_PASSWORD="YourSecurePassword123!" node create-admin.js');
+      process.exit(1);
+    }
+
+    // SECURITY: Use bcrypt with 12 rounds (not 10)
+    const hashedPassword = await bcrypt.hash(password, 12);
 
     // Crear usuario administrador
     const admin = await prisma.user.create({
@@ -22,7 +32,6 @@ async function createAdmin() {
 
     console.log('✅ Usuario administrador creado exitosamente:');
     console.log('Email:', admin.email);
-    console.log('Contraseña: Admin2024!Secure');
     console.log('Nombre:', admin.name);
     console.log('\n⚠️  IMPORTANTE: Cambia esta contraseña después del primer login');
 

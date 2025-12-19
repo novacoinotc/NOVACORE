@@ -1,6 +1,6 @@
 -- Migration: Add grace period support for SPEI transfers
 -- Date: 2024-12-10
--- Description: Adds confirmation_deadline column to support 20-second grace period before transfer confirmation
+-- Description: Adds confirmation_deadline column to support configurable grace period (default 8 seconds)
 
 -- Add confirmation_deadline column to transactions table
 ALTER TABLE transactions
@@ -17,7 +17,7 @@ ON transactions (status, confirmation_deadline)
 WHERE status = 'pending_confirmation';
 
 -- Comment on the new columns
-COMMENT ON COLUMN transactions.confirmation_deadline IS 'Deadline for the 20-second grace period. After this time, transaction is auto-confirmed.';
+COMMENT ON COLUMN transactions.confirmation_deadline IS 'Deadline for the grace period. After this time, transaction is auto-confirmed. Default is 8 seconds.';
 COMMENT ON COLUMN transactions.pending_order_data IS 'Full OPM order request data, stored to send after grace period expires.';
 
 -- Verify the columns were added

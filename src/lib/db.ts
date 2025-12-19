@@ -936,6 +936,138 @@ export async function createTransaction(transaction: {
   return result[0] as DbTransaction;
 }
 
+/**
+ * SECURITY: Create outgoing transaction with atomic balance check and row locking
+ * This prevents race conditions and double spending by:
+ * 1. Starting a database transaction
+ * 2. Locking the CLABE account row with FOR UPDATE NOWAIT
+ * 3. Calculating available balance
+ * 4. Validating sufficient funds
+ * 5. Creating the transaction
+ * 6. Committing or rolling back atomically
+ */
+export async function createOutgoingTransactionAtomic(transaction: {
+  id: string;
+  clabeAccountId: string;
+  type: 'outgoing';
+  status?: string;
+  amount: number;
+  concept?: string;
+  trackingKey: string;
+  numericalReference?: number;
+  beneficiaryAccount?: string;
+  beneficiaryBank?: string;
+  beneficiaryName?: string;
+  beneficiaryUid?: string;
+  payerAccount?: string;
+  payerBank?: string;
+  payerName?: string;
+  payerUid?: string;
+  opmOrderId?: string;
+  confirmationDeadline?: Date;
+  pendingOrderData?: Record<string, unknown>;
+}): Promise<{ success: true; transaction: DbTransaction } | { success: false; error: string; availableBalance?: number }> {
+  // Use pool.connect() to get a dedicated client for the transaction
+  const client = await pool.connect();
+
+  try {
+    // Start transaction with SERIALIZABLE isolation for maximum safety
+    await client.query('BEGIN ISOLATION LEVEL SERIALIZABLE');
+
+    try {
+      // Lock the CLABE account row to prevent concurrent modifications
+      // NOWAIT will immediately fail if the row is already locked
+      const lockResult = await client.query(
+        'SELECT id FROM clabe_accounts WHERE id = $1 FOR UPDATE NOWAIT',
+        [transaction.clabeAccountId]
+      );
+
+      if (lockResult.rows.length === 0) {
+        await client.query('ROLLBACK');
+        return { success: false, error: 'Cuenta CLABE no encontrada' };
+      }
+
+      // Calculate current balance with the lock held
+      const balanceResult = await client.query(`
+        SELECT
+          COALESCE(SUM(CASE WHEN type = 'incoming' AND status = 'scattered' THEN amount ELSE 0 END), 0) as settled_incoming,
+          COALESCE(SUM(CASE WHEN type = 'outgoing' AND status IN ('sent', 'scattered') THEN amount ELSE 0 END), 0) as settled_outgoing,
+          COALESCE(SUM(CASE WHEN type = 'outgoing' AND status IN ('pending_confirmation', 'pending', 'sent', 'queued') THEN amount ELSE 0 END), 0) as in_transit
+        FROM transactions
+        WHERE clabe_account_id = $1
+      `, [transaction.clabeAccountId]);
+
+      const balanceRow = balanceResult.rows[0] || { settled_incoming: 0, settled_outgoing: 0, in_transit: 0 };
+      const settledIncoming = parseFloat(balanceRow.settled_incoming) || 0;
+      const settledOutgoing = parseFloat(balanceRow.settled_outgoing) || 0;
+      const inTransit = parseFloat(balanceRow.in_transit) || 0;
+      const availableBalance = settledIncoming - settledOutgoing;
+      const effectiveAvailable = availableBalance - inTransit;
+
+      // Check if sufficient balance
+      if (transaction.amount > effectiveAvailable) {
+        await client.query('ROLLBACK');
+        return {
+          success: false,
+          error: 'Saldo insuficiente',
+          availableBalance: Math.max(0, effectiveAvailable),
+        };
+      }
+
+      // Insert the transaction
+      const insertResult = await client.query(`
+        INSERT INTO transactions (
+          id, clabe_account_id, type, status, amount, concept, tracking_key,
+          numerical_reference, beneficiary_account, beneficiary_bank, beneficiary_name,
+          beneficiary_uid, payer_account, payer_bank, payer_name, payer_uid, opm_order_id,
+          confirmation_deadline, pending_order_data
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
+        RETURNING *
+      `, [
+        transaction.id,
+        transaction.clabeAccountId,
+        transaction.type,
+        transaction.status || 'pending',
+        transaction.amount,
+        transaction.concept || null,
+        transaction.trackingKey,
+        transaction.numericalReference || null,
+        transaction.beneficiaryAccount || null,
+        transaction.beneficiaryBank || null,
+        transaction.beneficiaryName || null,
+        transaction.beneficiaryUid || null,
+        transaction.payerAccount || null,
+        transaction.payerBank || null,
+        transaction.payerName || null,
+        transaction.payerUid || null,
+        transaction.opmOrderId || null,
+        transaction.confirmationDeadline?.toISOString() || null,
+        transaction.pendingOrderData ? JSON.stringify(transaction.pendingOrderData) : null,
+      ]);
+
+      // Commit the transaction
+      await client.query('COMMIT');
+
+      return {
+        success: true,
+        transaction: insertResult.rows[0] as DbTransaction,
+      };
+    } catch (txError: any) {
+      await client.query('ROLLBACK');
+
+      // Check if it's a lock conflict error
+      if (txError.code === '55P03') {
+        return { success: false, error: 'Operación en progreso, intente de nuevo' };
+      }
+
+      throw txError;
+    }
+  } finally {
+    client.release();
+  }
+}
+
 // Get transactions pending confirmation that have passed their deadline
 export async function getPendingConfirmationTransactions(): Promise<DbTransaction[]> {
   const result = await sql`

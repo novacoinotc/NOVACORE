@@ -34,7 +34,7 @@ export async function GET(
     if (currentUser.role !== 'super_admin') {
       if (currentUser.id !== params.id) {
         // Check if company_admin viewing user from same company
-        if (currentUser.role === 'company_admin' && dbUser.company_id === currentUser.company_id) {
+        if (currentUser.role === 'company_admin' && dbUser.company_id === currentUser.companyId) {
           // Allowed - company admin viewing user from their company
         } else {
           return NextResponse.json(
@@ -106,7 +106,7 @@ export async function PUT(
     if (currentUser.role !== 'super_admin') {
       if (currentUser.role === 'company_admin') {
         // company_admin can update users in their company
-        if (existingUser.company_id !== currentUser.company_id) {
+        if (existingUser.company_id !== currentUser.companyId) {
           return NextResponse.json(
             { error: 'Solo puedes modificar usuarios de tu propia empresa' },
             { status: 403 }
@@ -120,7 +120,7 @@ export async function PUT(
           );
         }
         // Cannot change company of user
-        if (companyId && companyId !== currentUser.company_id) {
+        if (companyId && companyId !== currentUser.companyId) {
           return NextResponse.json(
             { error: 'No puedes mover usuarios a otra empresa' },
             { status: 403 }

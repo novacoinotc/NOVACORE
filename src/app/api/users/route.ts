@@ -25,13 +25,13 @@ export async function GET(request: NextRequest) {
       // super_admin sees all users
     } else if (currentUser.role === 'company_admin') {
       // company_admin only sees users from their company
-      if (!currentUser.company_id) {
+      if (!currentUser.companyId) {
         return NextResponse.json(
           { error: 'No tienes una empresa asignada' },
           { status: 403 }
         );
       }
-      dbUsers = dbUsers.filter(u => u.company_id === currentUser.company_id);
+      dbUsers = dbUsers.filter(u => u.company_id === currentUser.companyId);
     } else {
       // Regular users cannot list users
       return NextResponse.json(
@@ -117,7 +117,7 @@ export async function POST(request: NextRequest) {
       // super_admin can create any user
     } else if (currentUser.role === 'company_admin') {
       // company_admin can only create users in their own company
-      if (!currentUser.company_id) {
+      if (!currentUser.companyId) {
         return NextResponse.json(
           { error: 'No tienes una empresa asignada' },
           { status: 403 }
@@ -133,7 +133,7 @@ export async function POST(request: NextRequest) {
       }
 
       // Force the new user to be in the same company
-      if (companyId && companyId !== currentUser.company_id) {
+      if (companyId && companyId !== currentUser.companyId) {
         return NextResponse.json(
           { error: 'Solo puedes crear usuarios en tu propia empresa' },
           { status: 403 }
@@ -141,7 +141,7 @@ export async function POST(request: NextRequest) {
       }
 
       // Override companyId to ensure it's the admin's company
-      companyId = currentUser.company_id;
+      companyId = currentUser.companyId;
     } else {
       // Regular users cannot create other users
       return NextResponse.json(

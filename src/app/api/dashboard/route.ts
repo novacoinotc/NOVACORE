@@ -148,9 +148,9 @@ export async function GET(request: NextRequest) {
     if (currentUser.role === 'super_admin') {
       // Super admin can see all
       useGlobalStats = true;
-    } else if (currentUser.role === 'company_admin' && currentUser.company_id) {
+    } else if (currentUser.role === 'company_admin' && currentUser.companyId) {
       // Company admin sees all CLABEs from their company
-      const companyClabes = await getClabeAccountsByCompanyId(currentUser.company_id);
+      const companyClabes = await getClabeAccountsByCompanyId(currentUser.companyId);
       allowedClabeIds = companyClabes.map(c => c.id);
     } else {
       // Regular user sees only assigned CLABEs

@@ -71,7 +71,15 @@ export async function POST(request: NextRequest) {
     // Get user from database
     const dbUser = await getUserByEmail(email);
 
+    // SECURITY: Always perform password comparison to prevent timing attacks
+    // If user doesn't exist, compare against a dummy hash to maintain constant time
+    const DUMMY_HASH = '$2a$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/X4.TJzVL.nHe3KRLW';
+
     if (!dbUser) {
+      // Perform a dummy bcrypt comparison to prevent timing attacks
+      // This ensures the response time is the same whether user exists or not
+      await bcrypt.compare(password, DUMMY_HASH);
+
       // Record failed attempt for rate limiting (by IP)
       recordFailedAttempt(clientIP);
 

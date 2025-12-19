@@ -31,7 +31,7 @@ export async function POST(request: NextRequest) {
       );
     }
     const currentUser = authResult.user;
-    console.log('Current user (authenticated):', { id: currentUser.id, role: currentUser.role, company_id: currentUser.company_id });
+    console.log('Current user (authenticated):', { id: currentUser.id, role: currentUser.role, company_id: currentUser.companyId });
 
     const body = await request.json();
     console.log('Request body:', JSON.stringify(body, null, 2));
@@ -50,7 +50,7 @@ export async function POST(request: NextRequest) {
     console.log('Step 2: Checking authorization...');
     if (currentUser.role === 'company_admin') {
       // company_admin can only create CLABEs for their own company
-      if (currentUser.company_id !== companyId) {
+      if (currentUser.companyId !== companyId) {
         console.log('Authorization failed: company_admin trying to create for different company');
         return NextResponse.json(
           { error: 'Solo puedes crear cuentas CLABE para tu propia empresa' },

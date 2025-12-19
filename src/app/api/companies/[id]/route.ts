@@ -24,7 +24,7 @@ export async function GET(
 
     // Authorization: super_admin can view any company, company_admin can view their own
     if (currentUser.role !== 'super_admin') {
-      if (currentUser.role === 'company_admin' && currentUser.company_id === params.id) {
+      if (currentUser.role === 'company_admin' && currentUser.companyId === params.id) {
         // company_admin can view their own company
       } else {
         return NextResponse.json(

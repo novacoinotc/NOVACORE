@@ -11,12 +11,15 @@ const BCRYPT_ROUNDS = 12;
 const resetTokens = new Map<string, { email: string; expiresAt: number }>();
 
 /**
- * Generate a cryptographically secure random 6-digit code
- * SECURITY FIX: Uses crypto.randomInt() instead of Math.random()
+ * Generate a cryptographically secure reset token
+ * SECURITY FIX: Uses 32-byte hex token instead of 6-digit code
+ * 6-digit codes can be brute-forced in ~500,000 attempts max
+ * 32-byte hex = 256 bits of entropy = computationally infeasible to brute force
  */
 function generateResetCode(): string {
-  // crypto.randomInt generates a cryptographically secure random integer
-  return crypto.randomInt(100000, 1000000).toString();
+  // Generate 32 bytes of random data and convert to hex string
+  // This gives us 64 characters of hex = 256 bits of entropy
+  return crypto.randomBytes(32).toString('hex');
 }
 
 /**

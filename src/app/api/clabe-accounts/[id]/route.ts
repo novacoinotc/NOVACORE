@@ -109,7 +109,7 @@ export async function PUT(
     // Authorization: super_admin can update any CLABE, company_admin only their own company's
     if (currentUser.role === 'company_admin') {
       // company_admin can only update CLABEs for their own company
-      if (currentUser.company_id !== existingClabeAccount.company_id) {
+      if (currentUser.companyId !== existingClabeAccount.company_id) {
         return NextResponse.json(
           { error: 'Solo puedes actualizar cuentas CLABE de tu propia empresa' },
           { status: 403 }

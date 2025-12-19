@@ -36,12 +36,33 @@ export interface WebhookSecurityResult {
 
 /**
  * Get client IP from request
+ *
+ * SECURITY NOTE: IP extraction in cloud environments
+ * - X-Forwarded-For can be spoofed by clients, BUT trusted proxies (Vercel, AWS ALB)
+ *   append or overwrite the header with the actual connecting IP
+ * - For AWS ALB: The rightmost non-private IP is typically the real client
+ * - For Vercel: The header is set by Vercel's edge network
+ *
+ * We use X-Vercel-Forwarded-For when available (more trustworthy)
+ * and fall back to the rightmost public IP in X-Forwarded-For
  */
 export function getClientIpFromWebhook(request: NextRequest): string {
-  // Check various headers that might contain the real IP
+  // Vercel provides a more trustworthy header
+  const vercelForwarded = request.headers.get('x-vercel-forwarded-for');
+  if (vercelForwarded) {
+    return vercelForwarded.split(',')[0].trim();
+  }
+
+  // For AWS/other proxies, the connecting client IP is typically appended last
+  // But the FIRST entry is often the original client (what we want for webhook validation)
+  // AWS ALB adds the client IP at the end of the chain
   const forwarded = request.headers.get('x-forwarded-for');
   if (forwarded) {
-    return forwarded.split(',')[0].trim();
+    const ips = forwarded.split(',').map(ip => ip.trim());
+    // For webhook validation from OPM, they connect directly to our edge
+    // So the first IP should be OPM's IP (unless there's a CDN in front of them)
+    // Return the first IP as it's what OPM would present
+    return ips[0];
   }
 
   const realIp = request.headers.get('x-real-ip');

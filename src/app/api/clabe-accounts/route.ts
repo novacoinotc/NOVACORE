@@ -29,9 +29,9 @@ export async function GET(request: NextRequest) {
       } else {
         dbClabeAccounts = await getAllClabeAccounts();
       }
-    } else if (currentUser.role === 'company_admin' && currentUser.company_id) {
+    } else if (currentUser.role === 'company_admin' && currentUser.companyId) {
       // Company admin sees all CLABEs from their company
-      dbClabeAccounts = await getClabeAccountsByCompanyId(currentUser.company_id);
+      dbClabeAccounts = await getClabeAccountsByCompanyId(currentUser.companyId);
     } else {
       // Regular user sees only assigned CLABEs
       dbClabeAccounts = await getClabeAccountsForUser(currentUser.id);
@@ -87,7 +87,7 @@ export async function POST(request: NextRequest) {
     // Authorization: super_admin can create for any company, company_admin only for their own
     if (currentUser.role === 'company_admin') {
       // company_admin can only create CLABEs for their own company
-      if (currentUser.company_id !== companyId) {
+      if (currentUser.companyId !== companyId) {
         return NextResponse.json(
           { error: 'Solo puedes crear cuentas CLABE para tu propia empresa' },
           { status: 403 }

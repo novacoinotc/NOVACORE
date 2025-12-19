@@ -68,9 +68,17 @@ export default function TransfersPage() {
   const [clabeAccounts, setClabeAccounts] = useState<{ id: string; clabe: string; alias: string }[]>([]);
   const [isLoadingClabeAccounts, setIsLoadingClabeAccounts] = useState(false);
 
-  // 2FA state for transfers
+  // 2FA state for transfers - initialize based on user's 2FA status
   const [requires2FA, setRequires2FA] = useState(false);
   const [totpCode, setTotpCode] = useState('');
+
+  // Pre-initialize requires2FA based on user's totpEnabled status
+  // This prevents the "double-click" issue where user has to submit twice
+  useEffect(() => {
+    if (user?.totpEnabled) {
+      setRequires2FA(true);
+    }
+  }, [user?.totpEnabled]);
 
   // Form data
   const [formData, setFormData] = useState({

@@ -1,12 +1,12 @@
 'use client';
 
 import Link from 'next/link';
-import { ArrowUpRight, ArrowDownLeft, Users, FileText } from 'lucide-react';
+import { ArrowUpRight, ArrowDownLeft, Wallet, FileText } from 'lucide-react';
 
 const actions = [
   { name: 'Enviar', icon: ArrowUpRight, href: '/transfers' },
   { name: 'Recibir', icon: ArrowDownLeft, href: '/transfers' },
-  { name: 'Clientes', icon: Users, href: '/clients' },
+  { name: 'Cuentas', icon: Wallet, href: '/saved-accounts' },
   { name: 'Historial', icon: FileText, href: '/history' },
 ];
 

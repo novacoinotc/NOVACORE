@@ -33,8 +33,10 @@ import {
   TableCell,
   Modal,
 } from '@/components/ui';
+import { NovacorpLogo } from '@/components/ui/NovacorpLogo';
 import { formatCurrency, formatDate, getStatusText, cn, formatClabe } from '@/lib/utils';
 import { getBankFromSpeiCode, getBankSelectOptions } from '@/lib/banks';
+import { generateReceiptPDF } from '@/lib/generate-receipt-pdf';
 
 interface Transaction {
   id: string;
@@ -544,11 +546,17 @@ export default function HistoryPage() {
       <Modal
         isOpen={showDetailModal}
         onClose={() => setShowDetailModal(false)}
-        title="Detalle de Transaccion"
+        title=""
         size="md"
       >
         {selectedTransaction && (
           <div className="space-y-6">
+            {/* Logo Header */}
+            <div className="flex flex-col items-center pt-2 pb-4 border-b border-white/[0.06]">
+              <NovacorpLogo size="lg" />
+              <p className="text-xs text-white/40 mt-3">Comprobante de Operacion</p>
+            </div>
+
             {/* Status Header */}
             <div className="flex items-center gap-4 p-4 rounded-lg bg-white/[0.02] border border-white/[0.06]">
               <div
@@ -676,27 +684,37 @@ export default function HistoryPage() {
             </div>
 
             {/* Actions */}
-            <div className="flex gap-3 pt-4 border-t border-white/[0.06]">
-              <Button
-                variant="secondary"
-                className="flex-1"
-                leftIcon={<Copy className="w-4 h-4" />}
-                onClick={() => {
-                  const data = `Clave: ${selectedTransaction.trackingKey}\nMonto: ${formatCurrency(selectedTransaction.amount)}\nBeneficiario: ${selectedTransaction.beneficiaryName || selectedTransaction.payerName}`;
-                  copyToClipboard(data);
-                }}
-              >
-                Copiar Datos
-              </Button>
-              {selectedTransaction.status === 'scattered' && selectedTransaction.type === 'outgoing' && (
+            <div className="flex flex-col gap-3 pt-4 border-t border-white/[0.06]">
+              <div className="flex gap-3">
+                <Button
+                  variant="secondary"
+                  className="flex-1"
+                  leftIcon={<Copy className="w-4 h-4" />}
+                  onClick={() => {
+                    const data = `Clave: ${selectedTransaction.trackingKey}\nMonto: ${formatCurrency(selectedTransaction.amount)}\nBeneficiario: ${selectedTransaction.beneficiaryName || selectedTransaction.payerName}`;
+                    copyToClipboard(data);
+                  }}
+                >
+                  Copiar Datos
+                </Button>
                 <Button
                   variant="primary"
                   className="flex-1"
+                  leftIcon={<Download className="w-4 h-4" />}
+                  onClick={() => generateReceiptPDF(selectedTransaction)}
+                >
+                  Descargar Comprobante
+                </Button>
+              </div>
+              {selectedTransaction.status === 'scattered' && selectedTransaction.type === 'outgoing' && (
+                <Button
+                  variant="ghost"
+                  className="w-full"
                   onClick={() => handleGetCep(selectedTransaction)}
                   disabled={loadingCep}
                   leftIcon={loadingCep ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
                 >
-                  {loadingCep ? 'Obteniendo...' : 'Obtener CEP'}
+                  {loadingCep ? 'Obteniendo...' : 'Obtener CEP de Banxico'}
                 </Button>
               )}
             </div>

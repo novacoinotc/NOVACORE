@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import crypto from 'crypto';
 import { getAllCompanies, createCompany, getCompanyByRfc } from '@/lib/db';
 import { authenticateRequest } from '@/lib/auth-middleware';
 
@@ -109,9 +110,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Create company
+    // Create company - SECURITY: Use crypto.randomUUID() for unpredictable IDs
     const dbCompany = await createCompany({
-      id: 'company_' + Date.now(),
+      id: `company_${crypto.randomUUID()}`,
       name,
       businessName,
       rfc: rfc.toUpperCase(),

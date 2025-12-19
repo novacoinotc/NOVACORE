@@ -176,9 +176,9 @@ export async function PUT(
     if (permissions) updates.permissions = permissions;
     if (isActive !== undefined) updates.isActive = isActive;
 
-    // Hash new password if provided
+    // Hash new password if provided - SECURITY: Use 12 rounds for production security
     if (password) {
-      updates.password = await bcrypt.hash(password, 10);
+      updates.password = await bcrypt.hash(password, 12);
     }
 
     const dbUser = await updateUser(params.id, updates);

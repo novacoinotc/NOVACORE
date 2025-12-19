@@ -43,6 +43,7 @@ export default function SettingsPage() {
   const [twoFAError, setTwoFAError] = useState('');
   const [twoFASuccess, setTwoFASuccess] = useState('');
   const [disablePassword, setDisablePassword] = useState('');
+  const [disableTotpCode, setDisableTotpCode] = useState('');
 
   // Update 2FA enabled state when user changes
   useEffect(() => {
@@ -139,10 +140,15 @@ export default function SettingsPage() {
     }
   };
 
-  // Disable 2FA
+  // Disable 2FA - SECURITY: Requires password AND current TOTP code
   const handleDisable2FA = async () => {
     if (!disablePassword) {
       setTwoFAError('Ingresa tu contraseña para deshabilitar 2FA');
+      return;
+    }
+
+    if (!disableTotpCode || disableTotpCode.length !== 6) {
+      setTwoFAError('Ingresa tu código 2FA de 6 dígitos');
       return;
     }
 
@@ -153,7 +159,7 @@ export default function SettingsPage() {
       const res = await fetch('/api/auth/2fa/disable', {
         method: 'POST',
         headers: getAuthHeaders(),
-        body: JSON.stringify({ userId, password: disablePassword }),
+        body: JSON.stringify({ userId, password: disablePassword, totpCode: disableTotpCode }),
       });
 
       const data = await res.json();
@@ -164,6 +170,7 @@ export default function SettingsPage() {
 
       setTwoFAEnabled(false);
       setDisablePassword('');
+      setDisableTotpCode('');
       setTwoFASuccess('2FA deshabilitado');
     } catch (error) {
       setTwoFAError('Error de conexión');
@@ -310,22 +317,34 @@ export default function SettingsPage() {
                     <div className="p-4 rounded-md bg-white/[0.02] border border-white/[0.06]">
                       <p className="text-sm text-white/80 font-medium mb-2">Deshabilitar 2FA</p>
                       <p className="text-xs text-white/40 mb-3">
-                        Para deshabilitar 2FA, ingresa tu contraseña. Esto reducirá la seguridad de tu cuenta.
+                        Para deshabilitar 2FA, ingresa tu contraseña y código 2FA actual. Esto reducirá la seguridad de tu cuenta.
                       </p>
-                      <div className="flex gap-3">
-                        <Input
-                          type="password"
-                          value={disablePassword}
-                          onChange={(e) => setDisablePassword(e.target.value)}
-                          placeholder="Tu contraseña"
-                        />
+                      <div className="flex flex-col gap-3">
+                        <div className="flex gap-3">
+                          <Input
+                            type="password"
+                            value={disablePassword}
+                            onChange={(e) => setDisablePassword(e.target.value)}
+                            placeholder="Tu contraseña"
+                            className="flex-1"
+                          />
+                          <Input
+                            type="text"
+                            inputMode="numeric"
+                            maxLength={6}
+                            value={disableTotpCode}
+                            onChange={(e) => setDisableTotpCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                            placeholder="Código 2FA"
+                            className="w-28"
+                          />
+                        </div>
                         <Button
                           variant="secondary"
                           onClick={handleDisable2FA}
-                          disabled={twoFALoading}
-                          className="text-red-400 hover:text-red-300"
+                          disabled={twoFALoading || !disablePassword || disableTotpCode.length !== 6}
+                          className="text-red-400 hover:text-red-300 w-full"
                         >
-                          {twoFALoading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Deshabilitar'}
+                          {twoFALoading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Deshabilitar 2FA'}
                         </Button>
                       </div>
                     </div>

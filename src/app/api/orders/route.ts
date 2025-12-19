@@ -202,12 +202,31 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Parse amount to ensure it's a number
+    // Parse amount to ensure it's a valid, finite number
     const parsedAmount = parseFloat(amount);
-    if (isNaN(parsedAmount)) {
-      console.error('ORDER ERROR: Invalid amount:', amount);
+    // SECURITY: Check for NaN, Infinity, negative, and zero amounts
+    if (isNaN(parsedAmount) || !isFinite(parsedAmount)) {
+      console.error('ORDER ERROR: Invalid amount (NaN or Infinity):', amount);
       return NextResponse.json(
         { error: 'El monto debe ser un número válido', providedAmount: amount },
+        { status: 400 }
+      );
+    }
+
+    if (parsedAmount <= 0) {
+      console.error('ORDER ERROR: Amount must be positive:', amount);
+      return NextResponse.json(
+        { error: 'El monto debe ser mayor a cero', providedAmount: amount },
+        { status: 400 }
+      );
+    }
+
+    // SECURITY: Maximum transaction limit (prevent overflow attacks)
+    const MAX_TRANSACTION_AMOUNT = 999999999.99; // ~1 billion MXN limit
+    if (parsedAmount > MAX_TRANSACTION_AMOUNT) {
+      console.error('ORDER ERROR: Amount exceeds maximum:', amount);
+      return NextResponse.json(
+        { error: 'El monto excede el límite máximo permitido', providedAmount: amount },
         { status: 400 }
       );
     }

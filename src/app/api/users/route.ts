@@ -159,8 +159,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Hash password
-    const hashedPassword = await bcrypt.hash(password, 10);
+    // Hash password - SECURITY: Use 12 rounds for production security
+    const hashedPassword = await bcrypt.hash(password, 12);
 
     // Create user - SECURITY FIX: Use crypto.randomUUID() for secure ID generation
     const dbUser = await createUser({

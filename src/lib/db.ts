@@ -913,6 +913,67 @@ export async function getTransactionsByClabeAccount(clabeAccountId: string): Pro
   return result as DbTransaction[];
 }
 
+/**
+ * Calculate available balance for a specific CLABE account
+ *
+ * Available balance = Settled Incoming (scattered) - Sent/Settled Outgoing (sent, scattered)
+ *
+ * This ensures each CLABE operates as an independent cost center,
+ * only able to spend what it has received.
+ *
+ * @param clabeAccountId - The CLABE account ID to calculate balance for
+ * @returns Object with settledIncoming, settledOutgoing, inTransit, and availableBalance
+ */
+export async function getClabeAccountBalance(clabeAccountId: string): Promise<{
+  settledIncoming: number;
+  settledOutgoing: number;
+  inTransit: number;
+  availableBalance: number;
+}> {
+  const result = await sql`
+    SELECT
+      COALESCE(SUM(CASE WHEN type = 'incoming' AND status = 'scattered' THEN amount ELSE 0 END), 0) as settled_incoming,
+      COALESCE(SUM(CASE WHEN type = 'outgoing' AND status IN ('sent', 'scattered') THEN amount ELSE 0 END), 0) as settled_outgoing,
+      COALESCE(SUM(CASE WHEN type = 'outgoing' AND status IN ('pending_confirmation', 'pending', 'sent', 'queued') THEN amount ELSE 0 END), 0) as in_transit
+    FROM transactions
+    WHERE clabe_account_id = ${clabeAccountId}
+  `;
+
+  const row = result[0] || { settled_incoming: 0, settled_outgoing: 0, in_transit: 0 };
+  const settledIncoming = parseFloat(row.settled_incoming) || 0;
+  const settledOutgoing = parseFloat(row.settled_outgoing) || 0;
+  const inTransit = parseFloat(row.in_transit) || 0;
+
+  return {
+    settledIncoming,
+    settledOutgoing,
+    inTransit,
+    availableBalance: settledIncoming - settledOutgoing,
+  };
+}
+
+/**
+ * Calculate available balance for a CLABE by its CLABE number
+ */
+export async function getClabeBalanceByClabe(clabe: string): Promise<{
+  clabeAccountId: string | null;
+  settledIncoming: number;
+  settledOutgoing: number;
+  inTransit: number;
+  availableBalance: number;
+} | null> {
+  const clabeAccount = await getClabeAccountByClabe(clabe);
+  if (!clabeAccount) {
+    return null;
+  }
+
+  const balance = await getClabeAccountBalance(clabeAccount.id);
+  return {
+    clabeAccountId: clabeAccount.id,
+    ...balance,
+  };
+}
+
 export async function updateTransactionStatus(
   id: string,
   status: string,

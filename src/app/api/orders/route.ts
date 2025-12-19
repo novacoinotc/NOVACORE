@@ -3,7 +3,7 @@ import { listOrders } from '@/lib/opm-api';
 import { generateNumericalReference, generateTrackingKey } from '@/lib/crypto';
 import { validateOrderFields, prepareTextForSpei, sanitizeForSpei } from '@/lib/utils';
 import { verifyTOTP, getClientIP, getUserAgent } from '@/lib/security';
-import { getUserTotpSecret, isUserTotpEnabled, createAuditLogEntry, getUserById, createTransaction, getClabeAccountByClabe } from '@/lib/db';
+import { getUserTotpSecret, isUserTotpEnabled, createAuditLogEntry, getUserById, createTransaction, getClabeAccountByClabe, getClabeBalanceByClabe } from '@/lib/db';
 
 /**
  * POST /api/orders
@@ -170,6 +170,84 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
+
+    // ============================================
+    // CRITICAL: Validate available balance for payer CLABE
+    // Each CLABE can only spend what it has received
+    // ============================================
+    console.log('Validating available balance for payer account:', payerAccount);
+
+    const payerBalance = await getClabeBalanceByClabe(payerAccount);
+
+    if (!payerBalance) {
+      console.error('ORDER ERROR: Payer CLABE account not found:', payerAccount);
+      return NextResponse.json(
+        {
+          error: 'La cuenta de origen no está registrada en el sistema',
+          payerAccount,
+        },
+        { status: 400 }
+      );
+    }
+
+    console.log('Payer balance:', {
+      clabeAccountId: payerBalance.clabeAccountId,
+      settledIncoming: payerBalance.settledIncoming,
+      settledOutgoing: payerBalance.settledOutgoing,
+      inTransit: payerBalance.inTransit,
+      availableBalance: payerBalance.availableBalance,
+    });
+
+    // Check if transfer amount exceeds available balance
+    // We need to consider in-transit amounts too (pending transfers)
+    const effectiveAvailable = payerBalance.availableBalance - payerBalance.inTransit;
+
+    if (parsedAmount > effectiveAvailable) {
+      console.error('ORDER ERROR: Insufficient balance', {
+        requestedAmount: parsedAmount,
+        availableBalance: payerBalance.availableBalance,
+        inTransit: payerBalance.inTransit,
+        effectiveAvailable,
+      });
+
+      // Log the failed attempt
+      const user = await getUserById(userId);
+      await createAuditLogEntry({
+        id: `audit_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`,
+        action: 'TRANSFER_INSUFFICIENT_BALANCE',
+        userId,
+        userEmail: user?.email,
+        ipAddress: clientIP,
+        userAgent,
+        details: {
+          payerAccount,
+          requestedAmount: parsedAmount,
+          availableBalance: payerBalance.availableBalance,
+          inTransit: payerBalance.inTransit,
+          effectiveAvailable,
+        },
+        severity: 'warning',
+      });
+
+      return NextResponse.json(
+        {
+          error: 'Saldo insuficiente en la cuenta de origen',
+          details: {
+            requestedAmount: parsedAmount,
+            availableBalance: payerBalance.availableBalance,
+            inTransit: payerBalance.inTransit,
+            effectiveAvailable: Math.max(0, effectiveAvailable),
+          },
+        },
+        { status: 400 }
+      );
+    }
+
+    console.log('Balance validation passed:', {
+      requestedAmount: parsedAmount,
+      effectiveAvailable,
+      remainingAfterTransfer: effectiveAvailable - parsedAmount,
+    });
 
     // Sanitize text fields for SPEI (remove accents and special characters)
     const sanitizedBeneficiaryName = prepareTextForSpei(beneficiaryName, 40);

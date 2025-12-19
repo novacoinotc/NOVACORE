@@ -1,10 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getPendingConfirmationTransactions, confirmPendingTransaction, updateTransactionStatus } from '@/lib/db';
+import { getPendingConfirmationTransactions, confirmPendingTransaction, updateTransactionStatus, createAuditLogEntry } from '@/lib/db';
 import { createOrder, buildOrderOriginalString } from '@/lib/opm-api';
 import { signWithPrivateKey } from '@/lib/crypto';
 import { CreateOrderRequest } from '@/types';
 import { authenticateRequest } from '@/lib/auth-middleware';
-import { createAuditLogEntry } from '@/lib/security';
 
 // SECURITY FIX: In-memory lock to prevent concurrent execution
 // In production, use Redis distributed lock

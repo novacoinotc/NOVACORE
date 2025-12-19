@@ -48,11 +48,8 @@ jobs:
             echo "📚 Installing dependencies..."
             npm install
 
-            echo "🗄️  Generating Prisma client..."
-            npx prisma generate
-
-            # Note: Skipping 'prisma db push' since we use raw SQL queries in db.ts
-            # The database schema is managed manually or through SQL migrations
+            # Note: Prisma is not used - we use raw SQL with pg library
+            # Database schema is managed through SQL migrations in /migrations folder
 
             echo "🔨 Building application..."
             npm run build

@@ -16,15 +16,29 @@ export async function GET(request: NextRequest) {
     // Get current user for authorization
     const currentUser = await getCurrentUser(request);
 
-    // Only super_admin can list all users
-    if (currentUser && currentUser.role !== 'super_admin') {
-      return NextResponse.json(
-        { error: 'No tienes permiso para ver usuarios' },
-        { status: 403 }
-      );
-    }
+    let dbUsers = await getAllUsers();
 
-    const dbUsers = await getAllUsers();
+    // Authorization: super_admin can see all, company_admin can see their company's users
+    if (currentUser) {
+      if (currentUser.role === 'super_admin') {
+        // super_admin sees all users
+      } else if (currentUser.role === 'company_admin') {
+        // company_admin only sees users from their company
+        if (!currentUser.company_id) {
+          return NextResponse.json(
+            { error: 'No tienes una empresa asignada' },
+            { status: 403 }
+          );
+        }
+        dbUsers = dbUsers.filter(u => u.company_id === currentUser.company_id);
+      } else {
+        // Regular users cannot list users
+        return NextResponse.json(
+          { error: 'No tienes permiso para ver usuarios' },
+          { status: 403 }
+        );
+      }
+    }
 
     // Transform to frontend format (without passwords)
     const usersPromises = dbUsers.map(async (u) => {
@@ -69,7 +83,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { email, password, name, role, companyId, permissions, clabeAccountIds, isActive } = body;
+    let { email, password, name, role, companyId, permissions, clabeAccountIds, isActive } = body;
 
     // Get current user for authorization
     const currentUser = await getCurrentUser(request);
@@ -91,12 +105,44 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Authorization: only super_admin can create users
-    if (currentUser && currentUser.role !== 'super_admin') {
-      return NextResponse.json(
-        { error: 'No tienes permiso para crear usuarios' },
-        { status: 403 }
-      );
+    // Authorization: super_admin can create any user, company_admin can create users in their company
+    if (currentUser) {
+      if (currentUser.role === 'super_admin') {
+        // super_admin can create any user
+      } else if (currentUser.role === 'company_admin') {
+        // company_admin can only create users in their own company
+        if (!currentUser.company_id) {
+          return NextResponse.json(
+            { error: 'No tienes una empresa asignada' },
+            { status: 403 }
+          );
+        }
+
+        // company_admin can only create 'user' or 'company_admin' roles for their company
+        if (role === 'super_admin') {
+          return NextResponse.json(
+            { error: 'No puedes crear usuarios con rol super_admin' },
+            { status: 403 }
+          );
+        }
+
+        // Force the new user to be in the same company
+        if (companyId && companyId !== currentUser.company_id) {
+          return NextResponse.json(
+            { error: 'Solo puedes crear usuarios en tu propia empresa' },
+            { status: 403 }
+          );
+        }
+
+        // Override companyId to ensure it's the admin's company
+        companyId = currentUser.company_id;
+      } else {
+        // Regular users cannot create other users
+        return NextResponse.json(
+          { error: 'No tienes permiso para crear usuarios' },
+          { status: 403 }
+        );
+      }
     }
 
     // Check if email already exists

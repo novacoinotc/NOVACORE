@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import crypto from 'crypto';
 import { updateClient, updateClientStatus } from '@/lib/opm-api';
 import { Client } from '@/types';
 import { authenticateRequest } from '@/lib/auth-middleware';
@@ -43,6 +44,7 @@ export async function PUT(
 
     // SECURITY FIX: Audit log
     await createAuditLogEntry({
+      id: `audit_${crypto.randomUUID()}`,
       action: 'CLIENT_UPDATED',
       userId: authResult.user.id,
       userEmail: authResult.user.email,
@@ -115,6 +117,7 @@ export async function PATCH(
 
     // SECURITY FIX: Audit log for status change
     await createAuditLogEntry({
+      id: `audit_${crypto.randomUUID()}`,
       action: 'CLIENT_STATUS_CHANGED',
       userId: authResult.user.id,
       userEmail: authResult.user.email,

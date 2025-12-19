@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import crypto from 'crypto';
 import { notifyOrder } from '@/lib/opm-api';
 import { authenticateRequest } from '@/lib/auth-middleware';
 import { createAuditLogEntry } from '@/lib/db';
@@ -40,6 +41,7 @@ export async function POST(
 
     // SECURITY FIX: Audit log
     await createAuditLogEntry({
+      id: `audit_${crypto.randomUUID()}`,
       action: 'WEBHOOK_RESENT',
       userId: authResult.user.id,
       userEmail: authResult.user.email,

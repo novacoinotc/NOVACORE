@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { motion } from 'framer-motion';
 import {
   History,
   Search,
@@ -18,22 +19,10 @@ import {
   Building2,
   DollarSign,
   RefreshCw,
+  TrendingUp,
+  TrendingDown,
+  Clock,
 } from 'lucide-react';
-import {
-  Button,
-  Input,
-  Select,
-  Card,
-  Badge,
-  Table,
-  TableHeader,
-  TableBody,
-  TableRow,
-  TableHead,
-  TableCell,
-  Modal,
-} from '@/components/ui';
-import { NovacorpLogo } from '@/components/ui/NovacorpLogo';
 import { useAuth } from '@/context/AuthContext';
 import { formatCurrency, formatDate, getStatusText, cn, formatClabe } from '@/lib/utils';
 import { getBankFromSpeiCode, getBankSelectOptions } from '@/lib/banks';
@@ -120,7 +109,6 @@ export default function HistoryPage() {
 
   // Modal state
   const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null);
-  const [showDetailModal, setShowDetailModal] = useState(false);
 
   // CEP state
   const [loadingCep, setLoadingCep] = useState(false);
@@ -141,7 +129,6 @@ export default function HistoryPage() {
         throw new Error(data.error || 'Error al obtener CEP');
       }
 
-      // OPM returns the CEP URL in the response
       if (data.data?.cepUrl || data.cepUrl) {
         const cepUrl = data.data?.cepUrl || data.cepUrl;
         window.open(cepUrl, '_blank');
@@ -170,7 +157,6 @@ export default function HistoryPage() {
       if (statusFilter) params.append('status', statusFilter);
       if (typeFilter) params.append('type', typeFilter);
       if (bankFilter) {
-        // Apply to both beneficiary and payer bank
         params.append('beneficiaryBank', bankFilter);
       }
       if (minAmount) params.append('minAmount', minAmount);
@@ -229,12 +215,6 @@ export default function HistoryPage() {
   // Has active filters?
   const hasActiveFilters = searchQuery || statusFilter || typeFilter || bankFilter || minAmount || maxAmount || dateFrom || dateTo || clabeFilter;
 
-  // Open detail modal
-  const openDetail = (tx: Transaction) => {
-    setSelectedTransaction(tx);
-    setShowDetailModal(true);
-  };
-
   // Get bank name from code
   const getBankName = (bankCode: string | null): string => {
     if (!bankCode) return '-';
@@ -247,487 +227,548 @@ export default function HistoryPage() {
     navigator.clipboard.writeText(text);
   };
 
+  // Status badge color
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'scattered':
+        return 'bg-green-500/10 text-green-400 border-green-500/20';
+      case 'sent':
+        return 'bg-blue-500/10 text-blue-400 border-blue-500/20';
+      case 'pending':
+      case 'pending_confirmation':
+        return 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20';
+      case 'returned':
+      case 'canceled':
+        return 'bg-red-500/10 text-red-400 border-red-500/20';
+      default:
+        return 'bg-white/10 text-white/60 border-white/20';
+    }
+  };
+
   // Bank options
   const bankOptions = [{ value: '', label: 'Todos los bancos' }, ...getBankSelectOptions()];
 
   return (
-    <div className="space-y-6 max-w-6xl">
+    <div className="p-6 space-y-6 max-w-7xl mx-auto">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-medium text-white/90">Historial</h1>
-          <p className="text-sm text-white/40 mt-1">Consulta todas tus operaciones</p>
-        </div>
-        <div className="flex gap-2">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={fetchTransactions}
-            leftIcon={<RefreshCw className={cn('w-4 h-4', isLoading && 'animate-spin')} />}
-          >
-            Actualizar
-          </Button>
-          <Button variant="secondary" leftIcon={<Download className="w-4 h-4" />}>
-            Exportar
-          </Button>
-        </div>
+      <div>
+        <h1 className="text-2xl font-bold text-white">Historial</h1>
+        <p className="text-white/40 text-sm mt-1">Consulta todas tus operaciones</p>
       </div>
 
-      {/* Stats Summary */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-px bg-white/[0.04] rounded-lg overflow-hidden">
-        {[
-          { label: 'Transacciones', value: stats.totalCount.toLocaleString() },
-          { label: 'Entradas', value: formatCurrency(stats.totalIncoming), isPositive: true },
-          { label: 'Salidas', value: formatCurrency(stats.totalOutgoing) },
-          { label: 'En Transito', value: formatCurrency(stats.inTransit), isWarning: true },
-        ].map((stat) => (
-          <div key={stat.label} className="bg-black/40 p-4">
-            <p className="text-xs text-white/30">{stat.label}</p>
-            <p className={cn(
-              'text-lg font-mono mt-1',
-              stat.isPositive ? 'text-green-400/80' : stat.isWarning ? 'text-yellow-400/80' : 'text-white/80'
-            )}>
-              {stat.value}
-            </p>
+      {/* Stats Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* Total Transacciones */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="backdrop-blur-xl bg-gradient-to-br from-purple-500/10 to-pink-500/10 border border-purple-500/20 rounded-xl p-5"
+        >
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-white/60 text-sm">Transacciones</span>
+            <button
+              onClick={fetchTransactions}
+              disabled={isLoading}
+              className="p-1.5 text-white/30 hover:text-white hover:bg-white/[0.05] rounded transition-colors"
+            >
+              <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
+            </button>
           </div>
-        ))}
+          <div className="flex items-baseline gap-2">
+            <DollarSign className="w-5 h-5 text-purple-400" />
+            <span className="text-2xl font-bold text-white">
+              {isLoading ? '...' : stats.totalCount.toLocaleString()}
+            </span>
+          </div>
+        </motion.div>
+
+        {/* Total Entrante */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.1 }}
+          className="backdrop-blur-xl bg-white/[0.02] border border-white/[0.06] rounded-xl p-5"
+        >
+          <div className="flex items-center gap-2 mb-3">
+            <TrendingUp className="w-4 h-4 text-green-400" />
+            <span className="text-white/60 text-sm">Total Entrante</span>
+          </div>
+          <div className="flex items-baseline gap-2">
+            <ArrowDownLeft className="w-5 h-5 text-green-400" />
+            <span className="text-2xl font-bold text-green-400">
+              {formatCurrency(stats.totalIncoming)}
+            </span>
+          </div>
+        </motion.div>
+
+        {/* Total Saliente */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.2 }}
+          className="backdrop-blur-xl bg-white/[0.02] border border-white/[0.06] rounded-xl p-5"
+        >
+          <div className="flex items-center gap-2 mb-3">
+            <TrendingDown className="w-4 h-4 text-red-400" />
+            <span className="text-white/60 text-sm">Total Saliente</span>
+          </div>
+          <div className="flex items-baseline gap-2">
+            <ArrowUpRight className="w-5 h-5 text-red-400" />
+            <span className="text-2xl font-bold text-red-400">
+              {formatCurrency(stats.totalOutgoing)}
+            </span>
+          </div>
+        </motion.div>
+
+        {/* En Tránsito */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.3 }}
+          className="backdrop-blur-xl bg-white/[0.02] border border-white/[0.06] rounded-xl p-5"
+        >
+          <div className="flex items-center gap-2 mb-3">
+            <Clock className="w-4 h-4 text-yellow-400" />
+            <span className="text-white/60 text-sm">En Tránsito</span>
+          </div>
+          <div className="flex items-baseline gap-2">
+            <span className="text-2xl font-bold text-yellow-400">
+              {formatCurrency(stats.inTransit)}
+            </span>
+          </div>
+        </motion.div>
       </div>
 
-      {/* Filters */}
-      <Card>
-        <div className="space-y-4">
-          {/* Main filters row */}
-          <div className="flex flex-wrap items-center gap-4">
-            <div className="flex-1 min-w-[200px]">
-              <Input
-                placeholder="Buscar por clave, nombre, concepto..."
+      {/* Transactions Section */}
+      <div className="backdrop-blur-xl bg-white/[0.02] border border-white/[0.06] rounded-xl overflow-hidden">
+        {/* Filters */}
+        <div className="p-4 border-b border-white/[0.06]">
+          <div className="flex flex-col sm:flex-row gap-4">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/30" />
+              <input
+                type="text"
+                placeholder="Buscar por concepto, clave de rastreo..."
                 value={searchQuery}
                 onChange={(e) => { setSearchQuery(e.target.value); handleFilterChange(); }}
-                leftIcon={<Search className="w-4 h-4" />}
+                className="w-full bg-white/[0.03] border border-white/[0.08] rounded-lg py-2.5 pl-10 pr-4 text-white text-sm placeholder:text-white/30 focus:outline-none focus:border-purple-500/50 transition-colors"
               />
             </div>
-            <Select
-              options={typeOptions}
-              value={typeFilter}
-              onChange={(e) => { setTypeFilter(e.target.value); handleFilterChange(); }}
-            />
-            <Select
-              options={statusOptions}
-              value={statusFilter}
-              onChange={(e) => { setStatusFilter(e.target.value); handleFilterChange(); }}
-            />
-            <Button
-              variant={showAdvancedFilters ? 'secondary' : 'ghost'}
-              leftIcon={<Filter className="w-4 h-4" />}
-              onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
-            >
-              Filtros
-              <ChevronDown className={cn('w-4 h-4 ml-1 transition-transform', showAdvancedFilters && 'rotate-180')} />
-            </Button>
-            {hasActiveFilters && (
-              <Button variant="ghost" size="sm" onClick={clearFilters} leftIcon={<X className="w-4 h-4" />}>
-                Limpiar
-              </Button>
-            )}
+
+            <div className="flex gap-2">
+              <select
+                value={typeFilter}
+                onChange={(e) => { setTypeFilter(e.target.value); handleFilterChange(); }}
+                className="bg-white/[0.03] border border-white/[0.08] rounded-lg py-2.5 px-3 text-white text-sm focus:outline-none focus:border-purple-500/50"
+              >
+                {typeOptions.map(opt => (
+                  <option key={opt.value} value={opt.value} className="bg-[#0a0a1a]">
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+
+              <select
+                value={statusFilter}
+                onChange={(e) => { setStatusFilter(e.target.value); handleFilterChange(); }}
+                className="bg-white/[0.03] border border-white/[0.08] rounded-lg py-2.5 px-3 text-white text-sm focus:outline-none focus:border-purple-500/50"
+              >
+                {statusOptions.map(opt => (
+                  <option key={opt.value} value={opt.value} className="bg-[#0a0a1a]">
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+
+              <button
+                onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
+                className={cn(
+                  "p-2.5 border rounded-lg transition-colors",
+                  showAdvancedFilters
+                    ? "bg-purple-500/10 border-purple-500/30 text-purple-400"
+                    : "bg-white/[0.03] border-white/[0.08] text-white/60 hover:bg-white/[0.05]"
+                )}
+              >
+                <Filter className="w-4 h-4" />
+              </button>
+
+              <button
+                onClick={() => fetchTransactions()}
+                className="p-2.5 bg-white/[0.03] border border-white/[0.08] rounded-lg hover:bg-white/[0.05] transition-colors"
+              >
+                <RefreshCw className={`w-4 h-4 text-white/60 ${isLoading ? 'animate-spin' : ''}`} />
+              </button>
+
+              {hasActiveFilters && (
+                <button
+                  onClick={clearFilters}
+                  className="p-2.5 bg-red-500/10 border border-red-500/30 rounded-lg text-red-400 hover:bg-red-500/20 transition-colors"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              )}
+            </div>
           </div>
 
           {/* Advanced filters */}
           {showAdvancedFilters && (
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 pt-4 border-t border-white/[0.06]">
-              {/* Date range */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 pt-4 mt-4 border-t border-white/[0.06]">
               <div>
                 <label className="block text-xs text-white/40 mb-1.5">Desde</label>
-                <Input
+                <input
                   type="date"
                   value={dateFrom}
                   onChange={(e) => { setDateFrom(e.target.value); handleFilterChange(); }}
-                  leftIcon={<Calendar className="w-4 h-4" />}
+                  className="w-full bg-white/[0.03] border border-white/[0.08] rounded-lg py-2 px-3 text-white text-sm focus:outline-none focus:border-purple-500/50"
                 />
               </div>
               <div>
                 <label className="block text-xs text-white/40 mb-1.5">Hasta</label>
-                <Input
+                <input
                   type="date"
                   value={dateTo}
                   onChange={(e) => { setDateTo(e.target.value); handleFilterChange(); }}
-                  leftIcon={<Calendar className="w-4 h-4" />}
+                  className="w-full bg-white/[0.03] border border-white/[0.08] rounded-lg py-2 px-3 text-white text-sm focus:outline-none focus:border-purple-500/50"
                 />
               </div>
-
-              {/* Amount range */}
               <div>
-                <label className="block text-xs text-white/40 mb-1.5">Monto minimo</label>
-                <Input
+                <label className="block text-xs text-white/40 mb-1.5">Monto mínimo</label>
+                <input
                   type="number"
                   placeholder="0.00"
                   value={minAmount}
                   onChange={(e) => { setMinAmount(e.target.value); handleFilterChange(); }}
-                  leftIcon={<DollarSign className="w-4 h-4" />}
+                  className="w-full bg-white/[0.03] border border-white/[0.08] rounded-lg py-2 px-3 text-white text-sm focus:outline-none focus:border-purple-500/50"
                 />
               </div>
               <div>
-                <label className="block text-xs text-white/40 mb-1.5">Monto maximo</label>
-                <Input
+                <label className="block text-xs text-white/40 mb-1.5">Monto máximo</label>
+                <input
                   type="number"
                   placeholder="999,999.99"
                   value={maxAmount}
                   onChange={(e) => { setMaxAmount(e.target.value); handleFilterChange(); }}
-                  leftIcon={<DollarSign className="w-4 h-4" />}
-                />
-              </div>
-
-              {/* Bank filter */}
-              <div>
-                <label className="block text-xs text-white/40 mb-1.5">Banco</label>
-                <Select
-                  options={bankOptions}
-                  value={bankFilter}
-                  onChange={(e) => { setBankFilter(e.target.value); handleFilterChange(); }}
-                />
-              </div>
-
-              {/* CLABE filter */}
-              <div className="md:col-span-3">
-                <label className="block text-xs text-white/40 mb-1.5">Cuenta CLABE</label>
-                <Input
-                  placeholder="Buscar por CLABE (parcial o completa)"
-                  value={clabeFilter}
-                  onChange={(e) => { setClabeFilter(e.target.value); handleFilterChange(); }}
-                  leftIcon={<Building2 className="w-4 h-4" />}
+                  className="w-full bg-white/[0.03] border border-white/[0.08] rounded-lg py-2 px-3 text-white text-sm focus:outline-none focus:border-purple-500/50"
                 />
               </div>
             </div>
           )}
         </div>
-      </Card>
 
-      {/* Error message */}
-      {error && (
-        <div className="p-4 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-sm">
-          {error}
-        </div>
-      )}
+        {/* Error message */}
+        {error && (
+          <div className="p-4 bg-red-500/10 border-b border-red-500/20 text-red-400 text-sm">
+            {error}
+          </div>
+        )}
 
-      {/* Loading state */}
-      {isLoading && (
-        <div className="text-center py-12">
-          <RefreshCw className="w-8 h-8 mx-auto text-white/20 animate-spin mb-3" />
-          <p className="text-white/40 text-sm">Cargando transacciones...</p>
-        </div>
-      )}
+        {/* Transactions Table */}
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead>
+              <tr className="border-b border-white/[0.06]">
+                <th className="text-left text-white/40 text-xs font-medium uppercase tracking-wider px-6 py-3">
+                  Tipo
+                </th>
+                <th className="text-left text-white/40 text-xs font-medium uppercase tracking-wider px-6 py-3">
+                  Contraparte
+                </th>
+                <th className="text-left text-white/40 text-xs font-medium uppercase tracking-wider px-6 py-3">
+                  Concepto
+                </th>
+                <th className="text-right text-white/40 text-xs font-medium uppercase tracking-wider px-6 py-3">
+                  Monto
+                </th>
+                <th className="text-center text-white/40 text-xs font-medium uppercase tracking-wider px-6 py-3">
+                  Estado
+                </th>
+                <th className="text-right text-white/40 text-xs font-medium uppercase tracking-wider px-6 py-3">
+                  Fecha
+                </th>
+                <th className="text-center text-white/40 text-xs font-medium uppercase tracking-wider px-6 py-3">
 
-      {/* Transactions Table */}
-      {!isLoading && transactions.length > 0 && (
-        <>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Tipo</TableHead>
-                <TableHead>Clave de Rastreo</TableHead>
-                <TableHead>Beneficiario / Ordenante</TableHead>
-                <TableHead>Concepto</TableHead>
-                <TableHead>Monto</TableHead>
-                <TableHead>Estado</TableHead>
-                <TableHead>Fecha</TableHead>
-                <TableHead></TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {transactions.map((tx) => (
-                <TableRow key={tx.id} className="cursor-pointer" onClick={() => openDetail(tx)}>
-                  <TableCell>
-                    <div
-                      className={cn(
-                        'w-8 h-8 rounded-md flex items-center justify-center',
-                        tx.type === 'incoming'
-                          ? 'bg-green-500/10 text-green-400/80'
-                          : 'bg-red-500/10 text-red-400/80'
-                      )}
-                    >
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {transactions.map((tx, index) => (
+                <motion.tr
+                  key={tx.id}
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: index * 0.02 }}
+                  className="border-b border-white/[0.04] hover:bg-white/[0.02] transition-colors cursor-pointer"
+                  onClick={() => setSelectedTransaction(tx)}
+                >
+                  <td className="px-6 py-4">
+                    <div className="flex items-center gap-2">
                       {tx.type === 'incoming' ? (
-                        <ArrowDownLeft className="w-4 h-4" />
+                        <div className="p-2 bg-green-500/10 rounded-lg">
+                          <ArrowDownLeft className="w-4 h-4 text-green-400" />
+                        </div>
                       ) : (
-                        <ArrowUpRight className="w-4 h-4" />
+                        <div className="p-2 bg-red-500/10 rounded-lg">
+                          <ArrowUpRight className="w-4 h-4 text-red-400" />
+                        </div>
                       )}
+                      <span className="text-white/60 text-sm">
+                        {tx.type === 'incoming' ? 'Entrada' : 'Salida'}
+                      </span>
                     </div>
-                  </TableCell>
-                  <TableCell>
-                    <span className="font-mono text-sm text-white/60">{tx.trackingKey}</span>
-                  </TableCell>
-                  <TableCell>
+                  </td>
+                  <td className="px-6 py-4">
                     <div>
-                      <p className="text-sm text-white/80">
-                        {tx.type === 'incoming' ? tx.payerName : tx.beneficiaryName}
+                      <p className="text-white font-medium text-sm truncate max-w-[200px]">
+                        {tx.type === 'incoming' ? tx.payerName : tx.beneficiaryName || 'Sin nombre'}
                       </p>
-                      <p className="text-xs text-white/30">
+                      <p className="text-white/40 text-xs">
                         {getBankName(tx.type === 'incoming' ? tx.payerBank : tx.beneficiaryBank)}
                       </p>
                     </div>
-                  </TableCell>
-                  <TableCell>
-                    <span className="text-sm text-white/50">{tx.concept || '-'}</span>
-                  </TableCell>
-                  <TableCell>
-                    <span
-                      className={cn(
-                        'font-mono text-sm',
-                        tx.type === 'incoming' ? 'text-green-400/80' : 'text-white/80'
-                      )}
-                    >
-                      {tx.type === 'incoming' ? '+' : '-'} {formatCurrency(tx.amount)}
+                  </td>
+                  <td className="px-6 py-4">
+                    <p className="text-white/60 text-sm truncate max-w-[200px]">
+                      {tx.concept || 'Sin concepto'}
+                    </p>
+                  </td>
+                  <td className="px-6 py-4 text-right">
+                    <span className={`font-mono font-semibold ${
+                      tx.type === 'incoming' ? 'text-green-400' : 'text-red-400'
+                    }`}>
+                      {tx.type === 'incoming' ? '+' : '-'}{formatCurrency(tx.amount)}
                     </span>
-                  </TableCell>
-                  <TableCell>
-                    <Badge
-                      variant={
-                        tx.status === 'scattered'
-                          ? 'success'
-                          : tx.status === 'pending' || tx.status === 'sent' || tx.status === 'pending_confirmation'
-                          ? 'warning'
-                          : tx.status === 'returned'
-                          ? 'danger'
-                          : 'default'
-                      }
-                    >
+                  </td>
+                  <td className="px-6 py-4 text-center">
+                    <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium border ${getStatusColor(tx.status)}`}>
                       {getStatusText(tx.status)}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    <span className="text-xs text-white/40">{formatDate(tx.createdAt)}</span>
-                  </TableCell>
-                  <TableCell>
-                    <Button variant="ghost" size="sm">
+                    </span>
+                  </td>
+                  <td className="px-6 py-4 text-right">
+                    <span className="text-white/40 text-sm">
+                      {formatDate(tx.createdAt)}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4 text-center">
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setSelectedTransaction(tx); }}
+                      className="p-2 text-white/40 hover:text-white hover:bg-white/[0.05] rounded-lg transition-colors"
+                    >
                       <Eye className="w-4 h-4" />
-                    </Button>
-                  </TableCell>
-                </TableRow>
+                    </button>
+                  </td>
+                </motion.tr>
               ))}
-            </TableBody>
-          </Table>
-
-          {/* Pagination */}
-          <div className="flex items-center justify-between">
-            <p className="text-sm text-white/40">
-              Mostrando {((pagination.page - 1) * pagination.itemsPerPage) + 1} - {Math.min(pagination.page * pagination.itemsPerPage, pagination.total)} de {pagination.total}
-            </p>
-            <div className="flex gap-2">
-              <Button
-                variant="ghost"
-                size="sm"
-                disabled={pagination.page <= 1}
-                onClick={() => setPagination(prev => ({ ...prev, page: prev.page - 1 }))}
-                leftIcon={<ChevronLeft className="w-4 h-4" />}
-              >
-                Anterior
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                disabled={pagination.page >= pagination.totalPages}
-                onClick={() => setPagination(prev => ({ ...prev, page: prev.page + 1 }))}
-                rightIcon={<ChevronRight className="w-4 h-4" />}
-              >
-                Siguiente
-              </Button>
-            </div>
-          </div>
-        </>
-      )}
-
-      {/* Empty state */}
-      {!isLoading && transactions.length === 0 && (
-        <div className="text-center py-12">
-          <History className="w-10 h-10 mx-auto text-white/20 mb-3" />
-          <p className="text-white/40 text-sm">
-            {hasActiveFilters ? 'No se encontraron transacciones con los filtros aplicados' : 'No hay transacciones aun'}
-          </p>
-          {hasActiveFilters && (
-            <Button variant="ghost" size="sm" className="mt-4" onClick={clearFilters}>
-              Limpiar filtros
-            </Button>
-          )}
+            </tbody>
+          </table>
         </div>
-      )}
 
-      {/* Detail Modal */}
-      <Modal
-        isOpen={showDetailModal}
-        onClose={() => setShowDetailModal(false)}
-        title=""
-        size="md"
-      >
-        {selectedTransaction && (
-          <div className="space-y-6">
-            {/* Logo Header */}
-            <div className="flex flex-col items-center pt-2 pb-4 border-b border-white/[0.06]">
-              <NovacorpLogo size="lg" />
-              <p className="text-xs text-white/40 mt-3">Comprobante de Operacion</p>
-            </div>
-
-            {/* Status Header */}
-            <div className="flex items-center gap-4 p-4 rounded-lg bg-white/[0.02] border border-white/[0.06]">
-              <div
-                className={cn(
-                  'w-12 h-12 rounded-lg flex items-center justify-center',
-                  selectedTransaction.type === 'incoming'
-                    ? 'bg-green-500/10 text-green-400/80'
-                    : 'bg-red-500/10 text-red-400/80'
-                )}
+        {/* Empty State */}
+        {transactions.length === 0 && !isLoading && (
+          <div className="text-center py-12">
+            <History className="w-12 h-12 text-white/20 mx-auto mb-3" />
+            <p className="text-white/40">
+              {hasActiveFilters ? 'No se encontraron transacciones con los filtros aplicados' : 'No hay transacciones aún'}
+            </p>
+            {hasActiveFilters && (
+              <button
+                onClick={clearFilters}
+                className="mt-4 px-4 py-2 text-purple-400 hover:text-purple-300 text-sm"
               >
-                {selectedTransaction.type === 'incoming' ? (
-                  <ArrowDownLeft className="w-6 h-6" />
-                ) : (
-                  <ArrowUpRight className="w-6 h-6" />
-                )}
-              </div>
-              <div className="flex-1">
-                <p className="text-xs text-white/40">
-                  {selectedTransaction.type === 'incoming' ? 'Recibido de' : 'Enviado a'}
-                </p>
-                <p className="text-sm text-white/90">
-                  {selectedTransaction.type === 'incoming'
-                    ? selectedTransaction.payerName
-                    : selectedTransaction.beneficiaryName}
-                </p>
-              </div>
-              <Badge
-                variant={
-                  selectedTransaction.status === 'scattered'
-                    ? 'success'
-                    : selectedTransaction.status === 'pending' || selectedTransaction.status === 'sent'
-                    ? 'warning'
-                    : selectedTransaction.status === 'returned'
-                    ? 'danger'
-                    : 'default'
-                }
-                size="md"
+                Limpiar filtros
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* Loading */}
+        {isLoading && (
+          <div className="text-center py-12">
+            <RefreshCw className="w-8 h-8 text-purple-500 animate-spin mx-auto" />
+          </div>
+        )}
+
+        {/* Pagination */}
+        {pagination.totalPages > 1 && (
+          <div className="flex items-center justify-between px-6 py-4 border-t border-white/[0.06]">
+            <span className="text-white/40 text-sm">
+              Mostrando {((pagination.page - 1) * pagination.itemsPerPage) + 1} - {Math.min(pagination.page * pagination.itemsPerPage, pagination.total)} de {pagination.total}
+            </span>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setPagination(prev => ({ ...prev, page: prev.page - 1 }))}
+                disabled={pagination.page <= 1}
+                className="p-2 bg-white/[0.03] border border-white/[0.08] rounded-lg disabled:opacity-50 hover:bg-white/[0.05] transition-colors"
               >
-                {getStatusText(selectedTransaction.status)}
-              </Badge>
-            </div>
-
-            {/* Amount */}
-            <div className="text-center py-4">
-              <p className="text-xs text-white/40 mb-1">Monto</p>
-              <p
-                className={cn(
-                  'text-3xl font-mono',
-                  selectedTransaction.type === 'incoming' ? 'text-green-400/80' : 'text-white/90'
-                )}
+                <ChevronLeft className="w-4 h-4 text-white/60" />
+              </button>
+              <button
+                onClick={() => setPagination(prev => ({ ...prev, page: prev.page + 1 }))}
+                disabled={pagination.page >= pagination.totalPages}
+                className="p-2 bg-white/[0.03] border border-white/[0.08] rounded-lg disabled:opacity-50 hover:bg-white/[0.05] transition-colors"
               >
-                {selectedTransaction.type === 'incoming' ? '+' : '-'}{' '}
-                {formatCurrency(selectedTransaction.amount)}
-              </p>
-            </div>
-
-            {/* Details Grid */}
-            <div className="grid grid-cols-2 gap-3">
-              <div className="col-span-2 p-3 rounded-md bg-white/[0.02] border border-white/[0.06]">
-                <p className="text-xs text-white/30 mb-1">Clave de Rastreo</p>
-                <div className="flex items-center gap-2">
-                  <p className="font-mono text-sm text-white/70 break-all">{selectedTransaction.trackingKey}</p>
-                  <button
-                    className="p-1 hover:bg-white/5 rounded flex-shrink-0"
-                    onClick={() => copyToClipboard(selectedTransaction.trackingKey)}
-                  >
-                    <Copy className="w-3 h-3 text-white/30" />
-                  </button>
-                </div>
-              </div>
-              <div className="p-3 rounded-md bg-white/[0.02] border border-white/[0.06]">
-                <p className="text-xs text-white/30 mb-1">Fecha y Hora</p>
-                <p className="text-sm text-white/70">{formatDate(selectedTransaction.createdAt)}</p>
-              </div>
-              <div className="p-3 rounded-md bg-white/[0.02] border border-white/[0.06]">
-                <p className="text-xs text-white/30 mb-1">Banco {selectedTransaction.type === 'incoming' ? 'Ordenante' : 'Beneficiario'}</p>
-                <p className="text-sm text-white/70">
-                  {getBankName(selectedTransaction.type === 'incoming' ? selectedTransaction.payerBank : selectedTransaction.beneficiaryBank)}
-                </p>
-              </div>
-              <div className="p-3 rounded-md bg-white/[0.02] border border-white/[0.06]">
-                <p className="text-xs text-white/30 mb-1">Concepto</p>
-                <p className="text-sm text-white/70">{selectedTransaction.concept || '-'}</p>
-              </div>
-              {selectedTransaction.beneficiaryAccount && (
-                <div className="col-span-2 p-3 rounded-md bg-white/[0.02] border border-white/[0.06]">
-                  <p className="text-xs text-white/30 mb-1">CLABE Beneficiario</p>
-                  <div className="flex items-center gap-2">
-                    <p className="font-mono text-sm text-white/70">{formatClabe(selectedTransaction.beneficiaryAccount)}</p>
-                    <button
-                      className="p-1 hover:bg-white/5 rounded"
-                      onClick={() => copyToClipboard(selectedTransaction.beneficiaryAccount!)}
-                    >
-                      <Copy className="w-3 h-3 text-white/30" />
-                    </button>
-                  </div>
-                </div>
-              )}
-              {selectedTransaction.payerAccount && (
-                <div className="col-span-2 p-3 rounded-md bg-white/[0.02] border border-white/[0.06]">
-                  <p className="text-xs text-white/30 mb-1">CLABE Ordenante</p>
-                  <div className="flex items-center gap-2">
-                    <p className="font-mono text-sm text-white/70">{formatClabe(selectedTransaction.payerAccount)}</p>
-                    <button
-                      className="p-1 hover:bg-white/5 rounded"
-                      onClick={() => copyToClipboard(selectedTransaction.payerAccount!)}
-                    >
-                      <Copy className="w-3 h-3 text-white/30" />
-                    </button>
-                  </div>
-                </div>
-              )}
-              {selectedTransaction.numericalReference && (
-                <div className="p-3 rounded-md bg-white/[0.02] border border-white/[0.06]">
-                  <p className="text-xs text-white/30 mb-1">Referencia Numerica</p>
-                  <p className="font-mono text-sm text-white/70">{selectedTransaction.numericalReference}</p>
-                </div>
-              )}
-              {selectedTransaction.errorDetail && (
-                <div className="col-span-2 p-3 rounded-md bg-red-500/10 border border-red-500/20">
-                  <p className="text-xs text-red-400/70 mb-1">Detalle de Error</p>
-                  <p className="text-sm text-red-400/90">{selectedTransaction.errorDetail}</p>
-                </div>
-              )}
-            </div>
-
-            {/* Actions */}
-            <div className="flex flex-col gap-3 pt-4 border-t border-white/[0.06]">
-              <div className="flex gap-3">
-                <Button
-                  variant="secondary"
-                  className="flex-1"
-                  leftIcon={<Copy className="w-4 h-4" />}
-                  onClick={() => {
-                    const data = `Clave: ${selectedTransaction.trackingKey}\nMonto: ${formatCurrency(selectedTransaction.amount)}\nBeneficiario: ${selectedTransaction.beneficiaryName || selectedTransaction.payerName}`;
-                    copyToClipboard(data);
-                  }}
-                >
-                  Copiar Datos
-                </Button>
-                <Button
-                  variant="primary"
-                  className="flex-1"
-                  leftIcon={<Download className="w-4 h-4" />}
-                  onClick={() => generateReceiptPDF(selectedTransaction)}
-                >
-                  Descargar Comprobante
-                </Button>
-              </div>
-              {selectedTransaction.status === 'scattered' && selectedTransaction.type === 'outgoing' && (
-                <Button
-                  variant="ghost"
-                  className="w-full"
-                  onClick={() => handleGetCep(selectedTransaction)}
-                  disabled={loadingCep}
-                  leftIcon={loadingCep ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
-                >
-                  {loadingCep ? 'Obteniendo...' : 'Obtener CEP de Banxico'}
-                </Button>
-              )}
+                <ChevronRight className="w-4 h-4 text-white/60" />
+              </button>
             </div>
           </div>
         )}
-      </Modal>
+      </div>
+
+      {/* Transaction Detail Modal */}
+      {selectedTransaction && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div
+            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            onClick={() => setSelectedTransaction(null)}
+          />
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95, y: 20 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            className="relative w-full max-w-lg max-h-[90vh] overflow-y-auto bg-[#0a0a1a] border border-white/[0.08] rounded-2xl shadow-2xl"
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between p-4 border-b border-white/[0.06]">
+              <span className="text-lg font-bold bg-gradient-to-r from-cyan-400 via-purple-400 to-cyan-400 bg-clip-text text-transparent">
+                NOVACORP
+              </span>
+              <button
+                onClick={() => setSelectedTransaction(null)}
+                className="p-2 hover:bg-white/[0.05] rounded-lg transition-colors"
+              >
+                <X className="w-5 h-5 text-white/60" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              {/* Amount */}
+              <div className="text-center py-4">
+                <span className={`text-3xl font-bold ${
+                  selectedTransaction.type === 'incoming' ? 'text-green-400' : 'text-red-400'
+                }`}>
+                  {selectedTransaction.type === 'incoming' ? '+' : '-'}
+                  {formatCurrency(selectedTransaction.amount)}
+                </span>
+                <p className="text-white/40 mt-1">
+                  {selectedTransaction.type === 'incoming' ? 'Depósito recibido' : 'Transferencia enviada'}
+                </p>
+              </div>
+
+              {/* Details */}
+              <div className="space-y-3 text-sm">
+                <div className="flex justify-between py-2 border-b border-white/[0.06]">
+                  <span className="text-white/40">Estado</span>
+                  <span className={`px-2 py-0.5 rounded-full text-xs font-medium border ${getStatusColor(selectedTransaction.status)}`}>
+                    {getStatusText(selectedTransaction.status)}
+                  </span>
+                </div>
+
+                <div className="flex justify-between py-2 border-b border-white/[0.06]">
+                  <span className="text-white/40">Clave de Rastreo</span>
+                  <code className="text-purple-400 font-mono text-xs">{selectedTransaction.trackingKey}</code>
+                </div>
+
+                {selectedTransaction.concept && (
+                  <div className="flex justify-between py-2 border-b border-white/[0.06]">
+                    <span className="text-white/40">Concepto</span>
+                    <span className="text-white text-right max-w-[200px]">{selectedTransaction.concept}</span>
+                  </div>
+                )}
+
+                {selectedTransaction.type === 'incoming' ? (
+                  <>
+                    <div className="flex justify-between py-2 border-b border-white/[0.06]">
+                      <span className="text-white/40">Ordenante</span>
+                      <span className="text-white">{selectedTransaction.payerName || 'N/A'}</span>
+                    </div>
+                    {selectedTransaction.payerAccount && (
+                      <div className="flex justify-between py-2 border-b border-white/[0.06]">
+                        <span className="text-white/40">CLABE Ordenante</span>
+                        <code className="text-white/60 font-mono text-xs">{formatClabe(selectedTransaction.payerAccount)}</code>
+                      </div>
+                    )}
+                    <div className="flex justify-between py-2 border-b border-white/[0.06]">
+                      <span className="text-white/40">Banco</span>
+                      <span className="text-white/60">{getBankName(selectedTransaction.payerBank)}</span>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="flex justify-between py-2 border-b border-white/[0.06]">
+                      <span className="text-white/40">Beneficiario</span>
+                      <span className="text-white">{selectedTransaction.beneficiaryName || 'N/A'}</span>
+                    </div>
+                    {selectedTransaction.beneficiaryAccount && (
+                      <div className="flex justify-between py-2 border-b border-white/[0.06]">
+                        <span className="text-white/40">CLABE Destino</span>
+                        <code className="text-white/60 font-mono text-xs">{formatClabe(selectedTransaction.beneficiaryAccount)}</code>
+                      </div>
+                    )}
+                    <div className="flex justify-between py-2 border-b border-white/[0.06]">
+                      <span className="text-white/40">Banco</span>
+                      <span className="text-white/60">{getBankName(selectedTransaction.beneficiaryBank)}</span>
+                    </div>
+                  </>
+                )}
+
+                <div className="flex justify-between py-2 border-b border-white/[0.06]">
+                  <span className="text-white/40">Fecha</span>
+                  <span className="text-white/60">{formatDate(selectedTransaction.createdAt)}</span>
+                </div>
+
+                {selectedTransaction.numericalReference && (
+                  <div className="flex justify-between py-2 border-b border-white/[0.06]">
+                    <span className="text-white/40">Referencia</span>
+                    <span className="text-white/60 font-mono">{selectedTransaction.numericalReference}</span>
+                  </div>
+                )}
+
+                {selectedTransaction.errorDetail && (
+                  <div className="py-2 border-b border-white/[0.06]">
+                    <span className="text-white/40 block mb-1">Error</span>
+                    <span className="text-red-400 text-xs">{selectedTransaction.errorDetail}</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Actions */}
+              <div className="flex gap-3 pt-4 border-t border-white/[0.06]">
+                <button
+                  onClick={() => {
+                    copyToClipboard(
+                      `Clave: ${selectedTransaction.trackingKey}\nMonto: ${formatCurrency(selectedTransaction.amount)}\n${selectedTransaction.type === 'incoming' ? 'Ordenante' : 'Beneficiario'}: ${selectedTransaction.type === 'incoming' ? selectedTransaction.payerName : selectedTransaction.beneficiaryName}`
+                    );
+                  }}
+                  className="flex-1 flex items-center justify-center gap-2 py-2.5 px-4 bg-white/[0.05] hover:bg-white/[0.08] text-white/80 rounded-lg transition-colors text-sm"
+                >
+                  <Copy className="w-4 h-4" />
+                  Copiar
+                </button>
+                <button
+                  onClick={() => generateReceiptPDF(selectedTransaction)}
+                  className="flex-1 flex items-center justify-center gap-2 py-2.5 px-4 bg-purple-600 hover:bg-purple-500 text-white rounded-lg transition-colors text-sm"
+                >
+                  <Download className="w-4 h-4" />
+                  Descargar PDF
+                </button>
+              </div>
+
+              {selectedTransaction.status === 'scattered' && selectedTransaction.type === 'outgoing' && (
+                <button
+                  onClick={() => handleGetCep(selectedTransaction)}
+                  disabled={loadingCep}
+                  className="w-full flex items-center justify-center gap-2 py-2.5 px-4 bg-white/[0.03] hover:bg-white/[0.05] text-white/60 rounded-lg transition-colors text-sm border border-white/[0.08]"
+                >
+                  {loadingCep ? (
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Download className="w-4 h-4" />
+                  )}
+                  {loadingCep ? 'Obteniendo...' : 'Obtener CEP de Banxico'}
+                </button>
+              )}
+            </div>
+          </motion.div>
+        </div>
+      )}
     </div>
   );
 }

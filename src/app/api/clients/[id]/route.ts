@@ -124,7 +124,7 @@ export async function PATCH(
       details: { clientId: params.id, newStatus: status },
       ipAddress: request.headers.get('x-forwarded-for') || 'unknown',
       userAgent: request.headers.get('user-agent') || 'unknown',
-      severity: 'high',
+      severity: 'warning',
     }).catch(err => console.error('Audit log error:', err));
 
     return NextResponse.json(response);

@@ -1,22 +1,37 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getUserById, getUserTotpSecret, enableTotp, createAuditLogEntry } from '@/lib/db';
 import { verifyTOTP, getClientIP, getUserAgent } from '@/lib/security';
+import { authenticateRequest } from '@/lib/auth-middleware';
+import crypto from 'crypto';
 
 /**
  * POST /api/auth/2fa/verify
  * Verify TOTP code and enable 2FA for the user
- * This is used during initial setup to confirm the user has correctly set up their authenticator
+ * SECURITY: Requires authentication - user can only verify their own 2FA
  */
 export async function POST(request: NextRequest) {
   const clientIP = getClientIP(request);
   const userAgent = getUserAgent(request);
 
   try {
-    const { userId, code } = await request.json();
-
-    if (!userId || !code) {
+    // SECURITY FIX: Require authentication
+    const authResult = await authenticateRequest(request);
+    if (!authResult.success || !authResult.user) {
       return NextResponse.json(
-        { error: 'Se requiere ID de usuario y código' },
+        { error: authResult.error || 'No autorizado' },
+        { status: authResult.statusCode || 401 }
+      );
+    }
+
+    const { code } = await request.json();
+
+    // SECURITY FIX: User can only verify their own 2FA
+    const userId = authResult.user.id;
+    const user = authResult.user;
+
+    if (!code) {
+      return NextResponse.json(
+        { error: 'Se requiere código' },
         { status: 400 }
       );
     }
@@ -26,15 +41,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { error: 'El código debe ser de 6 dígitos' },
         { status: 400 }
-      );
-    }
-
-    // Get user from database
-    const user = await getUserById(userId);
-    if (!user) {
-      return NextResponse.json(
-        { error: 'Usuario no encontrado' },
-        { status: 404 }
       );
     }
 
@@ -52,7 +58,7 @@ export async function POST(request: NextRequest) {
 
     if (!isValid) {
       await createAuditLogEntry({
-        id: `audit_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`,
+        id: `audit_${crypto.randomUUID()}`,
         action: '2FA_FAILED',
         userId,
         userEmail: user.email,
@@ -73,7 +79,7 @@ export async function POST(request: NextRequest) {
 
     // Log successful 2FA enablement
     await createAuditLogEntry({
-      id: `audit_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`,
+      id: `audit_${crypto.randomUUID()}`,
       action: '2FA_ENABLED',
       userId,
       userEmail: user.email,
@@ -90,7 +96,7 @@ export async function POST(request: NextRequest) {
     console.error('2FA verify error:', error);
 
     await createAuditLogEntry({
-      id: `audit_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`,
+      id: `audit_${crypto.randomUUID()}`,
       action: 'SUSPICIOUS_ACTIVITY',
       ipAddress: clientIP,
       userAgent,

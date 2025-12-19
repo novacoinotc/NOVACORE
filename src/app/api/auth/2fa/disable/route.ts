@@ -2,27 +2,41 @@ import { NextRequest, NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
 import { getUserById, disableTotp, isUserTotpEnabled, createAuditLogEntry } from '@/lib/db';
 import { getClientIP, getUserAgent } from '@/lib/security';
+import { authenticateRequest } from '@/lib/auth-middleware';
+import crypto from 'crypto';
 
 /**
  * POST /api/auth/2fa/disable
  * Disable 2FA for a user
- * Requires password verification for security
+ * SECURITY: Requires authentication + password verification
  */
 export async function POST(request: NextRequest) {
   const clientIP = getClientIP(request);
   const userAgent = getUserAgent(request);
 
   try {
-    const { userId, password } = await request.json();
-
-    if (!userId || !password) {
+    // SECURITY FIX: Require authentication
+    const authResult = await authenticateRequest(request);
+    if (!authResult.success || !authResult.user) {
       return NextResponse.json(
-        { error: 'Se requiere ID de usuario y contraseña' },
+        { error: authResult.error || 'No autorizado' },
+        { status: authResult.statusCode || 401 }
+      );
+    }
+
+    const { password } = await request.json();
+
+    // SECURITY FIX: User can only disable their own 2FA
+    const userId = authResult.user.id;
+
+    if (!password) {
+      return NextResponse.json(
+        { error: 'Se requiere contraseña' },
         { status: 400 }
       );
     }
 
-    // Get user from database
+    // Get full user data (with password hash) from database
     const user = await getUserById(userId);
     if (!user) {
       return NextResponse.json(
@@ -35,7 +49,7 @@ export async function POST(request: NextRequest) {
     const isValidPassword = await bcrypt.compare(password, user.password);
     if (!isValidPassword) {
       await createAuditLogEntry({
-        id: `audit_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`,
+        id: `audit_${crypto.randomUUID()}`,
         action: 'SUSPICIOUS_ACTIVITY',
         userId,
         userEmail: user.email,
@@ -65,7 +79,7 @@ export async function POST(request: NextRequest) {
 
     // Log the action
     await createAuditLogEntry({
-      id: `audit_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`,
+      id: `audit_${crypto.randomUUID()}`,
       action: '2FA_DISABLED',
       userId,
       userEmail: user.email,
@@ -82,7 +96,7 @@ export async function POST(request: NextRequest) {
     console.error('2FA disable error:', error);
 
     await createAuditLogEntry({
-      id: `audit_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`,
+      id: `audit_${crypto.randomUUID()}`,
       action: 'SUSPICIOUS_ACTIVITY',
       ipAddress: clientIP,
       userAgent,

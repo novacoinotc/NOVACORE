@@ -1,43 +1,43 @@
 import { NextRequest, NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
-import { getAllUsers, createUser, getUserByEmail, setUserClabeAccess, getUserClabeAccess, getUserById } from '@/lib/db';
+import crypto from 'crypto';
+import { getAllUsers, createUser, getUserByEmail, setUserClabeAccess, getUserClabeAccess } from '@/lib/db';
 import { ALL_PERMISSIONS, Permission, UserRole } from '@/types';
-
-// Helper to get current user from request headers
-async function getCurrentUser(request: NextRequest) {
-  const userId = request.headers.get('x-user-id');
-  if (!userId) return null;
-  return await getUserById(userId);
-}
+import { authenticateRequest } from '@/lib/auth-middleware';
 
 // GET /api/users - List users
 export async function GET(request: NextRequest) {
   try {
-    // Get current user for authorization
-    const currentUser = await getCurrentUser(request);
+    // SECURITY FIX: Use proper authentication instead of trusting x-user-id header
+    const authResult = await authenticateRequest(request);
+    if (!authResult.success || !authResult.user) {
+      return NextResponse.json(
+        { error: authResult.error || 'No autorizado' },
+        { status: authResult.statusCode || 401 }
+      );
+    }
+    const currentUser = authResult.user;
 
     let dbUsers = await getAllUsers();
 
     // Authorization: super_admin can see all, company_admin can see their company's users
-    if (currentUser) {
-      if (currentUser.role === 'super_admin') {
-        // super_admin sees all users
-      } else if (currentUser.role === 'company_admin') {
-        // company_admin only sees users from their company
-        if (!currentUser.company_id) {
-          return NextResponse.json(
-            { error: 'No tienes una empresa asignada' },
-            { status: 403 }
-          );
-        }
-        dbUsers = dbUsers.filter(u => u.company_id === currentUser.company_id);
-      } else {
-        // Regular users cannot list users
+    if (currentUser.role === 'super_admin') {
+      // super_admin sees all users
+    } else if (currentUser.role === 'company_admin') {
+      // company_admin only sees users from their company
+      if (!currentUser.company_id) {
         return NextResponse.json(
-          { error: 'No tienes permiso para ver usuarios' },
+          { error: 'No tienes una empresa asignada' },
           { status: 403 }
         );
       }
+      dbUsers = dbUsers.filter(u => u.company_id === currentUser.company_id);
+    } else {
+      // Regular users cannot list users
+      return NextResponse.json(
+        { error: 'No tienes permiso para ver usuarios' },
+        { status: 403 }
+      );
     }
 
     // Transform to frontend format (without passwords)
@@ -82,11 +82,18 @@ export async function GET(request: NextRequest) {
 // POST /api/users - Create new user
 export async function POST(request: NextRequest) {
   try {
+    // SECURITY FIX: Use proper authentication instead of trusting x-user-id header
+    const authResult = await authenticateRequest(request);
+    if (!authResult.success || !authResult.user) {
+      return NextResponse.json(
+        { error: authResult.error || 'No autorizado' },
+        { status: authResult.statusCode || 401 }
+      );
+    }
+    const currentUser = authResult.user;
+
     const body = await request.json();
     let { email, password, name, role, companyId, permissions, clabeAccountIds, isActive } = body;
-
-    // Get current user for authorization
-    const currentUser = await getCurrentUser(request);
 
     // Validation
     if (!email || !password || !name || !role) {
@@ -106,43 +113,41 @@ export async function POST(request: NextRequest) {
     }
 
     // Authorization: super_admin can create any user, company_admin can create users in their company
-    if (currentUser) {
-      if (currentUser.role === 'super_admin') {
-        // super_admin can create any user
-      } else if (currentUser.role === 'company_admin') {
-        // company_admin can only create users in their own company
-        if (!currentUser.company_id) {
-          return NextResponse.json(
-            { error: 'No tienes una empresa asignada' },
-            { status: 403 }
-          );
-        }
-
-        // company_admin can only create 'user' or 'company_admin' roles for their company
-        if (role === 'super_admin') {
-          return NextResponse.json(
-            { error: 'No puedes crear usuarios con rol super_admin' },
-            { status: 403 }
-          );
-        }
-
-        // Force the new user to be in the same company
-        if (companyId && companyId !== currentUser.company_id) {
-          return NextResponse.json(
-            { error: 'Solo puedes crear usuarios en tu propia empresa' },
-            { status: 403 }
-          );
-        }
-
-        // Override companyId to ensure it's the admin's company
-        companyId = currentUser.company_id;
-      } else {
-        // Regular users cannot create other users
+    if (currentUser.role === 'super_admin') {
+      // super_admin can create any user
+    } else if (currentUser.role === 'company_admin') {
+      // company_admin can only create users in their own company
+      if (!currentUser.company_id) {
         return NextResponse.json(
-          { error: 'No tienes permiso para crear usuarios' },
+          { error: 'No tienes una empresa asignada' },
           { status: 403 }
         );
       }
+
+      // company_admin can only create 'user' or 'company_admin' roles for their company
+      if (role === 'super_admin') {
+        return NextResponse.json(
+          { error: 'No puedes crear usuarios con rol super_admin' },
+          { status: 403 }
+        );
+      }
+
+      // Force the new user to be in the same company
+      if (companyId && companyId !== currentUser.company_id) {
+        return NextResponse.json(
+          { error: 'Solo puedes crear usuarios en tu propia empresa' },
+          { status: 403 }
+        );
+      }
+
+      // Override companyId to ensure it's the admin's company
+      companyId = currentUser.company_id;
+    } else {
+      // Regular users cannot create other users
+      return NextResponse.json(
+        { error: 'No tienes permiso para crear usuarios' },
+        { status: 403 }
+      );
     }
 
     // Check if email already exists
@@ -157,9 +162,9 @@ export async function POST(request: NextRequest) {
     // Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // Create user
+    // Create user - SECURITY FIX: Use crypto.randomUUID() for secure ID generation
     const dbUser = await createUser({
-      id: 'user_' + Date.now(),
+      id: `user_${crypto.randomUUID()}`,
       email,
       password: hashedPassword,
       name,

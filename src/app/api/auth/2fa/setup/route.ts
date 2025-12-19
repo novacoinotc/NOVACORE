@@ -1,34 +1,31 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getUserById, saveTotpSecret, isUserTotpEnabled, createAuditLogEntry } from '@/lib/db';
 import { generateTOTPSecret, generateTOTPUri, getClientIP, getUserAgent } from '@/lib/security';
+import { authenticateRequest } from '@/lib/auth-middleware';
+import crypto from 'crypto';
 
 /**
  * POST /api/auth/2fa/setup
  * Generate a new TOTP secret and QR code URI for 2FA setup
- * Requires authenticated user (userId in body)
+ * SECURITY: Requires authentication - user can only setup 2FA for themselves
  */
 export async function POST(request: NextRequest) {
   const clientIP = getClientIP(request);
   const userAgent = getUserAgent(request);
 
   try {
-    const { userId } = await request.json();
-
-    if (!userId) {
+    // SECURITY FIX: Require authentication
+    const authResult = await authenticateRequest(request);
+    if (!authResult.success || !authResult.user) {
       return NextResponse.json(
-        { error: 'Se requiere ID de usuario' },
-        { status: 400 }
+        { error: authResult.error || 'No autorizado' },
+        { status: authResult.statusCode || 401 }
       );
     }
 
-    // Get user from database
-    const user = await getUserById(userId);
-    if (!user) {
-      return NextResponse.json(
-        { error: 'Usuario no encontrado' },
-        { status: 404 }
-      );
-    }
+    // SECURITY FIX: User can only setup 2FA for themselves
+    const userId = authResult.user.id;
+    const user = authResult.user;
 
     // Check if 2FA is already enabled
     const totpEnabled = await isUserTotpEnabled(userId);
@@ -48,9 +45,9 @@ export async function POST(request: NextRequest) {
     // Save the secret (but don't enable 2FA yet - that happens after verification)
     await saveTotpSecret(userId, secret);
 
-    // Log the setup attempt
+    // SECURITY FIX: Use crypto.randomUUID() instead of Math.random()
     await createAuditLogEntry({
-      id: `audit_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`,
+      id: `audit_${crypto.randomUUID()}`,
       action: '2FA_SETUP_INITIATED',
       userId,
       userEmail: user.email,
@@ -69,7 +66,7 @@ export async function POST(request: NextRequest) {
     console.error('2FA setup error:', error);
 
     await createAuditLogEntry({
-      id: `audit_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`,
+      id: `audit_${crypto.randomUUID()}`,
       action: 'SUSPICIOUS_ACTIVITY',
       ipAddress: clientIP,
       userAgent,

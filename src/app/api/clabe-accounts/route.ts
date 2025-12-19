@@ -1,43 +1,40 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getAllClabeAccounts, getClabeAccountsByCompanyId, createClabeAccount, getClabeAccountByClabe, getCompanyById, getUserById, getClabeAccountsForUser, DbClabeAccount } from '@/lib/db';
+import crypto from 'crypto';
+import { getAllClabeAccounts, getClabeAccountsByCompanyId, createClabeAccount, getClabeAccountByClabe, getCompanyById, getClabeAccountsForUser, DbClabeAccount } from '@/lib/db';
 import { validateClabe } from '@/lib/utils';
-
-// Helper to get current user from request headers
-async function getCurrentUser(request: NextRequest) {
-  const userId = request.headers.get('x-user-id');
-  if (!userId) return null;
-  return await getUserById(userId);
-}
+import { authenticateRequest } from '@/lib/auth-middleware';
 
 // GET /api/clabe-accounts - List CLABE accounts (filtered by user access)
 export async function GET(request: NextRequest) {
   try {
+    // SECURITY FIX: Use proper authentication instead of trusting x-user-id header
+    const authResult = await authenticateRequest(request);
+    if (!authResult.success || !authResult.user) {
+      return NextResponse.json(
+        { error: authResult.error || 'No autorizado' },
+        { status: authResult.statusCode || 401 }
+      );
+    }
+    const currentUser = authResult.user;
+
     const { searchParams } = new URL(request.url);
     const companyId = searchParams.get('companyId');
 
-    // Get current user for authorization
-    const currentUser = await getCurrentUser(request);
-
     let dbClabeAccounts: DbClabeAccount[] = [];
 
-    if (currentUser) {
-      if (currentUser.role === 'super_admin') {
-        // Super admin sees all CLABE accounts
-        if (companyId) {
-          dbClabeAccounts = await getClabeAccountsByCompanyId(companyId);
-        } else {
-          dbClabeAccounts = await getAllClabeAccounts();
-        }
-      } else if (currentUser.role === 'company_admin' && currentUser.company_id) {
-        // Company admin sees all CLABEs from their company
-        dbClabeAccounts = await getClabeAccountsByCompanyId(currentUser.company_id);
+    if (currentUser.role === 'super_admin') {
+      // Super admin sees all CLABE accounts
+      if (companyId) {
+        dbClabeAccounts = await getClabeAccountsByCompanyId(companyId);
       } else {
-        // Regular user sees only assigned CLABEs
-        dbClabeAccounts = await getClabeAccountsForUser(currentUser.id);
+        dbClabeAccounts = await getAllClabeAccounts();
       }
+    } else if (currentUser.role === 'company_admin' && currentUser.company_id) {
+      // Company admin sees all CLABEs from their company
+      dbClabeAccounts = await getClabeAccountsByCompanyId(currentUser.company_id);
     } else {
-      // No user context - return empty (should not happen in authenticated routes)
-      dbClabeAccounts = [];
+      // Regular user sees only assigned CLABEs
+      dbClabeAccounts = await getClabeAccountsForUser(currentUser.id);
     }
 
     // Transform to frontend format
@@ -66,11 +63,18 @@ export async function GET(request: NextRequest) {
 // POST /api/clabe-accounts - Create new CLABE account
 export async function POST(request: NextRequest) {
   try {
+    // SECURITY FIX: Use proper authentication instead of trusting x-user-id header
+    const authResult = await authenticateRequest(request);
+    if (!authResult.success || !authResult.user) {
+      return NextResponse.json(
+        { error: authResult.error || 'No autorizado' },
+        { status: authResult.statusCode || 401 }
+      );
+    }
+    const currentUser = authResult.user;
+
     const body = await request.json();
     const { companyId, clabe, alias, description, isActive, isMain } = body;
-
-    // Get current user for authorization
-    const currentUser = await getCurrentUser(request);
 
     // Validation
     if (!companyId || !clabe || !alias) {
@@ -81,21 +85,19 @@ export async function POST(request: NextRequest) {
     }
 
     // Authorization: super_admin can create for any company, company_admin only for their own
-    if (currentUser) {
-      if (currentUser.role === 'company_admin') {
-        // company_admin can only create CLABEs for their own company
-        if (currentUser.company_id !== companyId) {
-          return NextResponse.json(
-            { error: 'Solo puedes crear cuentas CLABE para tu propia empresa' },
-            { status: 403 }
-          );
-        }
-      } else if (currentUser.role !== 'super_admin') {
+    if (currentUser.role === 'company_admin') {
+      // company_admin can only create CLABEs for their own company
+      if (currentUser.company_id !== companyId) {
         return NextResponse.json(
-          { error: 'No tienes permiso para crear cuentas CLABE' },
+          { error: 'Solo puedes crear cuentas CLABE para tu propia empresa' },
           { status: 403 }
         );
       }
+    } else if (currentUser.role !== 'super_admin') {
+      return NextResponse.json(
+        { error: 'No tienes permiso para crear cuentas CLABE' },
+        { status: 403 }
+      );
     }
 
     // Validate CLABE format (18 digits)
@@ -141,9 +143,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Create CLABE account
+    // Create CLABE account - SECURITY FIX: Use crypto.randomUUID() for secure ID generation
     const dbClabeAccount = await createClabeAccount({
-      id: 'clabe_' + Date.now(),
+      id: `clabe_${crypto.randomUUID()}`,
       companyId,
       clabe,
       alias,

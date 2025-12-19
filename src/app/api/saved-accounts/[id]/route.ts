@@ -3,17 +3,10 @@ import {
   getSavedAccountById,
   updateSavedAccount,
   deleteSavedAccount,
-  getUserById,
   getSavedAccountByUserAndClabe
 } from '@/lib/db';
 import { SavedAccount } from '@/types';
-
-// Helper to get current user from request headers
-async function getCurrentUser(request: NextRequest) {
-  const userId = request.headers.get('x-user-id');
-  if (!userId) return null;
-  return await getUserById(userId);
-}
+import { authenticateRequest } from '@/lib/auth-middleware';
 
 // Transform DB saved account to frontend format
 function transformSavedAccount(dbSavedAccount: any): SavedAccount {
@@ -40,14 +33,15 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const currentUser = await getCurrentUser(request);
-
-    if (!currentUser) {
+    // SECURITY FIX: Use proper authentication instead of trusting x-user-id header
+    const authResult = await authenticateRequest(request);
+    if (!authResult.success || !authResult.user) {
       return NextResponse.json(
-        { error: 'No autorizado' },
-        { status: 401 }
+        { error: authResult.error || 'No autorizado' },
+        { status: authResult.statusCode || 401 }
       );
     }
+    const currentUser = authResult.user;
 
     const { id } = await params;
     const dbSavedAccount = await getSavedAccountById(id);
@@ -85,14 +79,15 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const currentUser = await getCurrentUser(request);
-
-    if (!currentUser) {
+    // SECURITY FIX: Use proper authentication instead of trusting x-user-id header
+    const authResult = await authenticateRequest(request);
+    if (!authResult.success || !authResult.user) {
       return NextResponse.json(
-        { error: 'No autorizado' },
-        { status: 401 }
+        { error: authResult.error || 'No autorizado' },
+        { status: authResult.statusCode || 401 }
       );
     }
+    const currentUser = authResult.user;
 
     const { id } = await params;
     const existingAccount = await getSavedAccountById(id);
@@ -172,14 +167,15 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const currentUser = await getCurrentUser(request);
-
-    if (!currentUser) {
+    // SECURITY FIX: Use proper authentication instead of trusting x-user-id header
+    const authResult = await authenticateRequest(request);
+    if (!authResult.success || !authResult.user) {
       return NextResponse.json(
-        { error: 'No autorizado' },
-        { status: 401 }
+        { error: authResult.error || 'No autorizado' },
+        { status: authResult.statusCode || 401 }
       );
     }
+    const currentUser = authResult.user;
 
     const { id } = await params;
     const existingAccount = await getSavedAccountById(id);

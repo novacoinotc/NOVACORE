@@ -1,12 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { pool, getUserById, getClabeAccountsForUser, getClabeAccountsByCompanyId, getUserClabeAccess } from '@/lib/db';
-
-// Helper to get current user from request headers
-async function getCurrentUser(request: NextRequest) {
-  const userId = request.headers.get('x-user-id');
-  if (!userId) return null;
-  return await getUserById(userId);
-}
+import { authenticateRequest } from '@/lib/auth-middleware';
 
 /**
  * GET /api/transactions
@@ -33,28 +27,33 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
 
-    // Get current user for authorization
-    const currentUser = await getCurrentUser(request);
+    // SECURITY FIX: Use proper authentication instead of trusting x-user-id header
+    const authResult = await authenticateRequest(request);
+    if (!authResult.success || !authResult.user) {
+      return NextResponse.json(
+        { error: authResult.error || 'No autorizado' },
+        { status: authResult.statusCode || 401 }
+      );
+    }
+    const currentUser = authResult.user;
 
     // Get allowed CLABE account IDs for this user
     let allowedClabeIds: string[] = [];
 
-    if (currentUser) {
-      if (currentUser.role === 'super_admin') {
-        // Super admin can see all - no filter needed
-        allowedClabeIds = []; // Empty means no filter
-      } else if (currentUser.role === 'company_admin' && currentUser.company_id) {
-        // Company admin sees all CLABEs from their company
-        const companyClabes = await getClabeAccountsByCompanyId(currentUser.company_id);
-        allowedClabeIds = companyClabes.map(c => c.id);
-      } else {
-        // Regular user sees only assigned CLABEs
-        allowedClabeIds = await getUserClabeAccess(currentUser.id);
-      }
+    if (currentUser.role === 'super_admin') {
+      // Super admin can see all - no filter needed
+      allowedClabeIds = []; // Empty means no filter
+    } else if (currentUser.role === 'company_admin' && currentUser.company_id) {
+      // Company admin sees all CLABEs from their company
+      const companyClabes = await getClabeAccountsByCompanyId(currentUser.company_id);
+      allowedClabeIds = companyClabes.map(c => c.id);
+    } else {
+      // Regular user sees only assigned CLABEs
+      allowedClabeIds = await getUserClabeAccess(currentUser.id);
     }
 
     // If user is not super_admin and has no CLABEs assigned, return empty result
-    if (currentUser && currentUser.role !== 'super_admin' && allowedClabeIds.length === 0) {
+    if (currentUser.role !== 'super_admin' && allowedClabeIds.length === 0) {
       return NextResponse.json({
         transactions: [],
         pagination: { page: 1, itemsPerPage: 50, total: 0, totalPages: 0 },

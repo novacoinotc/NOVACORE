@@ -3,6 +3,14 @@ import { getPendingConfirmationTransactions, confirmPendingTransaction, updateTr
 import { createOrder, buildOrderOriginalString } from '@/lib/opm-api';
 import { signWithPrivateKey } from '@/lib/crypto';
 import { CreateOrderRequest } from '@/types';
+import { authenticateRequest } from '@/lib/auth-middleware';
+import { createAuditLogEntry } from '@/lib/security';
+
+// SECURITY FIX: In-memory lock to prevent concurrent execution
+// In production, use Redis distributed lock
+let isProcessing = false;
+let lastProcessingTime = 0;
+const MIN_PROCESSING_INTERVAL_MS = 5000; // Minimum 5 seconds between runs
 
 /**
  * POST /api/orders/confirm-pending
@@ -15,12 +23,52 @@ import { CreateOrderRequest } from '@/types';
  * 1. Check if grace period has expired
  * 2. Send the order to OPM API (order is created NOW, not before)
  * 3. Update local transaction with OPM order ID and status
+ *
+ * SECURITY: Requires authentication and super_admin role
  */
 export async function POST(request: NextRequest) {
   console.log('=== PROCESSING PENDING CONFIRMATIONS ===');
   console.log('Timestamp:', new Date().toISOString());
 
   try {
+    // SECURITY FIX: Require authentication
+    const authResult = await authenticateRequest(request);
+    if (!authResult.success || !authResult.user) {
+      return NextResponse.json(
+        { error: authResult.error || 'No autorizado' },
+        { status: authResult.statusCode || 401 }
+      );
+    }
+
+    // SECURITY FIX: Only super_admin can execute this critical operation
+    if (authResult.user.role !== 'super_admin') {
+      return NextResponse.json(
+        { error: 'Solo super administradores pueden procesar transacciones pendientes' },
+        { status: 403 }
+      );
+    }
+
+    // SECURITY FIX: Prevent concurrent execution (race condition protection)
+    const now = Date.now();
+    if (isProcessing) {
+      return NextResponse.json(
+        { error: 'Procesamiento ya en curso', message: 'Espere a que termine el procesamiento actual' },
+        { status: 429 }
+      );
+    }
+
+    // Rate limit protection
+    if (now - lastProcessingTime < MIN_PROCESSING_INTERVAL_MS) {
+      return NextResponse.json(
+        { error: 'Demasiadas solicitudes', message: 'Espere al menos 5 segundos entre ejecuciones' },
+        { status: 429 }
+      );
+    }
+
+    // Acquire lock
+    isProcessing = true;
+    lastProcessingTime = now;
+
     // Get all transactions past their confirmation deadline
     const pendingTransactions = await getPendingConfirmationTransactions();
 
@@ -140,19 +188,38 @@ export async function POST(request: NextRequest) {
     console.log('=== CONFIRMATION PROCESSING COMPLETE ===');
     console.log(`Processed: ${results.processed}, Confirmed: ${results.confirmed}, Failed: ${results.failed}, Errors: ${results.errors.length}`);
 
+    // SECURITY FIX: Audit log for batch processing
+    await createAuditLogEntry({
+      action: 'BATCH_CONFIRM_PENDING',
+      userId: authResult.user.id,
+      userEmail: authResult.user.email,
+      details: {
+        processed: results.processed,
+        confirmed: results.confirmed,
+        failed: results.failed,
+      },
+      ipAddress: request.headers.get('x-forwarded-for') || 'unknown',
+      userAgent: request.headers.get('user-agent') || 'unknown',
+    }).catch(err => console.error('Audit log error:', err));
+
+    // SECURITY FIX: Release lock
+    isProcessing = false;
+
     return NextResponse.json({
       success: results.failed === 0,
       results,
       timestamp: new Date().toISOString(),
     });
   } catch (error) {
+    // SECURITY FIX: Release lock on error
+    isProcessing = false;
+
     console.error('=== CONFIRMATION PROCESSING ERROR ===');
     console.error('Error:', error);
 
     return NextResponse.json(
       {
         error: 'Error processing pending confirmations',
-        details: error instanceof Error ? error.message : 'Unknown error',
       },
       { status: 500 }
     );
@@ -164,9 +231,28 @@ export async function POST(request: NextRequest) {
  *
  * Get count of transactions pending confirmation.
  * Useful for monitoring.
+ *
+ * SECURITY: Requires authentication and admin role
  */
 export async function GET(request: NextRequest) {
   try {
+    // SECURITY FIX: Require authentication
+    const authResult = await authenticateRequest(request);
+    if (!authResult.success || !authResult.user) {
+      return NextResponse.json(
+        { error: authResult.error || 'No autorizado' },
+        { status: authResult.statusCode || 401 }
+      );
+    }
+
+    // SECURITY FIX: Only admins can view pending transactions
+    if (!['super_admin', 'company_admin'].includes(authResult.user.role)) {
+      return NextResponse.json(
+        { error: 'No tienes permiso para ver transacciones pendientes' },
+        { status: 403 }
+      );
+    }
+
     const pendingTransactions = await getPendingConfirmationTransactions();
 
     return NextResponse.json({

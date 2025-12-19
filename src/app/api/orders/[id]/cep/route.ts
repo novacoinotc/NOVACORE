@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getOrderCep } from '@/lib/opm-api';
+import { authenticateRequest, validateClabeAccess } from '@/lib/auth-middleware';
+import { getTransactionByOpmOrderId } from '@/lib/db';
 
 /**
  * GET /api/orders/[id]/cep
@@ -8,13 +10,41 @@ import { getOrderCep } from '@/lib/opm-api';
  *
  * The CEP is the official SPEI payment receipt that can be used as
  * legal proof of the transfer.
+ *
+ * SECURITY: Requires authentication and validates user has access to the order
  */
 export async function GET(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
   try {
+    // SECURITY FIX: Require authentication
+    const authResult = await authenticateRequest(request);
+    if (!authResult.success || !authResult.user) {
+      return NextResponse.json(
+        { error: authResult.error || 'No autorizado' },
+        { status: authResult.statusCode || 401 }
+      );
+    }
+
     const orderId = params.id;
+
+    // SECURITY FIX: Validate user has access to this order (IDOR protection)
+    const transaction = await getTransactionByOpmOrderId(orderId);
+    if (transaction && transaction.clabe_account_id) {
+      const hasAccess = await validateClabeAccess(
+        authResult.user.id,
+        transaction.clabe_account_id,
+        authResult.user.role
+      );
+      if (!hasAccess) {
+        return NextResponse.json(
+          { error: 'No tienes acceso a esta orden' },
+          { status: 403 }
+        );
+      }
+    }
+
     console.log('Fetching CEP for order:', orderId);
 
     const apiKey = process.env.OPM_API_KEY;

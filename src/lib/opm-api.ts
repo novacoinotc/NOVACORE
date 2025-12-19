@@ -95,7 +95,10 @@ function getHeaders(apiKey?: string): HeadersInit {
   };
 }
 
-// Generic fetch wrapper with error handling
+// SECURITY FIX: Default timeout for OPM API calls (30 seconds)
+const OPM_API_TIMEOUT_MS = 30000;
+
+// Generic fetch wrapper with error handling and timeout
 async function fetchApi<T>(
   endpoint: string,
   options: RequestInit = {},
@@ -103,21 +106,38 @@ async function fetchApi<T>(
 ): Promise<ApiResponse<T>> {
   const url = buildUrl(endpoint);
 
-  const response = await fetch(url, {
-    ...options,
-    headers: {
-      ...getHeaders(apiKey),
-      ...options.headers,
-    },
-  });
+  // SECURITY FIX: Add timeout to prevent indefinite hangs
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), OPM_API_TIMEOUT_MS);
 
-  const data = await response.json();
+  try {
+    const response = await fetch(url, {
+      ...options,
+      headers: {
+        ...getHeaders(apiKey),
+        ...options.headers,
+      },
+      signal: controller.signal,
+    });
 
-  if (!response.ok) {
-    throw new Error(data.error || `API Error: ${response.status}`);
+    clearTimeout(timeoutId);
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.error || `API Error: ${response.status}`);
+    }
+
+    return data;
+  } catch (error) {
+    clearTimeout(timeoutId);
+
+    // SECURITY FIX: Provide clear error message for timeouts
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new Error(`OPM API timeout after ${OPM_API_TIMEOUT_MS}ms - endpoint: ${endpoint}`);
+    }
+    throw error;
   }
-
-  return data;
 }
 
 // ==================== ORDERS API ====================

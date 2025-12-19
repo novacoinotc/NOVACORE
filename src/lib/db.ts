@@ -1,4 +1,5 @@
 import { Pool, QueryResult } from 'pg';
+import crypto from 'crypto';
 
 // Create PostgreSQL connection pool for AWS RDS
 const pool = new Pool({
@@ -1425,7 +1426,8 @@ export async function createCommissionTransaction(params: {
   targetClabe: string;
   companyId: string;
 }): Promise<DbTransaction> {
-  const trackingKey = `COM${Date.now()}${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
+  // SECURITY FIX: Use crypto.randomBytes for secure tracking key
+  const trackingKey = `COM${Date.now().toString(36).toUpperCase()}${crypto.randomBytes(4).toString('hex').toUpperCase()}`.substring(0, 30);
 
   return createTransaction({
     id: `tx_comm_${Date.now()}`,

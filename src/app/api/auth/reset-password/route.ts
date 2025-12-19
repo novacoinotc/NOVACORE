@@ -1,14 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
+import crypto from 'crypto';
 import { getUserByEmail, updateUser, disableTotp, createAuditLogEntry } from '@/lib/db';
 import { getClientIP, getUserAgent } from '@/lib/security';
+
+// SECURITY: Bcrypt rounds for password hashing (12+ recommended for production)
+const BCRYPT_ROUNDS = 12;
 
 // Simple in-memory store for reset tokens (in production, use database or Redis)
 const resetTokens = new Map<string, { email: string; expiresAt: number }>();
 
-// Generate a random 6-digit code
+/**
+ * Generate a cryptographically secure random 6-digit code
+ * SECURITY FIX: Uses crypto.randomInt() instead of Math.random()
+ */
 function generateResetCode(): string {
-  return Math.floor(100000 + Math.random() * 900000).toString();
+  // crypto.randomInt generates a cryptographically secure random integer
+  return crypto.randomInt(100000, 1000000).toString();
 }
 
 /**
@@ -53,7 +61,7 @@ export async function POST(request: NextRequest) {
 
       // Log the reset request
       await createAuditLogEntry({
-        id: `audit_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`,
+        id: `audit_${crypto.randomUUID()}`,
         action: 'PASSWORD_RESET_REQUESTED',
         userId: user.id,
         userEmail: email,
@@ -117,8 +125,8 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      // Hash new password
-      const hashedPassword = await bcrypt.hash(newPassword, 10);
+      // Hash new password with secure bcrypt rounds
+      const hashedPassword = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
 
       // Update password
       await updateUser(user.id, { password: hashedPassword });
@@ -135,7 +143,7 @@ export async function POST(request: NextRequest) {
 
       // Log the password reset
       await createAuditLogEntry({
-        id: `audit_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`,
+        id: `audit_${crypto.randomUUID()}`,
         action: 'PASSWORD_RESET_COMPLETED',
         userId: user.id,
         userEmail: tokenData.email,

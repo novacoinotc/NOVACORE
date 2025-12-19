@@ -13,6 +13,7 @@
  * - DATABASE_URL: PostgreSQL connection string
  */
 
+import crypto from 'crypto';
 import { listOrders, getBalance, ListOrdersParams } from '@/lib/opm-api';
 import {
   createTransaction,
@@ -68,7 +69,7 @@ async function syncOrder(order: Order, type: 'incoming' | 'outgoing'): Promise<'
         : await getClabeAccountByClabe(order.beneficiaryAccount);
 
       await createTransaction({
-        id: `tx_sync_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`,
+        id: `tx_sync_${crypto.randomUUID()}`,
         clabeAccountId: clabeAccount?.id,
         type,
         status: newStatus,

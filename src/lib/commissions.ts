@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import {
   DbTransaction,
   DbCompany,
@@ -71,7 +72,7 @@ export async function processCommission(
     }
 
     // Create pending commission record (will be processed at daily cutoff - 10 PM)
-    const pendingCommissionId = `pc_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+    const pendingCommissionId = `pc_${crypto.randomUUID()}`;
 
     await createPendingCommission({
       id: pendingCommissionId,
@@ -209,7 +210,7 @@ async function processCompanyCutoff(group: {
     const roundedAmount = Math.round(group.totalAmount * 100) / 100;
 
     // Create cutoff record
-    const cutoffId = `cutoff_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+    const cutoffId = `cutoff_${crypto.randomUUID()}`;
     const cutoff = await createCommissionCutoff({
       id: cutoffId,
       companyId: group.companyId,
@@ -223,7 +224,8 @@ async function processCompanyCutoff(group: {
     await markCommissionsAsProcessed(group.commissionIds, cutoffId);
 
     // Create the consolidated commission transaction
-    const trackingKey = `CUTOFF${Date.now()}${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
+    // SECURITY FIX: Use crypto.randomBytes for secure tracking key
+    const trackingKey = `CUTOFF${Date.now().toString(36).toUpperCase()}${crypto.randomBytes(4).toString('hex').toUpperCase()}`.substring(0, 30);
     const transactionId = `tx_cutoff_${Date.now()}`;
     const today = new Date().toLocaleDateString('es-MX', { day: '2-digit', month: '2-digit', year: 'numeric' });
 

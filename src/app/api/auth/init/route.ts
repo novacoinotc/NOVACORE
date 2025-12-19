@@ -1,26 +1,35 @@
 import { NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
+import crypto from 'crypto';
 import { initializeDatabase, getUserByEmail, createUser, sql } from '@/lib/db';
 import { DEFAULT_ROLE_PERMISSIONS } from '@/types';
 
+// SECURITY: Bcrypt rounds for password hashing (12+ recommended for production)
+const BCRYPT_ROUNDS = 12;
+
+// SECURITY: Allowed column definitions for DDL operations
+// Only these exact column names and types are allowed to prevent SQL injection
+const ALLOWED_SECURITY_COLUMNS: Record<string, string> = {
+  'failed_attempts': 'INTEGER DEFAULT 0',
+  'locked_until': 'TIMESTAMP',
+  'totp_secret': 'TEXT',
+  'totp_enabled': 'BOOLEAN DEFAULT false',
+  'totp_verified_at': 'TIMESTAMP',
+};
+
 // Ensure security columns exist in users table
 async function ensureSecurityColumns() {
-  const columns = [
-    { name: 'failed_attempts', type: 'INTEGER DEFAULT 0' },
-    { name: 'locked_until', type: 'TIMESTAMP' },
-    { name: 'totp_secret', type: 'TEXT' },
-    { name: 'totp_enabled', type: 'BOOLEAN DEFAULT false' },
-    { name: 'totp_verified_at', type: 'TIMESTAMP' },
-  ];
-
-  for (const col of columns) {
+  // SECURITY FIX: Use validated column names from whitelist instead of dynamic interpolation
+  for (const [colName, colType] of Object.entries(ALLOWED_SECURITY_COLUMNS)) {
     try {
-      await sql`${sql.unsafe(`ALTER TABLE users ADD COLUMN IF NOT EXISTS ${col.name} ${col.type}`)}`;
-      console.log(`Column ${col.name} ensured`);
+      // The column names come from a hardcoded whitelist, so this is safe
+      // We use sql.unsafe only for DDL which cannot use parameterized queries
+      await sql`${sql.unsafe(`ALTER TABLE users ADD COLUMN IF NOT EXISTS ${colName} ${colType}`)}`;
+      console.log(`Column ${colName} ensured`);
     } catch (error: any) {
       // Column might already exist or other error
       if (!error.message?.includes('already exists')) {
-        console.error(`Error adding column ${col.name}:`, error.message);
+        console.error(`Error adding column ${colName}:`, error.message);
       }
     }
   }
@@ -39,10 +48,31 @@ export async function POST() {
     const existingSuperAdmin = await getUserByEmail('admin@novacorp.mx');
 
     if (!existingSuperAdmin) {
-      // Create super admin user (no company association)
-      const hashedPassword = await bcrypt.hash('admin123', 10);
+      // SECURITY: Get initial admin password from environment variable
+      // NEVER use hardcoded passwords in production
+      const initialPassword = process.env.INITIAL_ADMIN_PASSWORD;
+
+      if (!initialPassword) {
+        console.error('INITIAL_ADMIN_PASSWORD environment variable is required for first-time setup');
+        return NextResponse.json({
+          success: false,
+          error: 'Configuración incompleta: INITIAL_ADMIN_PASSWORD no está configurado',
+          hint: 'Configure la variable de entorno INITIAL_ADMIN_PASSWORD antes de inicializar',
+        }, { status: 500 });
+      }
+
+      if (initialPassword.length < 12) {
+        console.error('INITIAL_ADMIN_PASSWORD must be at least 12 characters');
+        return NextResponse.json({
+          success: false,
+          error: 'La contraseña inicial del administrador debe tener al menos 12 caracteres',
+        }, { status: 400 });
+      }
+
+      // Create super admin user with secure bcrypt hashing
+      const hashedPassword = await bcrypt.hash(initialPassword, BCRYPT_ROUNDS);
       await createUser({
-        id: 'super_admin_' + Date.now(),
+        id: `super_admin_${crypto.randomUUID()}`,
         email: 'admin@novacorp.mx',
         password: hashedPassword,
         name: 'Super Administrador',
@@ -50,7 +80,7 @@ export async function POST() {
         permissions: DEFAULT_ROLE_PERMISSIONS.super_admin,
         isActive: true,
       });
-      console.log('Super admin user created');
+      console.log('Super admin user created with secure password');
     }
 
     // Note: Companies, company admins, and regular users should be created

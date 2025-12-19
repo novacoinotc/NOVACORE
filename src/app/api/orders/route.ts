@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import crypto from 'crypto';
 import { listOrders } from '@/lib/opm-api';
 import { generateNumericalReference, generateTrackingKey } from '@/lib/crypto';
 import { validateOrderFields, prepareTextForSpei, sanitizeForSpei } from '@/lib/utils';
@@ -140,7 +141,7 @@ export async function POST(request: NextRequest) {
         // Log failed 2FA attempt
         const user = await getUserById(userId);
         await createAuditLogEntry({
-          id: `audit_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`,
+          id: `audit_${crypto.randomUUID()}`,
           action: '2FA_FAILED',
           userId,
           userEmail: user?.email,
@@ -165,7 +166,7 @@ export async function POST(request: NextRequest) {
       // Log successful 2FA verification for transfer
       const user = await getUserById(userId);
       await createAuditLogEntry({
-        id: `audit_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`,
+        id: `audit_${crypto.randomUUID()}`,
         action: 'TRANSFER_INITIATED',
         userId,
         userEmail: user?.email,
@@ -253,7 +254,7 @@ export async function POST(request: NextRequest) {
       // Log the failed attempt
       const user = await getUserById(userId);
       await createAuditLogEntry({
-        id: `audit_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`,
+        id: `audit_${crypto.randomUUID()}`,
         action: 'TRANSFER_INSUFFICIENT_BALANCE',
         userId,
         userEmail: user?.email,
@@ -400,7 +401,7 @@ export async function POST(request: NextRequest) {
       // All outgoing transactions start as pending_confirmation during grace period
       const status = 'pending_confirmation';
 
-      const transactionId = `tx_out_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+      const transactionId = `tx_out_${crypto.randomUUID()}`;
 
       const savedTransaction = await createTransaction({
         id: transactionId,

@@ -82,12 +82,18 @@ export function validateClabe(clabe: string): boolean {
   return providedCheckDigit === calculatedCheckDigit;
 }
 
-// Generate tracking key
+/**
+ * Generate tracking key using cryptographically secure random values
+ * SECURITY FIX: Uses crypto.getRandomValues instead of Math.random
+ * Works in both browser and Node.js environments
+ */
 export function generateTrackingKey(): string {
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+  const randomBytes = new Uint8Array(30);
+  crypto.getRandomValues(randomBytes);
   let result = '';
   for (let i = 0; i < 30; i++) {
-    result += chars.charAt(Math.floor(Math.random() * chars.length));
+    result += chars.charAt(randomBytes[i] % chars.length);
   }
   return result;
 }

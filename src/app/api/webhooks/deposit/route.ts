@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import crypto from 'crypto';
 import {
   getClabeAccountByClabe,
   createTransaction,
@@ -379,7 +380,7 @@ async function processDeposit(data: DepositData): Promise<ProcessResult> {
     }
 
     // Create transaction
-    const transactionId = `tx_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+    const transactionId = `tx_${crypto.randomUUID()}`;
 
     try {
       // Convert numericalReference to number if it's a string

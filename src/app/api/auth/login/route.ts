@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
+import crypto from 'crypto';
 import {
   getUserByEmail,
   updateLastLogin,
@@ -36,7 +37,7 @@ export async function POST(request: NextRequest) {
     if (!rateLimitCheck.allowed) {
       // Log suspicious activity
       await createAuditLogEntry({
-        id: `audit_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`,
+        id: `audit_${crypto.randomUUID()}`,
         action: 'SUSPICIOUS_ACTIVITY',
         ipAddress: clientIP,
         userAgent,
@@ -76,7 +77,7 @@ export async function POST(request: NextRequest) {
 
       // Log failed login attempt
       await createAuditLogEntry({
-        id: `audit_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`,
+        id: `audit_${crypto.randomUUID()}`,
         action: 'LOGIN_FAILED',
         userEmail: email,
         ipAddress: clientIP,
@@ -94,7 +95,7 @@ export async function POST(request: NextRequest) {
     // Check if user is active
     if (!dbUser.isActive) {
       await createAuditLogEntry({
-        id: `audit_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`,
+        id: `audit_${crypto.randomUUID()}`,
         action: 'LOGIN_FAILED',
         userId: dbUser.id,
         userEmail: email,
@@ -116,7 +117,7 @@ export async function POST(request: NextRequest) {
 
     if (lockStatus.isLocked) {
       await createAuditLogEntry({
-        id: `audit_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`,
+        id: `audit_${crypto.randomUUID()}`,
         action: 'LOGIN_FAILED',
         userId: dbUser.id,
         userEmail: email,
@@ -146,7 +147,7 @@ export async function POST(request: NextRequest) {
         await lockUserAccount(dbUser.id, lockUntil);
 
         await createAuditLogEntry({
-          id: `audit_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`,
+          id: `audit_${crypto.randomUUID()}`,
           action: 'ACCOUNT_LOCKED',
           userId: dbUser.id,
           userEmail: email,
@@ -163,7 +164,7 @@ export async function POST(request: NextRequest) {
       }
 
       await createAuditLogEntry({
-        id: `audit_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`,
+        id: `audit_${crypto.randomUUID()}`,
         action: 'LOGIN_FAILED',
         userId: dbUser.id,
         userEmail: email,
@@ -202,7 +203,7 @@ export async function POST(request: NextRequest) {
         await recordFailedLoginAttempt(dbUser.id);
 
         await createAuditLogEntry({
-          id: `audit_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`,
+          id: `audit_${crypto.randomUUID()}`,
           action: '2FA_FAILED',
           userId: dbUser.id,
           userEmail: email,
@@ -220,7 +221,7 @@ export async function POST(request: NextRequest) {
 
       // Log successful 2FA verification
       await createAuditLogEntry({
-        id: `audit_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`,
+        id: `audit_${crypto.randomUUID()}`,
         action: '2FA_VERIFIED',
         userId: dbUser.id,
         userEmail: email,
@@ -239,7 +240,7 @@ export async function POST(request: NextRequest) {
 
     // Log successful login
     await createAuditLogEntry({
-      id: `audit_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`,
+      id: `audit_${crypto.randomUUID()}`,
       action: 'LOGIN_SUCCESS',
       userId: dbUser.id,
       userEmail: email,
@@ -346,7 +347,7 @@ export async function POST(request: NextRequest) {
     console.error('Login error:', error);
 
     await createAuditLogEntry({
-      id: `audit_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`,
+      id: `audit_${crypto.randomUUID()}`,
       action: 'LOGIN_FAILED',
       ipAddress: clientIP,
       userAgent,

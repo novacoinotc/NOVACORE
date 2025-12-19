@@ -22,7 +22,7 @@ import {
   Save,
   X,
 } from 'lucide-react';
-import { useAuth, useRequirePermission } from '@/context/AuthContext';
+import { useAuth, useRequirePermission, getAuthHeaders } from '@/context/AuthContext';
 import { Company, Transaction } from '@/types';
 
 interface CompanyUser {
@@ -85,21 +85,6 @@ export default function CompanyDetailPage() {
 
   const companyId = params.id as string;
 
-  // Get session headers
-  const getHeaders = () => {
-    const headers: HeadersInit = { 'Content-Type': 'application/json' };
-    try {
-      const sessionStr = localStorage.getItem('novacorp_session');
-      if (sessionStr) {
-        const session = JSON.parse(sessionStr);
-        if (session.user?.id) {
-          headers['x-user-id'] = session.user.id;
-        }
-      }
-    } catch (e) {}
-    return headers;
-  };
-
   // Fetch company details
   const fetchCompanyDetails = async () => {
     try {
@@ -107,7 +92,7 @@ export default function CompanyDetailPage() {
       setError(null);
 
       const response = await fetch(`/api/companies/${companyId}?details=true`, {
-        headers: getHeaders(),
+        headers: getAuthHeaders(),
       });
 
       if (!response.ok) {
@@ -170,7 +155,7 @@ export default function CompanyDetailPage() {
 
       const response = await fetch(`/api/companies/${companyId}`, {
         method: 'PUT',
-        headers: getHeaders(),
+        headers: getAuthHeaders(),
         body: JSON.stringify({
           speiInEnabled: settingsForm.speiInEnabled,
           speiOutEnabled: settingsForm.speiOutEnabled,

@@ -17,7 +17,7 @@ import {
   Sparkles,
   Eye,
 } from 'lucide-react';
-import { useAuth, useRequirePermission } from '@/context/AuthContext';
+import { useAuth, useRequirePermission, getAuthHeaders } from '@/context/AuthContext';
 import { ClabeAccount, Company } from '@/types';
 import Link from 'next/link';
 
@@ -76,9 +76,7 @@ export default function ClabeAccountsPage() {
       }
 
       const response = await fetch(url, {
-        headers: {
-          ...(currentUser?.id && { 'x-user-id': currentUser.id }),
-        },
+        headers: getAuthHeaders(),
       });
       if (response.ok) {
         const data = await response.json();
@@ -95,9 +93,7 @@ export default function ClabeAccountsPage() {
   const fetchCompanies = async () => {
     try {
       const response = await fetch('/api/companies', {
-        headers: {
-          ...(currentUser?.id && { 'x-user-id': currentUser.id }),
-        },
+        headers: getAuthHeaders(),
       });
       if (response.ok) {
         const data = await response.json();
@@ -198,6 +194,7 @@ export default function ClabeAccountsPage() {
         setSaving(true);
         const response = await fetch(`/api/clabe-accounts/${selectedClabe.id}`, {
           method: 'DELETE',
+          headers: getAuthHeaders(),
         });
 
         if (response.ok) {
@@ -267,18 +264,12 @@ export default function ClabeAccountsPage() {
       setSaving(true);
       setError('');
 
-      // Headers for API calls (include user ID for authorization)
-      const headers: HeadersInit = {
-        'Content-Type': 'application/json',
-        ...(currentUser?.id && { 'x-user-id': currentUser.id }),
-      };
-
       let response;
       if (selectedClabe) {
         // Update existing CLABE (cannot change clabe number or company)
         response = await fetch(`/api/clabe-accounts/${selectedClabe.id}`, {
           method: 'PUT',
-          headers,
+          headers: getAuthHeaders(),
           body: JSON.stringify({
             alias: formData.alias,
             description: formData.description || undefined,
@@ -291,7 +282,7 @@ export default function ClabeAccountsPage() {
         // Note: OPM auto-generate (indirectParticipantClients) not available for this account
         response = await fetch('/api/clabe-accounts', {
           method: 'POST',
-          headers,
+          headers: getAuthHeaders(),
           body: JSON.stringify({
             companyId: effectiveCompanyId,
             clabe: formData.clabe,
@@ -346,14 +337,9 @@ export default function ClabeAccountsPage() {
       setSaving(true);
       setAutoGenerateError('');
 
-      const headers: HeadersInit = {
-        'Content-Type': 'application/json',
-        ...(currentUser?.id && { 'x-user-id': currentUser.id }),
-      };
-
       const response = await fetch('/api/clabe-accounts/generate', {
         method: 'POST',
-        headers,
+        headers: getAuthHeaders(),
         body: JSON.stringify({
           companyId: effectiveCompanyId,
           alias: autoGenerateAlias,

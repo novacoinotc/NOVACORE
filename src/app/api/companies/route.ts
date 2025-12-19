@@ -1,9 +1,27 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAllCompanies, createCompany, getCompanyByRfc } from '@/lib/db';
+import { authenticateRequest } from '@/lib/auth-middleware';
 
-// GET /api/companies - List all companies
-export async function GET() {
+// GET /api/companies - List all companies (requires super_admin)
+export async function GET(request: NextRequest) {
   try {
+    // Require authentication
+    const authResult = await authenticateRequest(request);
+    if (!authResult.success || !authResult.user) {
+      return NextResponse.json(
+        { error: authResult.error || 'No autorizado' },
+        { status: authResult.statusCode || 401 }
+      );
+    }
+
+    // Only super_admin can list all companies
+    if (authResult.user.role !== 'super_admin') {
+      return NextResponse.json(
+        { error: 'No tienes permiso para ver empresas' },
+        { status: 403 }
+      );
+    }
+
     const dbCompanies = await getAllCompanies();
 
     // Transform to frontend format
@@ -34,9 +52,26 @@ export async function GET() {
   }
 }
 
-// POST /api/companies - Create new company
+// POST /api/companies - Create new company (requires super_admin)
 export async function POST(request: NextRequest) {
   try {
+    // Require authentication
+    const authResult = await authenticateRequest(request);
+    if (!authResult.success || !authResult.user) {
+      return NextResponse.json(
+        { error: authResult.error || 'No autorizado' },
+        { status: authResult.statusCode || 401 }
+      );
+    }
+
+    // Only super_admin can create companies
+    if (authResult.user.role !== 'super_admin') {
+      return NextResponse.json(
+        { error: 'No tienes permiso para crear empresas' },
+        { status: 403 }
+      );
+    }
+
     const body = await request.json();
     const { name, businessName, rfc, email, phone, address, isActive, speiInEnabled, speiOutEnabled, commissionPercentage, parentClabe } = body;
 

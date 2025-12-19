@@ -832,6 +832,18 @@ export async function deleteExpiredSessions(): Promise<void> {
   `;
 }
 
+export async function invalidateSession(token: string): Promise<void> {
+  await sql`
+    DELETE FROM sessions WHERE token = ${token}
+  `;
+}
+
+export async function invalidateAllUserSessions(userId: string): Promise<void> {
+  await sql`
+    DELETE FROM sessions WHERE "userId" = ${userId}
+  `;
+}
+
 // ==================== HELPER FUNCTIONS ====================
 
 // Get user with clabe accounts populated
@@ -1124,23 +1136,30 @@ export async function listTransactions(params: {
   const itemsPerPage = params.itemsPerPage || 50;
   const offset = (page - 1) * itemsPerPage;
 
-  // Build query dynamically (simplified - in production use a query builder)
-  let whereConditions: string[] = [];
+  // Validate input parameters to prevent injection
+  const validTypes = ['incoming', 'outgoing'];
+  const validStatuses = ['pending', 'sent', 'scattered', 'returned', 'canceled', 'pending_confirmation'];
 
-  if (params.type) whereConditions.push(`type = '${params.type}'`);
-  if (params.status) whereConditions.push(`status = '${params.status}'`);
-  if (params.clabeAccountId) whereConditions.push(`clabe_account_id = '${params.clabeAccountId}'`);
+  const type = params.type && validTypes.includes(params.type) ? params.type : null;
+  const status = params.status && validStatuses.includes(params.status) ? params.status : null;
+  const clabeAccountId = params.clabeAccountId || null;
 
-  const whereClause = whereConditions.length > 0 ? `WHERE ${whereConditions.join(' AND ')}` : '';
-
+  // Use parameterized query with conditional filtering
   const countResult = await sql`
-    SELECT COUNT(*) as count FROM transactions ${sql.unsafe(whereClause)}
+    SELECT COUNT(*) as count FROM transactions
+    WHERE
+      (${type}::text IS NULL OR type = ${type})
+      AND (${status}::text IS NULL OR status = ${status})
+      AND (${clabeAccountId}::text IS NULL OR clabe_account_id = ${clabeAccountId})
   `;
   const total = parseInt(countResult[0]?.count || '0');
 
   const result = await sql`
     SELECT * FROM transactions
-    ${sql.unsafe(whereClause)}
+    WHERE
+      (${type}::text IS NULL OR type = ${type})
+      AND (${status}::text IS NULL OR status = ${status})
+      AND (${clabeAccountId}::text IS NULL OR clabe_account_id = ${clabeAccountId})
     ORDER BY created_at DESC
     LIMIT ${itemsPerPage} OFFSET ${offset}
   `;
@@ -1173,13 +1192,12 @@ export async function getDashboardStats(companyId?: string): Promise<DashboardSt
   const sixtyDaysAgo = new Date();
   sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60);
 
-  let clabeFilter = '';
+  // Get CLABE IDs as array for parameterized query (prevents SQL injection)
+  let clabeIds: string[] | null = null;
   if (companyId) {
-    // Get all CLABE accounts for this company
     const clabes = await getClabeAccountsByCompanyId(companyId);
     if (clabes.length > 0) {
-      const clabeIds = clabes.map(c => `'${c.id}'`).join(',');
-      clabeFilter = `AND clabe_account_id IN (${clabeIds})`;
+      clabeIds = clabes.map(c => c.id);
     } else {
       // No CLABE accounts, return empty stats
       return {
@@ -1196,7 +1214,7 @@ export async function getDashboardStats(companyId?: string): Promise<DashboardSt
     }
   }
 
-  // Current period stats
+  // Current period stats - using parameterized array query
   const currentStatsResult = await sql`
     SELECT
       COALESCE(SUM(CASE WHEN type = 'incoming' AND status = 'scattered' THEN amount ELSE 0 END), 0) as incoming,
@@ -1204,7 +1222,7 @@ export async function getDashboardStats(companyId?: string): Promise<DashboardSt
       COUNT(CASE WHEN status = 'pending' THEN 1 END) as pending_count
     FROM transactions
     WHERE created_at >= ${thirtyDaysAgo.toISOString()}
-    ${sql.unsafe(clabeFilter)}
+    AND (${clabeIds}::text[] IS NULL OR clabe_account_id = ANY(${clabeIds}::text[]))
   `;
 
   // Previous period stats (for comparison)
@@ -1214,7 +1232,7 @@ export async function getDashboardStats(companyId?: string): Promise<DashboardSt
       COALESCE(SUM(CASE WHEN type = 'outgoing' AND status IN ('sent', 'scattered') THEN amount ELSE 0 END), 0) as outgoing
     FROM transactions
     WHERE created_at >= ${sixtyDaysAgo.toISOString()} AND created_at < ${thirtyDaysAgo.toISOString()}
-    ${sql.unsafe(clabeFilter)}
+    AND (${clabeIds}::text[] IS NULL OR clabe_account_id = ANY(${clabeIds}::text[]))
   `;
 
   // Get unique clients count (unique payer names for incoming transactions)
@@ -1222,17 +1240,16 @@ export async function getDashboardStats(companyId?: string): Promise<DashboardSt
     SELECT COUNT(DISTINCT payer_name) as count
     FROM transactions
     WHERE type = 'incoming' AND payer_name IS NOT NULL
-    ${sql.unsafe(clabeFilter)}
+    AND (${clabeIds}::text[] IS NULL OR clabe_account_id = ANY(${clabeIds}::text[]))
   `;
 
   // Get "in transit" amount - outgoing transactions that haven't settled yet
-  // Includes: pending_confirmation (grace period), pending, sent, queued
   const inTransitResult = await sql`
     SELECT COALESCE(SUM(amount), 0) as in_transit
     FROM transactions
     WHERE type = 'outgoing'
     AND status IN ('pending_confirmation', 'pending', 'sent', 'queued')
-    ${sql.unsafe(clabeFilter)}
+    AND (${clabeIds}::text[] IS NULL OR clabe_account_id = ANY(${clabeIds}::text[]))
   `;
 
   // Get weekly data for chart
@@ -1244,7 +1261,7 @@ export async function getDashboardStats(companyId?: string): Promise<DashboardSt
       COALESCE(SUM(CASE WHEN type = 'outgoing' AND status IN ('sent', 'scattered') THEN amount ELSE 0 END), 0) as outgoing
     FROM transactions
     WHERE created_at >= ${new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()}
-    ${sql.unsafe(clabeFilter)}
+    AND (${clabeIds}::text[] IS NULL OR clabe_account_id = ANY(${clabeIds}::text[]))
     GROUP BY DATE_TRUNC('day', created_at), EXTRACT(DOW FROM created_at)
     ORDER BY DATE_TRUNC('day', created_at)
   `;
@@ -1298,22 +1315,28 @@ export async function getTransactionsByCompanyId(
     return { transactions: [], total: 0 };
   }
 
-  const clabeIds = clabes.map(c => `'${c.id}'`).join(',');
+  // Use array parameter for safe SQL (prevents injection)
+  const clabeIds = clabes.map(c => c.id);
 
-  let whereConditions = [`clabe_account_id IN (${clabeIds})`];
-  if (params?.type) whereConditions.push(`type = '${params.type}'`);
-  if (params?.status) whereConditions.push(`status = '${params.status}'`);
-
-  const whereClause = `WHERE ${whereConditions.join(' AND ')}`;
+  // Validate type and status parameters
+  const validTypes = ['incoming', 'outgoing'];
+  const validStatuses = ['pending', 'sent', 'scattered', 'returned', 'canceled', 'pending_confirmation'];
+  const type = params?.type && validTypes.includes(params.type) ? params.type : null;
+  const status = params?.status && validStatuses.includes(params.status) ? params.status : null;
 
   const countResult = await sql`
-    SELECT COUNT(*) as count FROM transactions ${sql.unsafe(whereClause)}
+    SELECT COUNT(*) as count FROM transactions
+    WHERE clabe_account_id = ANY(${clabeIds}::text[])
+    AND (${type}::text IS NULL OR type = ${type})
+    AND (${status}::text IS NULL OR status = ${status})
   `;
   const total = parseInt(countResult[0]?.count || '0');
 
   const result = await sql`
     SELECT * FROM transactions
-    ${sql.unsafe(whereClause)}
+    WHERE clabe_account_id = ANY(${clabeIds}::text[])
+    AND (${type}::text IS NULL OR type = ${type})
+    AND (${status}::text IS NULL OR status = ${status})
     ORDER BY created_at DESC
     LIMIT ${itemsPerPage} OFFSET ${offset}
   `;
@@ -1345,8 +1368,8 @@ export async function getCompanyWithDetails(companyId: string): Promise<{
   const users = usersWithClabeAccess.map(u => u.user);
   const clabeAccounts = await getClabeAccountsByCompanyId(companyId);
 
-  // Get transaction stats for this company
-  const clabeIds = clabeAccounts.map(c => `'${c.id}'`).join(',');
+  // Get transaction stats for this company (using safe parameterized query)
+  const clabeIds = clabeAccounts.map(c => c.id);
   let stats = { totalIncoming: 0, totalOutgoing: 0, transactionCount: 0 };
 
   if (clabeAccounts.length > 0) {
@@ -1356,7 +1379,7 @@ export async function getCompanyWithDetails(companyId: string): Promise<{
         COALESCE(SUM(CASE WHEN type = 'outgoing' AND status IN ('sent', 'scattered') THEN amount ELSE 0 END), 0) as outgoing,
         COUNT(*) as count
       FROM transactions
-      WHERE clabe_account_id IN (${sql.unsafe(clabeIds)})
+      WHERE clabe_account_id = ANY(${clabeIds}::text[])
     `;
 
     stats = {
@@ -1374,12 +1397,12 @@ export async function getRecentTransactions(
   limit: number = 10,
   companyId?: string
 ): Promise<DbTransaction[]> {
-  let clabeFilter = '';
+  // Get CLABE IDs as array for parameterized query
+  let clabeIds: string[] | null = null;
   if (companyId) {
     const clabes = await getClabeAccountsByCompanyId(companyId);
     if (clabes.length > 0) {
-      const clabeIds = clabes.map(c => `'${c.id}'`).join(',');
-      clabeFilter = `WHERE clabe_account_id IN (${clabeIds})`;
+      clabeIds = clabes.map(c => c.id);
     } else {
       return [];
     }
@@ -1387,7 +1410,7 @@ export async function getRecentTransactions(
 
   const result = await sql`
     SELECT * FROM transactions
-    ${sql.unsafe(clabeFilter)}
+    WHERE (${clabeIds}::text[] IS NULL OR clabe_account_id = ANY(${clabeIds}::text[]))
     ORDER BY created_at DESC
     LIMIT ${limit}
   `;
@@ -1565,22 +1588,22 @@ export async function getPendingCommissionsGroupedByCompany(): Promise<{
 export async function markCommissionsAsProcessed(commissionIds: string[], cutoffId: string): Promise<void> {
   if (commissionIds.length === 0) return;
 
-  const idsPlaceholder = commissionIds.map(id => `'${id}'`).join(',');
+  // Use parameterized array query (prevents SQL injection)
   await sql`
     UPDATE pending_commissions
     SET status = 'processed', cutoff_id = ${cutoffId}
-    WHERE id IN (${sql.unsafe(idsPlaceholder)})
+    WHERE id = ANY(${commissionIds}::text[])
   `;
 }
 
 export async function markCommissionsAsFailed(commissionIds: string[]): Promise<void> {
   if (commissionIds.length === 0) return;
 
-  const idsPlaceholder = commissionIds.map(id => `'${id}'`).join(',');
+  // Use parameterized array query (prevents SQL injection)
   await sql`
     UPDATE pending_commissions
     SET status = 'failed'
-    WHERE id IN (${sql.unsafe(idsPlaceholder)})
+    WHERE id = ANY(${commissionIds}::text[])
   `;
 }
 

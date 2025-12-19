@@ -4,6 +4,7 @@ import { generateNumericalReference, generateTrackingKey } from '@/lib/crypto';
 import { validateOrderFields, prepareTextForSpei, sanitizeForSpei } from '@/lib/utils';
 import { verifyTOTP, getClientIP, getUserAgent } from '@/lib/security';
 import { getUserTotpSecret, isUserTotpEnabled, createAuditLogEntry, getUserById, createTransaction, getClabeAccountByClabe, getClabeBalanceByClabe } from '@/lib/db';
+import { authenticateRequest, validateClabeAccess } from '@/lib/auth-middleware';
 
 /**
  * POST /api/orders
@@ -35,12 +36,30 @@ export async function POST(request: NextRequest) {
   console.log('Client IP:', clientIP);
 
   try {
+    // ============================================
+    // SECURE AUTHENTICATION - Validate session token
+    // ============================================
+    const authResult = await authenticateRequest(request);
+    if (!authResult.success || !authResult.user) {
+      console.error('ORDER ERROR: Authentication failed');
+      return NextResponse.json(
+        { error: authResult.error || 'No autorizado' },
+        { status: authResult.statusCode || 401 }
+      );
+    }
+
+    // Get authenticated user ID from session (NOT from request body)
+    const authenticatedUser = authResult.user;
+    const userId = authenticatedUser.id;
+
+    console.log('Authenticated User ID:', userId);
+
     const body = await request.json();
-    console.log('Request body:', JSON.stringify(body, null, 2));
+    // Remove sensitive data from logs
+    console.log('Request received for transfer from:', body.payerAccount?.slice(0, 6) + '***');
 
     const {
-      // Authentication fields
-      userId,
+      // 2FA code (still from body for the TOTP verification)
       totpCode,
       // Transfer fields
       beneficiaryAccount,
@@ -65,17 +84,38 @@ export async function POST(request: NextRequest) {
     } = body;
 
     // ============================================
-    // 2FA Verification for SPEI Transfers
+    // Validate user has access to the source CLABE
     // ============================================
-    if (!userId) {
-      console.error('ORDER ERROR: Missing userId in request');
+    const sourceClabeAccount = await getClabeAccountByClabe(payerAccount);
+    if (!sourceClabeAccount) {
       return NextResponse.json(
-        { error: 'Se requiere autenticación para realizar transferencias', details: 'userId not provided in request body' },
-        { status: 401 }
+        { error: 'Cuenta origen no encontrada' },
+        { status: 404 }
       );
     }
 
-    console.log('User ID:', userId);
+    const hasAccess = await validateClabeAccess(userId, sourceClabeAccount.id, authenticatedUser.role);
+    if (!hasAccess) {
+      console.error('ORDER ERROR: User does not have access to source CLABE');
+      await createAuditLogEntry({
+        id: `audit_${Date.now()}`,
+        action: 'SUSPICIOUS_ACTIVITY',
+        userId,
+        userEmail: authenticatedUser.email,
+        ipAddress: clientIP,
+        userAgent,
+        details: { reason: 'Attempted transfer from unauthorized CLABE', payerAccount: payerAccount?.slice(0, 6) + '***' },
+        severity: 'critical',
+      });
+      return NextResponse.json(
+        { error: 'No tienes permiso para operar esta cuenta' },
+        { status: 403 }
+      );
+    }
+
+    // ============================================
+    // 2FA Verification for SPEI Transfers
+    // ============================================
 
     // Check if user has 2FA enabled
     const totpEnabled = await isUserTotpEnabled(userId);

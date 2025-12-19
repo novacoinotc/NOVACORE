@@ -152,7 +152,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  const logout = useCallback(() => {
+  const logout = useCallback(async () => {
+    // Call server-side logout to invalidate session
+    try {
+      const sessionStr = localStorage.getItem('novacorp_session');
+      if (sessionStr) {
+        const session = JSON.parse(sessionStr);
+        if (session.token) {
+          await fetch('/api/auth/logout', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${session.token}`,
+            },
+            body: JSON.stringify({}),
+          }).catch(() => {}); // Ignore errors - we're logging out anyway
+        }
+      }
+    } catch {
+      // Ignore errors during logout
+    }
+
+    // Clear local storage
     try {
       localStorage.removeItem('novacorp_session');
     } catch {
@@ -250,4 +271,48 @@ export function useRequirePermission(permission: Permission, redirectTo = '/dash
   }, [hasPermission, isLoading, permission, redirectTo, router]);
 
   return { isLoading, hasAccess: hasPermission(permission) };
+}
+
+/**
+ * Get authentication headers for API requests
+ * Returns headers with Bearer token from stored session
+ */
+export function getAuthHeaders(): HeadersInit {
+  const headers: HeadersInit = {
+    'Content-Type': 'application/json',
+  };
+
+  try {
+    const sessionStr = localStorage.getItem('novacorp_session');
+    if (sessionStr) {
+      const session = JSON.parse(sessionStr);
+      if (session.token) {
+        headers['Authorization'] = `Bearer ${session.token}`;
+      }
+      // Also include x-user-id for backward compatibility during transition
+      if (session.user?.id) {
+        headers['x-user-id'] = session.user.id;
+      }
+    }
+  } catch {
+    // Ignore errors
+  }
+
+  return headers;
+}
+
+/**
+ * Create authenticated fetch function
+ * Automatically includes auth headers
+ */
+export async function authFetch(url: string, options: RequestInit = {}): Promise<Response> {
+  const headers = getAuthHeaders();
+
+  return fetch(url, {
+    ...options,
+    headers: {
+      ...headers,
+      ...options.headers,
+    },
+  });
 }

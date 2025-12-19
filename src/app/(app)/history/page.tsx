@@ -21,7 +21,7 @@ import {
   Clock,
   Check,
 } from 'lucide-react';
-import { useAuth } from '@/context/AuthContext';
+import { useAuth, getAuthHeaders } from '@/context/AuthContext';
 import { formatCurrency, formatDate, getStatusText, cn, formatClabe } from '@/lib/utils';
 import { getBankFromSpeiCode, getBankSelectOptions } from '@/lib/banks';
 import { generateReceiptPDF } from '@/lib/generate-receipt-pdf';
@@ -114,7 +114,7 @@ export default function HistoryPage() {
     if (!transaction.opmOrderId) { alert('Esta transacción no tiene ID de orden OPM'); return; }
     setLoadingCep(true);
     try {
-      const response = await fetch(`/api/orders/${transaction.opmOrderId}/cep`);
+      const response = await fetch(`/api/orders/${transaction.opmOrderId}/cep`, { headers: getAuthHeaders() });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Error al obtener CEP');
       if (data.data?.cepUrl || data.cepUrl) {
@@ -145,7 +145,7 @@ export default function HistoryPage() {
       if (dateFrom) params.append('from', new Date(dateFrom).getTime().toString());
       if (dateTo) params.append('to', new Date(dateTo + 'T23:59:59').getTime().toString());
       if (clabeFilter) { params.append('beneficiaryAccount', clabeFilter); params.append('payerAccount', clabeFilter); }
-      const response = await fetch(`/api/transactions?${params}`, { headers: { ...(user?.id && { 'x-user-id': user.id }) } });
+      const response = await fetch(`/api/transactions?${params}`, { headers: getAuthHeaders() });
       if (!response.ok) throw new Error('Error al cargar transacciones');
       const data: TransactionResponse = await response.json();
       setTransactions(data.transactions);

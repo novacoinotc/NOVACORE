@@ -22,7 +22,7 @@ import {
   Building2,
   Hash,
 } from 'lucide-react';
-import { useAuth, useRequirePermission } from '@/context/AuthContext';
+import { useAuth, useRequirePermission, getAuthHeaders } from '@/context/AuthContext';
 import {
   User,
   Permission,
@@ -109,9 +109,7 @@ export default function UsersPage() {
     try {
       setLoadingUsers(true);
       const response = await fetch('/api/users', {
-        headers: {
-          'x-user-id': currentUser.id,
-        },
+        headers: getAuthHeaders(),
       });
       if (response.ok) {
         const data = await response.json();
@@ -144,9 +142,7 @@ export default function UsersPage() {
       }
 
       const response = await fetch(url, {
-        headers: {
-          'x-user-id': currentUser.id,
-        },
+        headers: getAuthHeaders(),
       });
 
       if (response.ok) {
@@ -167,9 +163,7 @@ export default function UsersPage() {
     try {
       setLoadingCompanies(true);
       const response = await fetch('/api/companies', {
-        headers: {
-          'x-user-id': currentUser.id,
-        },
+        headers: getAuthHeaders(),
       });
 
       if (response.ok) {
@@ -238,9 +232,7 @@ export default function UsersPage() {
         setSaving(true);
         const response = await fetch(`/api/users/${selectedUser.id}`, {
           method: 'DELETE',
-          headers: {
-            'x-user-id': currentUser.id,
-          },
+          headers: getAuthHeaders(),
         });
 
         if (response.ok) {
@@ -322,20 +314,14 @@ export default function UsersPage() {
         // Update existing user
         response = await fetch(`/api/users/${selectedUser.id}`, {
           method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-user-id': currentUser.id,
-          },
+          headers: getAuthHeaders(),
           body: JSON.stringify(userData),
         });
       } else {
         // Create new user
         response = await fetch('/api/users', {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-user-id': currentUser.id,
-          },
+          headers: getAuthHeaders(),
           body: JSON.stringify(userData),
         });
       }

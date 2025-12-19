@@ -20,7 +20,7 @@ import {
   Badge,
 } from '@/components/ui';
 import { cn } from '@/lib/utils';
-import { useAuth } from '@/context/AuthContext';
+import { useAuth, getAuthHeaders } from '@/context/AuthContext';
 
 const tabs = [
   { id: 'security', label: 'Seguridad', icon: Shield },
@@ -80,7 +80,7 @@ export default function SettingsPage() {
 
       const res = await fetch('/api/auth/2fa/setup', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders(),
         body: JSON.stringify({ userId }),
       });
 
@@ -113,7 +113,7 @@ export default function SettingsPage() {
       const userId = getUserId();
       const res = await fetch('/api/auth/2fa/verify', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders(),
         body: JSON.stringify({ userId, code: twoFACode }),
       });
 
@@ -152,7 +152,7 @@ export default function SettingsPage() {
       const userId = getUserId();
       const res = await fetch('/api/auth/2fa/disable', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders(),
         body: JSON.stringify({ userId, password: disablePassword }),
       });
 

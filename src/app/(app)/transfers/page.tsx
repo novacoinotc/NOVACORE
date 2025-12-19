@@ -254,7 +254,11 @@ export default function TransfersPage() {
     async function loadClabeAccounts() {
       setIsLoadingClabeAccounts(true);
       try {
-        const response = await fetch('/api/clabe-accounts');
+        const response = await fetch('/api/clabe-accounts', {
+          headers: {
+            ...(user?.id && { 'x-user-id': user.id }),
+          },
+        });
         if (response.ok) {
           const data = await response.json();
           const activeClabes = data
@@ -278,7 +282,7 @@ export default function TransfersPage() {
     }
 
     loadClabeAccounts();
-  }, []);
+  }, [user?.id]);
 
   // Select a saved account and fill the form
   const selectSavedAccount = (account: SavedAccount) => {

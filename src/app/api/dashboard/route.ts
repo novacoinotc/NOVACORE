@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getDashboardStats, getRecentTransactions, getUserById, getClabeAccountById } from '@/lib/db';
+import { getUserById, getClabeAccountById, getClabeAccountsByCompanyId, getUserClabeAccess, sql } from '@/lib/db';
 import { getBankName } from '@/lib/banks';
 
 // Helper to get current user from request headers
@@ -9,21 +9,190 @@ async function getCurrentUser(request: NextRequest) {
   return await getUserById(userId);
 }
 
-// GET /api/dashboard - Get dashboard stats and recent transactions
+// Get dashboard stats filtered by CLABE IDs
+async function getDashboardStatsForClabes(clabeIds: string[]) {
+  if (clabeIds.length === 0) {
+    return {
+      totalIncoming: 0,
+      totalOutgoing: 0,
+      pendingCount: 0,
+      clientsCount: 0,
+      totalBalance: 0,
+      inTransit: 0,
+      incomingChange: 0,
+      outgoingChange: 0,
+      weeklyData: [] as { name: string; incoming: number; outgoing: number }[],
+    };
+  }
+
+  const thirtyDaysAgo = new Date();
+  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+  const sixtyDaysAgo = new Date();
+  sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60);
+
+  const clabeIdsStr = clabeIds.map(id => `'${id}'`).join(',');
+  const clabeFilter = `AND clabe_account_id IN (${clabeIdsStr})`;
+
+  // Current period stats
+  const currentStatsResult = await sql`
+    SELECT
+      COALESCE(SUM(CASE WHEN type = 'incoming' AND status = 'scattered' THEN amount ELSE 0 END), 0) as incoming,
+      COALESCE(SUM(CASE WHEN type = 'outgoing' AND status IN ('sent', 'scattered') THEN amount ELSE 0 END), 0) as outgoing,
+      COUNT(CASE WHEN status = 'pending' THEN 1 END) as pending_count
+    FROM transactions
+    WHERE created_at >= ${thirtyDaysAgo.toISOString()}
+    ${sql.unsafe(clabeFilter)}
+  `;
+
+  // Previous period stats (for comparison)
+  const prevStatsResult = await sql`
+    SELECT
+      COALESCE(SUM(CASE WHEN type = 'incoming' AND status = 'scattered' THEN amount ELSE 0 END), 0) as incoming,
+      COALESCE(SUM(CASE WHEN type = 'outgoing' AND status IN ('sent', 'scattered') THEN amount ELSE 0 END), 0) as outgoing
+    FROM transactions
+    WHERE created_at >= ${sixtyDaysAgo.toISOString()} AND created_at < ${thirtyDaysAgo.toISOString()}
+    ${sql.unsafe(clabeFilter)}
+  `;
+
+  // Get unique clients count
+  const clientsResult = await sql`
+    SELECT COUNT(DISTINCT payer_name) as count
+    FROM transactions
+    WHERE type = 'incoming' AND payer_name IS NOT NULL
+    ${sql.unsafe(clabeFilter)}
+  `;
+
+  // Get "in transit" amount
+  const inTransitResult = await sql`
+    SELECT COALESCE(SUM(amount), 0) as in_transit
+    FROM transactions
+    WHERE type = 'outgoing'
+    AND status IN ('pending_confirmation', 'pending', 'sent', 'queued')
+    ${sql.unsafe(clabeFilter)}
+  `;
+
+  // Get weekly data for chart
+  const weeklyResult = await sql`
+    SELECT
+      TO_CHAR(DATE_TRUNC('day', created_at), 'Dy') as day_name,
+      EXTRACT(DOW FROM created_at) as day_num,
+      COALESCE(SUM(CASE WHEN type = 'incoming' AND status = 'scattered' THEN amount ELSE 0 END), 0) as incoming,
+      COALESCE(SUM(CASE WHEN type = 'outgoing' AND status IN ('sent', 'scattered') THEN amount ELSE 0 END), 0) as outgoing
+    FROM transactions
+    WHERE created_at >= ${new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()}
+    ${sql.unsafe(clabeFilter)}
+    GROUP BY DATE_TRUNC('day', created_at), EXTRACT(DOW FROM created_at)
+    ORDER BY DATE_TRUNC('day', created_at)
+  `;
+
+  const dayNames = ['D', 'L', 'M', 'X', 'J', 'V', 'S'];
+  const weeklyData = dayNames.map((name, idx) => {
+    const dayData = (weeklyResult as any[]).find((d: any) => parseInt(d.day_num) === idx);
+    return {
+      name,
+      incoming: parseFloat(dayData?.incoming || '0'),
+      outgoing: parseFloat(dayData?.outgoing || '0'),
+    };
+  });
+
+  const currentIncoming = parseFloat(currentStatsResult[0]?.incoming || '0');
+  const currentOutgoing = parseFloat(currentStatsResult[0]?.outgoing || '0');
+  const prevIncoming = parseFloat(prevStatsResult[0]?.incoming || '0');
+  const prevOutgoing = parseFloat(prevStatsResult[0]?.outgoing || '0');
+
+  const incomingChange = prevIncoming > 0 ? ((currentIncoming - prevIncoming) / prevIncoming) * 100 : 0;
+  const outgoingChange = prevOutgoing > 0 ? ((currentOutgoing - prevOutgoing) / prevOutgoing) * 100 : 0;
+
+  const inTransit = parseFloat(inTransitResult[0]?.in_transit || '0');
+
+  return {
+    totalIncoming: currentIncoming,
+    totalOutgoing: currentOutgoing,
+    pendingCount: parseInt(currentStatsResult[0]?.pending_count || '0'),
+    clientsCount: parseInt(clientsResult[0]?.count || '0'),
+    totalBalance: currentIncoming - currentOutgoing,
+    inTransit,
+    incomingChange: Math.round(incomingChange * 10) / 10,
+    outgoingChange: Math.round(outgoingChange * 10) / 10,
+    weeklyData,
+  };
+}
+
+// Get recent transactions filtered by CLABE IDs
+async function getRecentTransactionsForClabes(clabeIds: string[], limit: number = 10) {
+  if (clabeIds.length === 0) {
+    return [];
+  }
+
+  const clabeIdsStr = clabeIds.map(id => `'${id}'`).join(',');
+  const clabeFilter = `WHERE clabe_account_id IN (${clabeIdsStr})`;
+
+  const result = await sql`
+    SELECT * FROM transactions
+    ${sql.unsafe(clabeFilter)}
+    ORDER BY created_at DESC
+    LIMIT ${limit}
+  `;
+
+  return result;
+}
+
+// GET /api/dashboard - Get dashboard stats and recent transactions (filtered by user access)
 export async function GET(request: NextRequest) {
   try {
     // Get current user for authorization
     const currentUser = await getCurrentUser(request);
 
-    // Note: Users don't have company_id in this system
-    // All authenticated users see all dashboard data (authorization via CLABE access)
-    const companyId: string | undefined = undefined;
+    // Get allowed CLABE account IDs for this user
+    let allowedClabeIds: string[] = [];
+    let useGlobalStats = false;
 
-    // Get dashboard stats
-    const stats = await getDashboardStats(companyId);
+    if (currentUser) {
+      if (currentUser.role === 'super_admin') {
+        // Super admin can see all
+        useGlobalStats = true;
+      } else if (currentUser.role === 'company_admin' && currentUser.company_id) {
+        // Company admin sees all CLABEs from their company
+        const companyClabes = await getClabeAccountsByCompanyId(currentUser.company_id);
+        allowedClabeIds = companyClabes.map(c => c.id);
+      } else {
+        // Regular user sees only assigned CLABEs
+        allowedClabeIds = await getUserClabeAccess(currentUser.id);
+      }
+    }
 
-    // Get recent transactions
-    const recentTransactionsRaw = await getRecentTransactions(10, companyId);
+    // If user has no CLABEs assigned and is not super_admin, return empty stats
+    if (!useGlobalStats && allowedClabeIds.length === 0) {
+      return NextResponse.json({
+        stats: {
+          totalIncoming: 0,
+          totalOutgoing: 0,
+          pendingCount: 0,
+          clientsCount: 0,
+          totalBalance: 0,
+          inTransit: 0,
+          incomingChange: 0,
+          outgoingChange: 0,
+        },
+        chartData: [],
+        recentTransactions: [],
+      });
+    }
+
+    // Get dashboard stats (filtered by CLABEs or global for super_admin)
+    let stats;
+    let recentTransactionsRaw;
+
+    if (useGlobalStats) {
+      // Super admin: import and use global functions
+      const { getDashboardStats, getRecentTransactions } = await import('@/lib/db');
+      stats = await getDashboardStats();
+      recentTransactionsRaw = await getRecentTransactions(10);
+    } else {
+      stats = await getDashboardStatsForClabes(allowedClabeIds);
+      recentTransactionsRaw = await getRecentTransactionsForClabes(allowedClabeIds, 10);
+    }
 
     // Transform transactions to frontend format
     const recentTransactions = await Promise.all(

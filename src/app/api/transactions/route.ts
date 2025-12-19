@@ -1,10 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { pool } from '@/lib/db';
+import { pool, getUserById, getClabeAccountsForUser, getClabeAccountsByCompanyId, getUserClabeAccess } from '@/lib/db';
+
+// Helper to get current user from request headers
+async function getCurrentUser(request: NextRequest) {
+  const userId = request.headers.get('x-user-id');
+  if (!userId) return null;
+  return await getUserById(userId);
+}
 
 /**
  * GET /api/transactions
  *
- * List transactions with advanced filters
+ * List transactions with advanced filters (filtered by user's CLABE access)
  *
  * Query parameters:
  * - type: 'incoming' | 'outgoing' (filter by transaction type)
@@ -25,6 +32,35 @@ import { pool } from '@/lib/db';
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
+
+    // Get current user for authorization
+    const currentUser = await getCurrentUser(request);
+
+    // Get allowed CLABE account IDs for this user
+    let allowedClabeIds: string[] = [];
+
+    if (currentUser) {
+      if (currentUser.role === 'super_admin') {
+        // Super admin can see all - no filter needed
+        allowedClabeIds = []; // Empty means no filter
+      } else if (currentUser.role === 'company_admin' && currentUser.company_id) {
+        // Company admin sees all CLABEs from their company
+        const companyClabes = await getClabeAccountsByCompanyId(currentUser.company_id);
+        allowedClabeIds = companyClabes.map(c => c.id);
+      } else {
+        // Regular user sees only assigned CLABEs
+        allowedClabeIds = await getUserClabeAccess(currentUser.id);
+      }
+    }
+
+    // If user is not super_admin and has no CLABEs assigned, return empty result
+    if (currentUser && currentUser.role !== 'super_admin' && allowedClabeIds.length === 0) {
+      return NextResponse.json({
+        transactions: [],
+        pagination: { page: 1, itemsPerPage: 50, total: 0, totalPages: 0 },
+        stats: { totalCount: 0, totalIncoming: 0, totalOutgoing: 0, inTransit: 0, settledIncoming: 0, settledOutgoing: 0 },
+      });
+    }
 
     // Extract query parameters
     const type = searchParams.get('type') as 'incoming' | 'outgoing' | null;
@@ -47,6 +83,14 @@ export async function GET(request: NextRequest) {
     const conditions: string[] = ['1=1'];
     const params: any[] = [];
     let paramIndex = 1;
+
+    // CRITICAL: Filter by allowed CLABEs for non-super_admin users
+    if (currentUser && currentUser.role !== 'super_admin' && allowedClabeIds.length > 0) {
+      const placeholders = allowedClabeIds.map((_, i) => `$${paramIndex + i}`).join(',');
+      conditions.push(`clabe_account_id IN (${placeholders})`);
+      params.push(...allowedClabeIds);
+      paramIndex += allowedClabeIds.length;
+    }
 
     if (type) {
       conditions.push(`type = $${paramIndex++}`);

@@ -37,6 +37,48 @@ function getStatusText(status: string): string {
   return statusMap[status] || status;
 }
 
+// Draw gradient background (simulated with rectangles)
+function drawGradientBackground(doc: jsPDF, pageWidth: number, pageHeight: number) {
+  const steps = 50;
+  const stepHeight = pageHeight / steps;
+
+  for (let i = 0; i < steps; i++) {
+    const progress = i / steps;
+    // From dark purple (#0f0a1a) to deep purple (#1a0f2e)
+    const r = Math.round(15 + progress * 11);
+    const g = Math.round(10 + progress * 5);
+    const b = Math.round(26 + progress * 20);
+
+    doc.setFillColor(r, g, b);
+    doc.rect(0, i * stepHeight, pageWidth, stepHeight + 1, 'F');
+  }
+}
+
+// Draw a transparent card (simulated glass effect)
+function drawGlassCard(
+  doc: jsPDF,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  opacity: number = 0.1
+) {
+  // Semi-transparent white overlay
+  const alpha = Math.round(255 * opacity);
+  doc.setFillColor(255, 255, 255);
+  doc.setGState(doc.GState({ opacity: opacity }));
+  doc.roundedRect(x, y, width, height, 3, 3, 'F');
+
+  // Subtle border
+  doc.setGState(doc.GState({ opacity: 0.15 }));
+  doc.setDrawColor(255, 255, 255);
+  doc.setLineWidth(0.3);
+  doc.roundedRect(x, y, width, height, 3, 3, 'S');
+
+  // Reset opacity
+  doc.setGState(doc.GState({ opacity: 1 }));
+}
+
 export function generateReceiptPDF(transaction: TransactionData): void {
   const doc = new jsPDF({
     orientation: 'portrait',
@@ -46,205 +88,211 @@ export function generateReceiptPDF(transaction: TransactionData): void {
 
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
-  const margin = 25;
+  const margin = 20;
   const contentWidth = pageWidth - margin * 2;
 
-  // Clean white background
-  doc.setFillColor(255, 255, 255);
-  doc.rect(0, 0, pageWidth, pageHeight, 'F');
+  // Draw gradient background
+  drawGradientBackground(doc, pageWidth, pageHeight);
 
-  // Top accent bar - gradient effect (purple to cyan)
-  doc.setFillColor(139, 92, 246); // Purple
-  doc.rect(0, 0, pageWidth, 4, 'F');
+  let y = 25;
 
-  let y = 20;
-
-  // Company name header
-  doc.setFontSize(24);
+  // NOVACORP Header
+  doc.setFontSize(28);
   doc.setFont('helvetica', 'bold');
-  doc.setTextColor(30, 30, 40);
-  doc.text('NOVACORP', margin, y);
+  doc.setTextColor(255, 255, 255);
+  doc.text('NOVA', margin, y);
+
+  const novaWidth = doc.getTextWidth('NOVA');
+  doc.setTextColor(167, 139, 250); // Purple-400
+  doc.text('CORP', margin + novaWidth, y);
 
   // Subtitle
   doc.setFontSize(9);
   doc.setFont('helvetica', 'normal');
-  doc.setTextColor(120, 120, 130);
-  doc.text('Comprobante de Operacion SPEI', margin, y + 7);
-
-  // Date on the right
-  doc.setFontSize(9);
-  doc.setTextColor(150, 150, 160);
-  doc.text(formatDate(transaction.settledAt || transaction.createdAt), pageWidth - margin, y + 3, { align: 'right' });
+  doc.setTextColor(255, 255, 255);
+  doc.setGState(doc.GState({ opacity: 0.5 }));
+  doc.text('Comprobante de Transferencia SPEI', margin, y + 8);
+  doc.setGState(doc.GState({ opacity: 1 }));
 
   y += 25;
 
-  // Divider line
-  doc.setDrawColor(230, 230, 235);
-  doc.setLineWidth(0.5);
-  doc.line(margin, y, pageWidth - margin, y);
+  // Amount Card - Main prominent card
+  const amountCardHeight = 50;
+  drawGlassCard(doc, margin, y, contentWidth, amountCardHeight, 0.08);
 
-  y += 15;
-
-  // Transaction type badge
+  // Transaction type label
   const isIncoming = transaction.type === 'incoming';
-  const typeText = isIncoming ? 'DEPOSITO RECIBIDO' : 'TRANSFERENCIA ENVIADA';
-  const badgeColor = isIncoming ? [16, 185, 129] : [99, 102, 241]; // Green / Indigo
-
-  doc.setFillColor(badgeColor[0], badgeColor[1], badgeColor[2]);
-  const badgeWidth = doc.getTextWidth(typeText) + 16;
-  doc.roundedRect(margin, y - 5, badgeWidth, 8, 2, 2, 'F');
-
-  doc.setTextColor(255, 255, 255);
-  doc.setFontSize(8);
-  doc.setFont('helvetica', 'bold');
-  doc.text(typeText, margin + 8, y);
-
-  y += 15;
-
-  // Amount - large and prominent
-  doc.setFontSize(36);
-  doc.setFont('helvetica', 'bold');
-  doc.setTextColor(30, 30, 40);
-  const amountText = formatCurrency(transaction.amount);
-  doc.text(amountText, margin, y);
+  const typeText = isIncoming ? 'Depósito Recibido' : 'Transferencia Enviada';
 
   doc.setFontSize(10);
   doc.setFont('helvetica', 'normal');
-  doc.setTextColor(150, 150, 160);
-  doc.text('MXN', margin + doc.getTextWidth(amountText) + 3, y - 6);
+  doc.setTextColor(255, 255, 255);
+  doc.setGState(doc.GState({ opacity: 0.6 }));
+  doc.text(typeText, margin + 12, y + 14);
+  doc.setGState(doc.GState({ opacity: 1 }));
 
-  y += 20;
+  // Amount
+  doc.setFontSize(32);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(255, 255, 255);
+  const amountText = formatCurrency(transaction.amount);
+  doc.text(amountText, margin + 12, y + 36);
 
-  // Main info card - light gray background
-  const cardHeight = 85;
-  doc.setFillColor(248, 249, 250);
-  doc.roundedRect(margin, y, contentWidth, cardHeight, 4, 4, 'F');
+  // MXN label
+  doc.setFontSize(12);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(167, 139, 250);
+  doc.text('MXN', margin + 12 + doc.getTextWidth(amountText) + 4, y + 36);
 
-  // Card border
-  doc.setDrawColor(230, 230, 235);
-  doc.setLineWidth(0.3);
-  doc.roundedRect(margin, y, contentWidth, cardHeight, 4, 4, 'S');
+  y += amountCardHeight + 12;
 
-  y += 12;
+  // Details Card
+  const detailsCardHeight = 90;
+  drawGlassCard(doc, margin, y, contentWidth, detailsCardHeight, 0.06);
+
+  let detailY = y + 14;
   const labelX = margin + 12;
   const valueX = margin + contentWidth - 12;
 
-  // Helper function for rows inside card
-  const addCardRow = (label: string, value: string, isMono: boolean = false) => {
+  // Helper function for detail rows
+  const addDetailRow = (label: string, value: string, isMono: boolean = false) => {
     doc.setFontSize(9);
     doc.setFont('helvetica', 'normal');
-    doc.setTextColor(120, 120, 130);
-    doc.text(label, labelX, y);
+    doc.setTextColor(255, 255, 255);
+    doc.setGState(doc.GState({ opacity: 0.5 }));
+    doc.text(label, labelX, detailY);
+    doc.setGState(doc.GState({ opacity: 1 }));
 
-    doc.setTextColor(50, 50, 60);
+    doc.setTextColor(255, 255, 255);
     if (isMono) {
       doc.setFont('courier', 'normal');
-      doc.setFontSize(9);
-    } else {
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(9);
     }
 
     // Truncate if too long
     let displayValue = value;
-    const maxWidth = contentWidth - 80;
+    const maxWidth = contentWidth - 70;
     while (doc.getTextWidth(displayValue) > maxWidth && displayValue.length > 3) {
       displayValue = displayValue.slice(0, -4) + '...';
     }
 
-    doc.text(displayValue, valueX, y, { align: 'right' });
+    doc.text(displayValue, valueX, detailY, { align: 'right' });
     doc.setFont('helvetica', 'normal');
-    y += 11;
+    detailY += 14;
   };
 
-  // Counterparty info
+  // Counterparty details
   if (isIncoming) {
-    addCardRow('Ordenante', transaction.payerName || 'No especificado');
-    addCardRow('Banco Origen', getBankName(transaction.payerBank));
+    addDetailRow('Ordenante', transaction.payerName || 'No especificado');
+    addDetailRow('Banco Origen', getBankName(transaction.payerBank));
     if (transaction.payerAccount) {
-      addCardRow('CLABE Origen', formatClabe(transaction.payerAccount), true);
+      addDetailRow('CLABE Origen', formatClabe(transaction.payerAccount), true);
     }
   } else {
-    addCardRow('Beneficiario', transaction.beneficiaryName || 'No especificado');
-    addCardRow('Banco Destino', getBankName(transaction.beneficiaryBank));
+    addDetailRow('Beneficiario', transaction.beneficiaryName || 'No especificado');
+    addDetailRow('Banco Destino', getBankName(transaction.beneficiaryBank));
     if (transaction.beneficiaryAccount) {
-      addCardRow('CLABE Destino', formatClabe(transaction.beneficiaryAccount), true);
+      addDetailRow('CLABE Destino', formatClabe(transaction.beneficiaryAccount), true);
     }
   }
 
-  addCardRow('Concepto', transaction.concept || 'Sin concepto');
+  addDetailRow('Concepto', transaction.concept || 'Sin concepto');
 
   if (transaction.numericalReference) {
-    addCardRow('Referencia', transaction.numericalReference.toString(), true);
+    addDetailRow('Referencia', transaction.numericalReference.toString(), true);
   }
 
-  // Jump out of card
-  y += 20;
+  y += detailsCardHeight + 12;
 
-  // Tracking key section
-  doc.setFillColor(139, 92, 246, 0.08 * 255);
-  doc.roundedRect(margin, y, contentWidth, 28, 4, 4, 'F');
+  // Tracking Key Card
+  const trackingCardHeight = 35;
+  drawGlassCard(doc, margin, y, contentWidth, trackingCardHeight, 0.1);
 
   doc.setFontSize(8);
   doc.setFont('helvetica', 'normal');
-  doc.setTextColor(139, 92, 246);
-  doc.text('CLAVE DE RASTREO', margin + 12, y + 10);
+  doc.setTextColor(167, 139, 250);
+  doc.text('CLAVE DE RASTREO', margin + 12, y + 12);
 
-  doc.setFontSize(11);
+  doc.setFontSize(12);
   doc.setFont('courier', 'bold');
-  doc.setTextColor(80, 60, 120);
-  doc.text(transaction.trackingKey, margin + 12, y + 20);
+  doc.setTextColor(255, 255, 255);
+  doc.text(transaction.trackingKey, margin + 12, y + 25);
 
-  y += 40;
+  y += trackingCardHeight + 12;
 
-  // Status badge
-  const statusMap: Record<string, { color: number[] }> = {
-    scattered: { color: [16, 185, 129] },
-    sent: { color: [59, 130, 246] },
-    pending: { color: [245, 158, 11] },
-    pending_confirmation: { color: [245, 158, 11] },
-    returned: { color: [239, 68, 68] },
-    canceled: { color: [239, 68, 68] },
+  // Status and Date Card
+  const statusCardHeight = 35;
+  drawGlassCard(doc, margin, y, contentWidth / 2 - 6, statusCardHeight, 0.06);
+  drawGlassCard(doc, margin + contentWidth / 2 + 6, y, contentWidth / 2 - 6, statusCardHeight, 0.06);
+
+  // Status
+  doc.setFontSize(8);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(255, 255, 255);
+  doc.setGState(doc.GState({ opacity: 0.5 }));
+  doc.text('ESTADO', margin + 12, y + 12);
+  doc.setGState(doc.GState({ opacity: 1 }));
+
+  const statusColors: Record<string, number[]> = {
+    scattered: [74, 222, 128],   // Green
+    sent: [96, 165, 250],        // Blue
+    pending: [251, 191, 36],     // Amber
+    pending_confirmation: [251, 191, 36],
+    returned: [248, 113, 113],   // Red
+    canceled: [248, 113, 113],
   };
 
-  const status = statusMap[transaction.status] || { color: [150, 150, 150] };
-  const statusText = getStatusText(transaction.status);
-
-  doc.setFontSize(9);
+  const statusColor = statusColors[transaction.status] || [255, 255, 255];
+  doc.setFontSize(12);
   doc.setFont('helvetica', 'bold');
-  const statusWidth = doc.getTextWidth(statusText) + 20;
+  doc.setTextColor(statusColor[0], statusColor[1], statusColor[2]);
+  doc.text(getStatusText(transaction.status), margin + 12, y + 25);
 
-  doc.setFillColor(status.color[0], status.color[1], status.color[2], 0.1 * 255);
-  doc.roundedRect(pageWidth / 2 - statusWidth / 2, y, statusWidth, 10, 3, 3, 'F');
+  // Date
+  doc.setFontSize(8);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(255, 255, 255);
+  doc.setGState(doc.GState({ opacity: 0.5 }));
+  doc.text('FECHA', margin + contentWidth / 2 + 18, y + 12);
+  doc.setGState(doc.GState({ opacity: 1 }));
 
-  doc.setTextColor(status.color[0], status.color[1], status.color[2]);
-  doc.text(statusText, pageWidth / 2, y + 7, { align: 'center' });
+  doc.setFontSize(11);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(255, 255, 255);
+  doc.text(formatDate(transaction.settledAt || transaction.createdAt), margin + contentWidth / 2 + 18, y + 25);
 
-  y += 25;
+  y += statusCardHeight + 20;
 
-  // Divider
-  doc.setDrawColor(230, 230, 235);
-  doc.setLineWidth(0.3);
-  doc.line(margin + 30, y, pageWidth - margin - 30, y);
+  // Divider line with gradient effect
+  doc.setGState(doc.GState({ opacity: 0.2 }));
+  doc.setDrawColor(167, 139, 250);
+  doc.setLineWidth(0.5);
+  doc.line(margin + 40, y, pageWidth - margin - 40, y);
+  doc.setGState(doc.GState({ opacity: 1 }));
 
   y += 15;
 
-  // Footer info
+  // Footer
   doc.setFontSize(8);
   doc.setFont('helvetica', 'normal');
-  doc.setTextColor(160, 160, 170);
+  doc.setTextColor(255, 255, 255);
+  doc.setGState(doc.GState({ opacity: 0.4 }));
   doc.text('Este comprobante es un documento informativo generado por NOVACORP.', pageWidth / 2, y, { align: 'center' });
   y += 5;
   doc.text('Para el Comprobante Electronico de Pago (CEP) oficial, consulte Banxico.', pageWidth / 2, y, { align: 'center' });
+  doc.setGState(doc.GState({ opacity: 1 }));
 
-  // Bottom accent line
-  doc.setFillColor(139, 92, 246);
-  doc.rect(0, pageHeight - 3, pageWidth, 3, 'F');
+  // Bottom accent - thin purple line
+  doc.setFillColor(167, 139, 250);
+  doc.setGState(doc.GState({ opacity: 0.6 }));
+  doc.rect(0, pageHeight - 2, pageWidth, 2, 'F');
+  doc.setGState(doc.GState({ opacity: 1 }));
 
-  // Timestamp in corner
+  // Generated timestamp
   doc.setFontSize(7);
-  doc.setTextColor(180, 180, 190);
+  doc.setTextColor(255, 255, 255);
+  doc.setGState(doc.GState({ opacity: 0.3 }));
   doc.text(`Generado: ${new Date().toLocaleString('es-MX')}`, pageWidth - margin, pageHeight - 8, { align: 'right' });
+  doc.setGState(doc.GState({ opacity: 1 }));
 
   // Save the PDF
   const fileName = `comprobante_${transaction.trackingKey}_${Date.now()}.pdf`;

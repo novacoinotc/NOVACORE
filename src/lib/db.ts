@@ -644,6 +644,66 @@ export async function getClabeAccountsForUser(userId: string): Promise<DbClabeAc
   return result as DbClabeAccount[];
 }
 
+// Get users with their CLABE access for a specific company
+export async function getUsersWithClabeAccessByCompanyId(companyId: string): Promise<{
+  user: DbUser;
+  clabeAccounts: DbClabeAccount[];
+}[]> {
+  // First get all CLABE accounts for this company
+  const companyClabes = await getClabeAccountsByCompanyId(companyId);
+  if (companyClabes.length === 0) {
+    return [];
+  }
+
+  const clabeIds = companyClabes.map(c => c.id);
+
+  // Get all user-clabe access records for these CLABEs
+  const accessResult = await sql`
+    SELECT DISTINCT uca.user_id, uca.clabe_account_id
+    FROM user_clabe_access uca
+    WHERE uca.clabe_account_id = ANY(${clabeIds}::text[])
+  `;
+
+  if (accessResult.length === 0) {
+    return [];
+  }
+
+  // Group clabe_account_ids by user_id
+  const userClabeMap = new Map<string, string[]>();
+  for (const row of accessResult) {
+    const userId = row.user_id;
+    const clabeId = row.clabe_account_id;
+    if (!userClabeMap.has(userId)) {
+      userClabeMap.set(userId, []);
+    }
+    userClabeMap.get(userId)!.push(clabeId);
+  }
+
+  // Get user details for all users
+  const userIds = Array.from(userClabeMap.keys());
+  const usersResult = await sql`
+    SELECT * FROM users WHERE id = ANY(${userIds}::text[])
+  `;
+
+  // Create the result array with users and their assigned CLABEs
+  const clabeMap = new Map(companyClabes.map(c => [c.id, c]));
+  const result: { user: DbUser; clabeAccounts: DbClabeAccount[] }[] = [];
+
+  for (const user of usersResult) {
+    const assignedClabeIds = userClabeMap.get(user.id) || [];
+    const assignedClabes = assignedClabeIds
+      .map(id => clabeMap.get(id))
+      .filter((c): c is DbClabeAccount => c !== undefined);
+
+    result.push({
+      user: user as DbUser,
+      clabeAccounts: assignedClabes,
+    });
+  }
+
+  return result;
+}
+
 // ==================== USER OPERATIONS ====================
 // Note: Database uses camelCase columns (Prisma default)
 
@@ -1268,6 +1328,7 @@ export async function getTransactionsByCompanyId(
 export async function getCompanyWithDetails(companyId: string): Promise<{
   company: DbCompany;
   users: DbUser[];
+  usersWithClabeAccess: { user: DbUser; clabeAccounts: DbClabeAccount[] }[];
   clabeAccounts: DbClabeAccount[];
   stats: {
     totalIncoming: number;
@@ -1278,9 +1339,10 @@ export async function getCompanyWithDetails(companyId: string): Promise<{
   const company = await getCompanyById(companyId);
   if (!company) return null;
 
-  // Note: Users are no longer associated with companies via company_id
-  // Return empty array for backwards compatibility
-  const users: DbUser[] = [];
+  // Get users with their CLABE access for this company
+  const usersWithClabeAccess = await getUsersWithClabeAccessByCompanyId(companyId);
+  // For backwards compatibility, also return flat users array
+  const users = usersWithClabeAccess.map(u => u.user);
   const clabeAccounts = await getClabeAccountsByCompanyId(companyId);
 
   // Get transaction stats for this company
@@ -1304,7 +1366,7 @@ export async function getCompanyWithDetails(companyId: string): Promise<{
     };
   }
 
-  return { company, users, clabeAccounts, stats };
+  return { company, users, usersWithClabeAccess, clabeAccounts, stats };
 }
 
 // Get recent transactions for dashboard

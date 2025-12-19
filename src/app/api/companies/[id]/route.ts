@@ -70,6 +70,24 @@ export async function GET(
         createdAt: u.createdAt ? new Date(u.createdAt).getTime() : Date.now(),
       }));
 
+      // Users with their CLABE access
+      const usersWithClabeAccess = details.usersWithClabeAccess.map((item) => ({
+        user: {
+          id: item.user.id,
+          email: item.user.email,
+          name: item.user.name,
+          role: item.user.role,
+          isActive: item.user.isActive,
+          lastLogin: item.user.lastLogin ? new Date(item.user.lastLogin).getTime() : null,
+          createdAt: item.user.createdAt ? new Date(item.user.createdAt).getTime() : Date.now(),
+        },
+        clabeAccounts: item.clabeAccounts.map((c) => ({
+          id: c.id,
+          clabe: c.clabe,
+          alias: c.alias,
+        })),
+      }));
+
       const clabeAccounts = details.clabeAccounts.map((c) => ({
         id: c.id,
         clabe: c.clabe,
@@ -97,6 +115,7 @@ export async function GET(
       return NextResponse.json({
         company,
         users,
+        usersWithClabeAccess,
         clabeAccounts,
         transactions,
         stats: {

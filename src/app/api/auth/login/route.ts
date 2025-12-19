@@ -290,6 +290,21 @@ export async function POST(request: NextRequest) {
     // Create session token
     const token = crypto.randomUUID();
     const expiresAt = Date.now() + 24 * 60 * 60 * 1000; // 24 hours
+    const sessionId = `session_${Date.now()}_${crypto.randomUUID().substring(0, 8)}`;
+
+    // Save session to database for server-side validation
+    try {
+      const { createSession } = await import('@/lib/db');
+      await createSession({
+        id: sessionId,
+        userId: dbUser.id,
+        token: token,
+        expiresAt: new Date(expiresAt),
+      });
+    } catch (sessionError) {
+      console.error('Failed to create session:', sessionError);
+      // Continue anyway - session validation will fail but user can retry
+    }
 
     // Determine permissions based on role
     const role = dbUser.role as UserRole;

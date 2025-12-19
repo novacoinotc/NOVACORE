@@ -44,9 +44,15 @@ interface ClabeAccount {
   createdAt: number;
 }
 
+interface UserClabeAccess {
+  user: CompanyUser;
+  clabeAccounts: { id: string; clabe: string; alias: string }[];
+}
+
 interface CompanyDetails {
   company: Company;
   users: CompanyUser[];
+  usersWithClabeAccess: UserClabeAccess[];
   clabeAccounts: ClabeAccount[];
   transactions: Transaction[];
   stats: {
@@ -238,7 +244,7 @@ export default function CompanyDetailPage() {
 
   if (!data) return null;
 
-  const { company, users, clabeAccounts, transactions, stats } = data;
+  const { company, users, usersWithClabeAccess, clabeAccounts, transactions, stats } = data;
   const isSuperAdmin = currentUser?.role === 'super_admin';
 
   return (
@@ -313,7 +319,7 @@ export default function CompanyDetailPage() {
             </div>
             <div>
               <p className="text-white/40 text-xs">Usuarios</p>
-              <p className="text-white font-semibold">{users.length}</p>
+              <p className="text-white font-semibold">{usersWithClabeAccess?.length || 0}</p>
             </div>
           </div>
         </div>
@@ -435,35 +441,55 @@ export default function CompanyDetailPage() {
           {activeTab === 'users' && (
             <div className="backdrop-blur-xl bg-white/[0.02] border border-white/[0.06] rounded-xl overflow-hidden">
               <div className="p-4 border-b border-white/[0.06]">
-                <h3 className="text-lg font-semibold text-white">Usuarios ({users.length})</h3>
+                <h3 className="text-lg font-semibold text-white">Usuarios con acceso a CLABE ({usersWithClabeAccess?.length || 0})</h3>
               </div>
-              {users.length === 0 ? (
+              {(!usersWithClabeAccess || usersWithClabeAccess.length === 0) ? (
                 <div className="p-8 text-center">
                   <Users className="w-12 h-12 text-white/20 mx-auto mb-3" />
                   <p className="text-white/40">No hay usuarios registrados</p>
                 </div>
               ) : (
                 <div className="divide-y divide-white/[0.06]">
-                  {users.map((user) => (
-                    <div key={user.id} className="p-4 flex items-center justify-between hover:bg-white/[0.02]">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-purple-500 to-violet-600 flex items-center justify-center text-white font-semibold">
-                          {user.name.charAt(0).toUpperCase()}
+                  {usersWithClabeAccess.map((item) => (
+                    <div key={item.user.id} className="p-4 hover:bg-white/[0.02]">
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-purple-500 to-violet-600 flex items-center justify-center text-white font-semibold">
+                            {item.user.name.charAt(0).toUpperCase()}
+                          </div>
+                          <div>
+                            <p className="text-white font-medium">{item.user.name}</p>
+                            <p className="text-white/40 text-sm">{item.user.email}</p>
+                          </div>
                         </div>
-                        <div>
-                          <p className="text-white font-medium">{user.name}</p>
-                          <p className="text-white/40 text-sm">{user.email}</p>
+                        <div className="flex items-center gap-4">
+                          <span className={`px-2 py-1 rounded text-xs font-medium ${
+                            item.user.role === 'company_admin'
+                              ? 'bg-blue-500/10 text-blue-400'
+                              : 'bg-gray-500/10 text-gray-400'
+                          }`}>
+                            {item.user.role === 'company_admin' ? 'Admin' : 'Usuario'}
+                          </span>
+                          <span className={`w-2 h-2 rounded-full ${item.user.isActive ? 'bg-green-400' : 'bg-red-400'}`} />
                         </div>
                       </div>
-                      <div className="flex items-center gap-4">
-                        <span className={`px-2 py-1 rounded text-xs font-medium ${
-                          user.role === 'company_admin'
-                            ? 'bg-blue-500/10 text-blue-400'
-                            : 'bg-gray-500/10 text-gray-400'
-                        }`}>
-                          {user.role === 'company_admin' ? 'Admin' : 'Usuario'}
-                        </span>
-                        <span className={`w-2 h-2 rounded-full ${user.isActive ? 'bg-green-400' : 'bg-red-400'}`} />
+                      {/* CLABE Accounts for this user */}
+                      <div className="ml-13 pl-10">
+                        <p className="text-white/40 text-xs uppercase tracking-wider mb-2">Cuentas CLABE asignadas:</p>
+                        <div className="flex flex-wrap gap-2">
+                          {item.clabeAccounts.map((clabe) => (
+                            <div
+                              key={clabe.id}
+                              className="flex items-center gap-2 px-3 py-1.5 bg-purple-500/10 border border-purple-500/20 rounded-lg"
+                            >
+                              <CreditCard className="w-3.5 h-3.5 text-purple-400" />
+                              <span className="text-purple-300 text-xs font-medium">{clabe.alias}</span>
+                              <span className="text-white/40 text-xs font-mono">
+                                {clabe.clabe.slice(0, 4)}...{clabe.clabe.slice(-4)}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
                       </div>
                     </div>
                   ))}

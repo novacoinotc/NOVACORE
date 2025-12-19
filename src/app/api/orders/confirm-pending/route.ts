@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import crypto from 'crypto';
 import { getPendingConfirmationTransactions, confirmPendingTransaction, updateTransactionStatus, createAuditLogEntry } from '@/lib/db';
 import { createOrder, buildOrderOriginalString } from '@/lib/opm-api';
 import { signWithPrivateKey } from '@/lib/crypto';
@@ -189,6 +190,7 @@ export async function POST(request: NextRequest) {
 
     // SECURITY FIX: Audit log for batch processing
     await createAuditLogEntry({
+      id: `audit_${crypto.randomUUID()}`,
       action: 'BATCH_CONFIRM_PENDING',
       userId: authResult.user.id,
       userEmail: authResult.user.email,

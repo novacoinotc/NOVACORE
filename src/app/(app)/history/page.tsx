@@ -34,6 +34,7 @@ import {
   Modal,
 } from '@/components/ui';
 import { NovacorpLogo } from '@/components/ui/NovacorpLogo';
+import { useAuth } from '@/context/AuthContext';
 import { formatCurrency, formatDate, getStatusText, cn, formatClabe } from '@/lib/utils';
 import { getBankFromSpeiCode, getBankSelectOptions } from '@/lib/banks';
 import { generateReceiptPDF } from '@/lib/generate-receipt-pdf';
@@ -96,6 +97,8 @@ const typeOptions = [
 ];
 
 export default function HistoryPage() {
+  const { user } = useAuth();
+
   // State
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [stats, setStats] = useState({ totalCount: 0, totalIncoming: 0, totalOutgoing: 0, inTransit: 0 });
@@ -179,7 +182,11 @@ export default function HistoryPage() {
         params.append('payerAccount', clabeFilter);
       }
 
-      const response = await fetch(`/api/transactions?${params}`);
+      const response = await fetch(`/api/transactions?${params}`, {
+        headers: {
+          ...(user?.id && { 'x-user-id': user.id }),
+        },
+      });
       if (!response.ok) {
         throw new Error('Error al cargar transacciones');
       }
@@ -193,7 +200,7 @@ export default function HistoryPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [pagination.page, pagination.itemsPerPage, searchQuery, statusFilter, typeFilter, bankFilter, minAmount, maxAmount, dateFrom, dateTo, clabeFilter]);
+  }, [pagination.page, pagination.itemsPerPage, searchQuery, statusFilter, typeFilter, bankFilter, minAmount, maxAmount, dateFrom, dateTo, clabeFilter, user?.id]);
 
   // Initial fetch
   useEffect(() => {

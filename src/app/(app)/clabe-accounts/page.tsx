@@ -75,7 +75,11 @@ export default function ClabeAccountsPage() {
         url += `?companyId=${currentUser.companyId}`;
       }
 
-      const response = await fetch(url);
+      const response = await fetch(url, {
+        headers: {
+          ...(currentUser?.id && { 'x-user-id': currentUser.id }),
+        },
+      });
       if (response.ok) {
         const data = await response.json();
         setClabeAccounts(data);
@@ -90,7 +94,11 @@ export default function ClabeAccountsPage() {
   // Fetch companies for dropdown
   const fetchCompanies = async () => {
     try {
-      const response = await fetch('/api/companies');
+      const response = await fetch('/api/companies', {
+        headers: {
+          ...(currentUser?.id && { 'x-user-id': currentUser.id }),
+        },
+      });
       if (response.ok) {
         const data = await response.json();
         setCompanies(data);

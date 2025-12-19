@@ -8,26 +8,23 @@ import {
   Download,
   ArrowUpRight,
   ArrowDownLeft,
-  Calendar,
-  ChevronDown,
   ChevronLeft,
   ChevronRight,
   Copy,
   Eye,
   X,
   Filter,
-  Building2,
   DollarSign,
   RefreshCw,
   TrendingUp,
   TrendingDown,
   Clock,
+  Check,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { formatCurrency, formatDate, getStatusText, cn, formatClabe } from '@/lib/utils';
 import { getBankFromSpeiCode, getBankSelectOptions } from '@/lib/banks';
 import { generateReceiptPDF } from '@/lib/generate-receipt-pdf';
-import { NovacorpLogo } from '@/components/ui/NovacorpLogo';
 
 interface Transaction {
   id: string;
@@ -110,9 +107,17 @@ export default function HistoryPage() {
 
   // Modal state
   const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null);
+  const [copiedField, setCopiedField] = useState<string | null>(null);
 
   // CEP state
   const [loadingCep, setLoadingCep] = useState(false);
+
+  // Copy helper
+  const copyToClipboard = (text: string, field: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedField(field);
+    setTimeout(() => setCopiedField(null), 2000);
+  };
 
   // Fetch CEP from Banxico
   const handleGetCep = async (transaction: Transaction) => {
@@ -157,9 +162,7 @@ export default function HistoryPage() {
       if (searchQuery) params.append('search', searchQuery);
       if (statusFilter) params.append('status', statusFilter);
       if (typeFilter) params.append('type', typeFilter);
-      if (bankFilter) {
-        params.append('beneficiaryBank', bankFilter);
-      }
+      if (bankFilter) params.append('beneficiaryBank', bankFilter);
       if (minAmount) params.append('minAmount', minAmount);
       if (maxAmount) params.append('maxAmount', maxAmount);
       if (dateFrom) params.append('from', new Date(dateFrom).getTime().toString());
@@ -223,11 +226,6 @@ export default function HistoryPage() {
     return bank?.shortName || bankCode;
   };
 
-  // Copy to clipboard
-  const copyToClipboard = (text: string) => {
-    navigator.clipboard.writeText(text);
-  };
-
   // Status badge color
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -246,9 +244,6 @@ export default function HistoryPage() {
     }
   };
 
-  // Bank options
-  const bankOptions = [{ value: '', label: 'Todos los bancos' }, ...getBankSelectOptions()];
-
   return (
     <div className="p-6 space-y-6 max-w-7xl mx-auto">
       {/* Header */}
@@ -259,7 +254,6 @@ export default function HistoryPage() {
 
       {/* Stats Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Total Transacciones */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -267,75 +261,45 @@ export default function HistoryPage() {
         >
           <div className="flex items-center justify-between mb-3">
             <span className="text-white/60 text-sm">Transacciones</span>
-            <button
-              onClick={fetchTransactions}
-              disabled={isLoading}
-              className="p-1.5 text-white/30 hover:text-white hover:bg-white/[0.05] rounded transition-colors"
-            >
+            <button onClick={fetchTransactions} disabled={isLoading} className="p-1.5 text-white/30 hover:text-white hover:bg-white/[0.05] rounded transition-colors">
               <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
             </button>
           </div>
           <div className="flex items-baseline gap-2">
             <DollarSign className="w-5 h-5 text-purple-400" />
-            <span className="text-2xl font-bold text-white">
-              {isLoading ? '...' : stats.totalCount.toLocaleString()}
-            </span>
+            <span className="text-2xl font-bold text-white">{isLoading ? '...' : stats.totalCount.toLocaleString()}</span>
           </div>
         </motion.div>
 
-        {/* Total Entrante */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.1 }}
-          className="backdrop-blur-xl bg-white/[0.02] border border-white/[0.06] rounded-xl p-5"
-        >
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="backdrop-blur-xl bg-white/[0.02] border border-white/[0.06] rounded-xl p-5">
           <div className="flex items-center gap-2 mb-3">
             <TrendingUp className="w-4 h-4 text-green-400" />
             <span className="text-white/60 text-sm">Total Entrante</span>
           </div>
           <div className="flex items-baseline gap-2">
             <ArrowDownLeft className="w-5 h-5 text-green-400" />
-            <span className="text-2xl font-bold text-green-400">
-              {formatCurrency(stats.totalIncoming)}
-            </span>
+            <span className="text-2xl font-bold text-green-400">{formatCurrency(stats.totalIncoming)}</span>
           </div>
         </motion.div>
 
-        {/* Total Saliente */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2 }}
-          className="backdrop-blur-xl bg-white/[0.02] border border-white/[0.06] rounded-xl p-5"
-        >
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} className="backdrop-blur-xl bg-white/[0.02] border border-white/[0.06] rounded-xl p-5">
           <div className="flex items-center gap-2 mb-3">
             <TrendingDown className="w-4 h-4 text-red-400" />
             <span className="text-white/60 text-sm">Total Saliente</span>
           </div>
           <div className="flex items-baseline gap-2">
             <ArrowUpRight className="w-5 h-5 text-red-400" />
-            <span className="text-2xl font-bold text-red-400">
-              {formatCurrency(stats.totalOutgoing)}
-            </span>
+            <span className="text-2xl font-bold text-red-400">{formatCurrency(stats.totalOutgoing)}</span>
           </div>
         </motion.div>
 
-        {/* En Tránsito */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.3 }}
-          className="backdrop-blur-xl bg-white/[0.02] border border-white/[0.06] rounded-xl p-5"
-        >
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }} className="backdrop-blur-xl bg-white/[0.02] border border-white/[0.06] rounded-xl p-5">
           <div className="flex items-center gap-2 mb-3">
             <Clock className="w-4 h-4 text-yellow-400" />
             <span className="text-white/60 text-sm">En Tránsito</span>
           </div>
           <div className="flex items-baseline gap-2">
-            <span className="text-2xl font-bold text-yellow-400">
-              {formatCurrency(stats.inTransit)}
-            </span>
+            <span className="text-2xl font-bold text-yellow-400">{formatCurrency(stats.inTransit)}</span>
           </div>
         </motion.div>
       </div>
@@ -355,140 +319,61 @@ export default function HistoryPage() {
                 className="w-full bg-white/[0.03] border border-white/[0.08] rounded-lg py-2.5 pl-10 pr-4 text-white text-sm placeholder:text-white/30 focus:outline-none focus:border-purple-500/50 transition-colors"
               />
             </div>
-
             <div className="flex gap-2">
-              <select
-                value={typeFilter}
-                onChange={(e) => { setTypeFilter(e.target.value); handleFilterChange(); }}
-                className="bg-white/[0.03] border border-white/[0.08] rounded-lg py-2.5 px-3 text-white text-sm focus:outline-none focus:border-purple-500/50"
-              >
-                {typeOptions.map(opt => (
-                  <option key={opt.value} value={opt.value} className="bg-[#0a0a1a]">
-                    {opt.label}
-                  </option>
-                ))}
+              <select value={typeFilter} onChange={(e) => { setTypeFilter(e.target.value); handleFilterChange(); }} className="bg-white/[0.03] border border-white/[0.08] rounded-lg py-2.5 px-3 text-white text-sm focus:outline-none focus:border-purple-500/50">
+                {typeOptions.map(opt => <option key={opt.value} value={opt.value} className="bg-[#0a0a1a]">{opt.label}</option>)}
               </select>
-
-              <select
-                value={statusFilter}
-                onChange={(e) => { setStatusFilter(e.target.value); handleFilterChange(); }}
-                className="bg-white/[0.03] border border-white/[0.08] rounded-lg py-2.5 px-3 text-white text-sm focus:outline-none focus:border-purple-500/50"
-              >
-                {statusOptions.map(opt => (
-                  <option key={opt.value} value={opt.value} className="bg-[#0a0a1a]">
-                    {opt.label}
-                  </option>
-                ))}
+              <select value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); handleFilterChange(); }} className="bg-white/[0.03] border border-white/[0.08] rounded-lg py-2.5 px-3 text-white text-sm focus:outline-none focus:border-purple-500/50">
+                {statusOptions.map(opt => <option key={opt.value} value={opt.value} className="bg-[#0a0a1a]">{opt.label}</option>)}
               </select>
-
-              <button
-                onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
-                className={cn(
-                  "p-2.5 border rounded-lg transition-colors",
-                  showAdvancedFilters
-                    ? "bg-purple-500/10 border-purple-500/30 text-purple-400"
-                    : "bg-white/[0.03] border-white/[0.08] text-white/60 hover:bg-white/[0.05]"
-                )}
-              >
+              <button onClick={() => setShowAdvancedFilters(!showAdvancedFilters)} className={cn("p-2.5 border rounded-lg transition-colors", showAdvancedFilters ? "bg-purple-500/10 border-purple-500/30 text-purple-400" : "bg-white/[0.03] border-white/[0.08] text-white/60 hover:bg-white/[0.05]")}>
                 <Filter className="w-4 h-4" />
               </button>
-
-              <button
-                onClick={() => fetchTransactions()}
-                className="p-2.5 bg-white/[0.03] border border-white/[0.08] rounded-lg hover:bg-white/[0.05] transition-colors"
-              >
+              <button onClick={() => fetchTransactions()} className="p-2.5 bg-white/[0.03] border border-white/[0.08] rounded-lg hover:bg-white/[0.05] transition-colors">
                 <RefreshCw className={`w-4 h-4 text-white/60 ${isLoading ? 'animate-spin' : ''}`} />
               </button>
-
               {hasActiveFilters && (
-                <button
-                  onClick={clearFilters}
-                  className="p-2.5 bg-red-500/10 border border-red-500/30 rounded-lg text-red-400 hover:bg-red-500/20 transition-colors"
-                >
+                <button onClick={clearFilters} className="p-2.5 bg-red-500/10 border border-red-500/30 rounded-lg text-red-400 hover:bg-red-500/20 transition-colors">
                   <X className="w-4 h-4" />
                 </button>
               )}
             </div>
           </div>
-
-          {/* Advanced filters */}
           {showAdvancedFilters && (
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 pt-4 mt-4 border-t border-white/[0.06]">
               <div>
                 <label className="block text-xs text-white/40 mb-1.5">Desde</label>
-                <input
-                  type="date"
-                  value={dateFrom}
-                  onChange={(e) => { setDateFrom(e.target.value); handleFilterChange(); }}
-                  className="w-full bg-white/[0.03] border border-white/[0.08] rounded-lg py-2 px-3 text-white text-sm focus:outline-none focus:border-purple-500/50"
-                />
+                <input type="date" value={dateFrom} onChange={(e) => { setDateFrom(e.target.value); handleFilterChange(); }} className="w-full bg-white/[0.03] border border-white/[0.08] rounded-lg py-2 px-3 text-white text-sm focus:outline-none focus:border-purple-500/50" />
               </div>
               <div>
                 <label className="block text-xs text-white/40 mb-1.5">Hasta</label>
-                <input
-                  type="date"
-                  value={dateTo}
-                  onChange={(e) => { setDateTo(e.target.value); handleFilterChange(); }}
-                  className="w-full bg-white/[0.03] border border-white/[0.08] rounded-lg py-2 px-3 text-white text-sm focus:outline-none focus:border-purple-500/50"
-                />
+                <input type="date" value={dateTo} onChange={(e) => { setDateTo(e.target.value); handleFilterChange(); }} className="w-full bg-white/[0.03] border border-white/[0.08] rounded-lg py-2 px-3 text-white text-sm focus:outline-none focus:border-purple-500/50" />
               </div>
               <div>
                 <label className="block text-xs text-white/40 mb-1.5">Monto mínimo</label>
-                <input
-                  type="number"
-                  placeholder="0.00"
-                  value={minAmount}
-                  onChange={(e) => { setMinAmount(e.target.value); handleFilterChange(); }}
-                  className="w-full bg-white/[0.03] border border-white/[0.08] rounded-lg py-2 px-3 text-white text-sm focus:outline-none focus:border-purple-500/50"
-                />
+                <input type="number" placeholder="0.00" value={minAmount} onChange={(e) => { setMinAmount(e.target.value); handleFilterChange(); }} className="w-full bg-white/[0.03] border border-white/[0.08] rounded-lg py-2 px-3 text-white text-sm focus:outline-none focus:border-purple-500/50" />
               </div>
               <div>
                 <label className="block text-xs text-white/40 mb-1.5">Monto máximo</label>
-                <input
-                  type="number"
-                  placeholder="999,999.99"
-                  value={maxAmount}
-                  onChange={(e) => { setMaxAmount(e.target.value); handleFilterChange(); }}
-                  className="w-full bg-white/[0.03] border border-white/[0.08] rounded-lg py-2 px-3 text-white text-sm focus:outline-none focus:border-purple-500/50"
-                />
+                <input type="number" placeholder="999,999.99" value={maxAmount} onChange={(e) => { setMaxAmount(e.target.value); handleFilterChange(); }} className="w-full bg-white/[0.03] border border-white/[0.08] rounded-lg py-2 px-3 text-white text-sm focus:outline-none focus:border-purple-500/50" />
               </div>
             </div>
           )}
         </div>
 
-        {/* Error message */}
-        {error && (
-          <div className="p-4 bg-red-500/10 border-b border-red-500/20 text-red-400 text-sm">
-            {error}
-          </div>
-        )}
+        {error && <div className="p-4 bg-red-500/10 border-b border-red-500/20 text-red-400 text-sm">{error}</div>}
 
-        {/* Transactions Table */}
+        {/* Transactions Table - Updated: Fecha first, Clave Rastreo visible, no Estado */}
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead>
               <tr className="border-b border-white/[0.06]">
-                <th className="text-left text-white/40 text-xs font-medium uppercase tracking-wider px-6 py-3">
-                  Tipo
-                </th>
-                <th className="text-left text-white/40 text-xs font-medium uppercase tracking-wider px-6 py-3">
-                  Contraparte
-                </th>
-                <th className="text-left text-white/40 text-xs font-medium uppercase tracking-wider px-6 py-3">
-                  Concepto
-                </th>
-                <th className="text-right text-white/40 text-xs font-medium uppercase tracking-wider px-6 py-3">
-                  Monto
-                </th>
-                <th className="text-center text-white/40 text-xs font-medium uppercase tracking-wider px-6 py-3">
-                  Estado
-                </th>
-                <th className="text-right text-white/40 text-xs font-medium uppercase tracking-wider px-6 py-3">
-                  Fecha
-                </th>
-                <th className="text-center text-white/40 text-xs font-medium uppercase tracking-wider px-6 py-3">
-
-                </th>
+                <th className="text-left text-white/40 text-xs font-medium uppercase tracking-wider px-6 py-3">Fecha</th>
+                <th className="text-left text-white/40 text-xs font-medium uppercase tracking-wider px-6 py-3">Tipo</th>
+                <th className="text-left text-white/40 text-xs font-medium uppercase tracking-wider px-6 py-3">Contraparte</th>
+                <th className="text-left text-white/40 text-xs font-medium uppercase tracking-wider px-6 py-3">Clave Rastreo</th>
+                <th className="text-right text-white/40 text-xs font-medium uppercase tracking-wider px-6 py-3">Monto</th>
+                <th className="text-center text-white/40 text-xs font-medium uppercase tracking-wider px-6 py-3"></th>
               </tr>
             </thead>
             <tbody>
@@ -502,58 +387,34 @@ export default function HistoryPage() {
                   onClick={() => setSelectedTransaction(tx)}
                 >
                   <td className="px-6 py-4">
+                    <span className="text-white/60 text-sm">{formatDate(tx.createdAt)}</span>
+                  </td>
+                  <td className="px-6 py-4">
                     <div className="flex items-center gap-2">
                       {tx.type === 'incoming' ? (
-                        <div className="p-2 bg-green-500/10 rounded-lg">
-                          <ArrowDownLeft className="w-4 h-4 text-green-400" />
-                        </div>
+                        <div className="p-2 bg-green-500/10 rounded-lg"><ArrowDownLeft className="w-4 h-4 text-green-400" /></div>
                       ) : (
-                        <div className="p-2 bg-red-500/10 rounded-lg">
-                          <ArrowUpRight className="w-4 h-4 text-red-400" />
-                        </div>
+                        <div className="p-2 bg-red-500/10 rounded-lg"><ArrowUpRight className="w-4 h-4 text-red-400" /></div>
                       )}
-                      <span className="text-white/60 text-sm">
-                        {tx.type === 'incoming' ? 'Entrada' : 'Salida'}
-                      </span>
+                      <span className="text-white/60 text-sm">{tx.type === 'incoming' ? 'Entrada' : 'Salida'}</span>
                     </div>
                   </td>
                   <td className="px-6 py-4">
                     <div>
-                      <p className="text-white font-medium text-sm truncate max-w-[200px]">
-                        {tx.type === 'incoming' ? tx.payerName : tx.beneficiaryName || 'Sin nombre'}
-                      </p>
-                      <p className="text-white/40 text-xs">
-                        {getBankName(tx.type === 'incoming' ? tx.payerBank : tx.beneficiaryBank)}
-                      </p>
+                      <p className="text-white font-medium text-sm truncate max-w-[180px]">{tx.type === 'incoming' ? tx.payerName : tx.beneficiaryName || 'Sin nombre'}</p>
+                      <p className="text-white/40 text-xs">{getBankName(tx.type === 'incoming' ? tx.payerBank : tx.beneficiaryBank)}</p>
                     </div>
                   </td>
                   <td className="px-6 py-4">
-                    <p className="text-white/60 text-sm truncate max-w-[200px]">
-                      {tx.concept || 'Sin concepto'}
-                    </p>
+                    <code className="text-purple-400 text-xs font-mono">{tx.trackingKey.length > 18 ? tx.trackingKey.slice(0, 18) + '...' : tx.trackingKey}</code>
                   </td>
                   <td className="px-6 py-4 text-right">
-                    <span className={`font-mono font-semibold ${
-                      tx.type === 'incoming' ? 'text-green-400' : 'text-red-400'
-                    }`}>
+                    <span className={`font-mono font-semibold ${tx.type === 'incoming' ? 'text-green-400' : 'text-red-400'}`}>
                       {tx.type === 'incoming' ? '+' : '-'}{formatCurrency(tx.amount)}
                     </span>
                   </td>
                   <td className="px-6 py-4 text-center">
-                    <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium border ${getStatusColor(tx.status)}`}>
-                      {getStatusText(tx.status)}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 text-right">
-                    <span className="text-white/40 text-sm">
-                      {formatDate(tx.createdAt)}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 text-center">
-                    <button
-                      onClick={(e) => { e.stopPropagation(); setSelectedTransaction(tx); }}
-                      className="p-2 text-white/40 hover:text-white hover:bg-white/[0.05] rounded-lg transition-colors"
-                    >
+                    <button onClick={(e) => { e.stopPropagation(); setSelectedTransaction(tx); }} className="p-2 text-white/40 hover:text-white hover:bg-white/[0.05] rounded-lg transition-colors">
                       <Eye className="w-4 h-4" />
                     </button>
                   </td>
@@ -563,50 +424,24 @@ export default function HistoryPage() {
           </table>
         </div>
 
-        {/* Empty State */}
         {transactions.length === 0 && !isLoading && (
           <div className="text-center py-12">
             <History className="w-12 h-12 text-white/20 mx-auto mb-3" />
-            <p className="text-white/40">
-              {hasActiveFilters ? 'No se encontraron transacciones con los filtros aplicados' : 'No hay transacciones aún'}
-            </p>
-            {hasActiveFilters && (
-              <button
-                onClick={clearFilters}
-                className="mt-4 px-4 py-2 text-purple-400 hover:text-purple-300 text-sm"
-              >
-                Limpiar filtros
-              </button>
-            )}
+            <p className="text-white/40">{hasActiveFilters ? 'No se encontraron transacciones con los filtros aplicados' : 'No hay transacciones aún'}</p>
+            {hasActiveFilters && <button onClick={clearFilters} className="mt-4 px-4 py-2 text-purple-400 hover:text-purple-300 text-sm">Limpiar filtros</button>}
           </div>
         )}
 
-        {/* Loading */}
-        {isLoading && (
-          <div className="text-center py-12">
-            <RefreshCw className="w-8 h-8 text-purple-500 animate-spin mx-auto" />
-          </div>
-        )}
+        {isLoading && <div className="text-center py-12"><RefreshCw className="w-8 h-8 text-purple-500 animate-spin mx-auto" /></div>}
 
-        {/* Pagination */}
         {pagination.totalPages > 1 && (
           <div className="flex items-center justify-between px-6 py-4 border-t border-white/[0.06]">
-            <span className="text-white/40 text-sm">
-              Mostrando {((pagination.page - 1) * pagination.itemsPerPage) + 1} - {Math.min(pagination.page * pagination.itemsPerPage, pagination.total)} de {pagination.total}
-            </span>
+            <span className="text-white/40 text-sm">Mostrando {((pagination.page - 1) * pagination.itemsPerPage) + 1} - {Math.min(pagination.page * pagination.itemsPerPage, pagination.total)} de {pagination.total}</span>
             <div className="flex gap-2">
-              <button
-                onClick={() => setPagination(prev => ({ ...prev, page: prev.page - 1 }))}
-                disabled={pagination.page <= 1}
-                className="p-2 bg-white/[0.03] border border-white/[0.08] rounded-lg disabled:opacity-50 hover:bg-white/[0.05] transition-colors"
-              >
+              <button onClick={() => setPagination(prev => ({ ...prev, page: prev.page - 1 }))} disabled={pagination.page <= 1} className="p-2 bg-white/[0.03] border border-white/[0.08] rounded-lg disabled:opacity-50 hover:bg-white/[0.05] transition-colors">
                 <ChevronLeft className="w-4 h-4 text-white/60" />
               </button>
-              <button
-                onClick={() => setPagination(prev => ({ ...prev, page: prev.page + 1 }))}
-                disabled={pagination.page >= pagination.totalPages}
-                className="p-2 bg-white/[0.03] border border-white/[0.08] rounded-lg disabled:opacity-50 hover:bg-white/[0.05] transition-colors"
-              >
+              <button onClick={() => setPagination(prev => ({ ...prev, page: prev.page + 1 }))} disabled={pagination.page >= pagination.totalPages} className="p-2 bg-white/[0.03] border border-white/[0.08] rounded-lg disabled:opacity-50 hover:bg-white/[0.05] transition-colors">
                 <ChevronRight className="w-4 h-4 text-white/60" />
               </button>
             </div>
@@ -614,133 +449,136 @@ export default function HistoryPage() {
         )}
       </div>
 
-      {/* Transaction Detail Modal */}
+      {/* Transaction Detail Modal - Card Style */}
       {selectedTransaction && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div
-            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
-            onClick={() => setSelectedTransaction(null)}
-          />
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setSelectedTransaction(null)} />
           <motion.div
             initial={{ opacity: 0, scale: 0.95, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             className="relative w-full max-w-lg max-h-[90vh] overflow-y-auto bg-[#0a0a1a] border border-white/[0.08] rounded-2xl shadow-2xl"
           >
-            {/* Logo Header */}
-            <div className="flex flex-col items-center pt-4 pb-3 border-b border-white/[0.06]">
-              <NovacorpLogo size="md" />
-              <p className="text-xs text-white/40 mt-2">Comprobante de Operacion</p>
-              <button
-                onClick={() => setSelectedTransaction(null)}
-                className="absolute top-3 right-3 p-2 hover:bg-white/[0.05] rounded-lg transition-colors"
-              >
+            {/* Header */}
+            <div className="flex items-center justify-between p-4 border-b border-white/[0.06]">
+              <h2 className="text-lg font-semibold text-white">Detalle de Transaccion</h2>
+              <button onClick={() => setSelectedTransaction(null)} className="p-2 hover:bg-white/[0.05] rounded-lg transition-colors">
                 <X className="w-5 h-5 text-white/60" />
               </button>
             </div>
 
-            <div className="p-6 space-y-4">
-              {/* Amount */}
-              <div className="text-center py-4">
-                <span className={`text-3xl font-bold ${
-                  selectedTransaction.type === 'incoming' ? 'text-green-400' : 'text-red-400'
-                }`}>
-                  {selectedTransaction.type === 'incoming' ? '+' : '-'}
-                  {formatCurrency(selectedTransaction.amount)}
+            <div className="p-4 space-y-4">
+              {/* Transaction header card */}
+              <div className="flex items-center gap-4 p-4 bg-white/[0.02] border border-white/[0.06] rounded-xl">
+                <div className={`p-3 rounded-xl ${selectedTransaction.type === 'incoming' ? 'bg-green-500/10' : 'bg-red-500/10'}`}>
+                  {selectedTransaction.type === 'incoming' ? <ArrowDownLeft className="w-6 h-6 text-green-400" /> : <ArrowUpRight className="w-6 h-6 text-red-400" />}
+                </div>
+                <div className="flex-1">
+                  <p className="text-xs text-white/40">{selectedTransaction.type === 'incoming' ? 'Recibido de' : 'Enviado a'}</p>
+                  <p className="text-white font-medium">{selectedTransaction.type === 'incoming' ? selectedTransaction.payerName : selectedTransaction.beneficiaryName || 'Sin nombre'}</p>
+                </div>
+                <span className={`px-2.5 py-1 rounded-full text-xs font-medium border ${getStatusColor(selectedTransaction.status)}`}>
+                  {getStatusText(selectedTransaction.status)}
                 </span>
-                <p className="text-white/40 mt-1">
-                  {selectedTransaction.type === 'incoming' ? 'Depósito recibido' : 'Transferencia enviada'}
-                </p>
               </div>
 
-              {/* Details */}
-              <div className="space-y-3 text-sm">
-                <div className="flex justify-between py-2 border-b border-white/[0.06]">
-                  <span className="text-white/40">Estado</span>
-                  <span className={`px-2 py-0.5 rounded-full text-xs font-medium border ${getStatusColor(selectedTransaction.status)}`}>
-                    {getStatusText(selectedTransaction.status)}
-                  </span>
+              {/* Amount */}
+              <div className="text-center py-2">
+                <p className="text-xs text-white/40 mb-1">Monto</p>
+                <span className={`text-3xl font-bold font-mono ${selectedTransaction.type === 'incoming' ? 'text-green-400' : 'text-red-400'}`}>
+                  {selectedTransaction.type === 'incoming' ? '+' : '-'} {formatCurrency(selectedTransaction.amount)}
+                </span>
+              </div>
+
+              {/* Details cards */}
+              <div className="space-y-3">
+                {/* Tracking Key */}
+                <div className="p-3 bg-white/[0.02] border border-white/[0.06] rounded-xl">
+                  <p className="text-xs text-white/40 mb-1">Clave de Rastreo</p>
+                  <div className="flex items-center justify-between">
+                    <code className="text-white font-mono text-sm">{selectedTransaction.trackingKey}</code>
+                    <button onClick={() => copyToClipboard(selectedTransaction.trackingKey, 'tracking')} className="p-1.5 hover:bg-white/[0.05] rounded transition-colors">
+                      {copiedField === 'tracking' ? <Check className="w-4 h-4 text-green-400" /> : <Copy className="w-4 h-4 text-white/40" />}
+                    </button>
+                  </div>
                 </div>
 
-                <div className="flex justify-between py-2 border-b border-white/[0.06]">
-                  <span className="text-white/40">Clave de Rastreo</span>
-                  <code className="text-purple-400 font-mono text-xs">{selectedTransaction.trackingKey}</code>
+                {/* Date and Bank */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="p-3 bg-white/[0.02] border border-white/[0.06] rounded-xl">
+                    <p className="text-xs text-white/40 mb-1">Fecha y Hora</p>
+                    <p className="text-white text-sm">{formatDate(selectedTransaction.createdAt)}</p>
+                  </div>
+                  <div className="p-3 bg-white/[0.02] border border-white/[0.06] rounded-xl">
+                    <p className="text-xs text-white/40 mb-1">{selectedTransaction.type === 'incoming' ? 'Banco Ordenante' : 'Banco Destino'}</p>
+                    <p className="text-white text-sm">{getBankName(selectedTransaction.type === 'incoming' ? selectedTransaction.payerBank : selectedTransaction.beneficiaryBank)}</p>
+                  </div>
                 </div>
 
+                {/* Concept */}
                 {selectedTransaction.concept && (
-                  <div className="flex justify-between py-2 border-b border-white/[0.06]">
-                    <span className="text-white/40">Concepto</span>
-                    <span className="text-white text-right max-w-[200px]">{selectedTransaction.concept}</span>
+                  <div className="p-3 bg-white/[0.02] border border-white/[0.06] rounded-xl">
+                    <p className="text-xs text-white/40 mb-1">Concepto</p>
+                    <p className="text-white text-sm">{selectedTransaction.concept}</p>
                   </div>
                 )}
 
+                {/* CLABEs */}
                 {selectedTransaction.type === 'incoming' ? (
                   <>
-                    <div className="flex justify-between py-2 border-b border-white/[0.06]">
-                      <span className="text-white/40">Ordenante</span>
-                      <span className="text-white">{selectedTransaction.payerName || 'N/A'}</span>
-                    </div>
-                    {selectedTransaction.payerAccount && (
-                      <div className="flex justify-between py-2 border-b border-white/[0.06]">
-                        <span className="text-white/40">CLABE Ordenante</span>
-                        <code className="text-white/60 font-mono text-xs">{formatClabe(selectedTransaction.payerAccount)}</code>
+                    {selectedTransaction.beneficiaryAccount && (
+                      <div className="p-3 bg-white/[0.02] border border-white/[0.06] rounded-xl">
+                        <p className="text-xs text-white/40 mb-1">CLABE Beneficiario</p>
+                        <div className="flex items-center justify-between">
+                          <code className="text-white font-mono text-sm">{formatClabe(selectedTransaction.beneficiaryAccount)}</code>
+                          <button onClick={() => copyToClipboard(selectedTransaction.beneficiaryAccount!, 'beneficiary')} className="p-1.5 hover:bg-white/[0.05] rounded transition-colors">
+                            {copiedField === 'beneficiary' ? <Check className="w-4 h-4 text-green-400" /> : <Copy className="w-4 h-4 text-white/40" />}
+                          </button>
+                        </div>
                       </div>
                     )}
-                    <div className="flex justify-between py-2 border-b border-white/[0.06]">
-                      <span className="text-white/40">Banco</span>
-                      <span className="text-white/60">{getBankName(selectedTransaction.payerBank)}</span>
-                    </div>
+                    {selectedTransaction.payerAccount && (
+                      <div className="p-3 bg-white/[0.02] border border-white/[0.06] rounded-xl">
+                        <p className="text-xs text-white/40 mb-1">CLABE Ordenante</p>
+                        <div className="flex items-center justify-between">
+                          <code className="text-white font-mono text-sm">{formatClabe(selectedTransaction.payerAccount)}</code>
+                          <button onClick={() => copyToClipboard(selectedTransaction.payerAccount!, 'payer')} className="p-1.5 hover:bg-white/[0.05] rounded transition-colors">
+                            {copiedField === 'payer' ? <Check className="w-4 h-4 text-green-400" /> : <Copy className="w-4 h-4 text-white/40" />}
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </>
                 ) : (
-                  <>
-                    <div className="flex justify-between py-2 border-b border-white/[0.06]">
-                      <span className="text-white/40">Beneficiario</span>
-                      <span className="text-white">{selectedTransaction.beneficiaryName || 'N/A'}</span>
-                    </div>
-                    {selectedTransaction.beneficiaryAccount && (
-                      <div className="flex justify-between py-2 border-b border-white/[0.06]">
-                        <span className="text-white/40">CLABE Destino</span>
-                        <code className="text-white/60 font-mono text-xs">{formatClabe(selectedTransaction.beneficiaryAccount)}</code>
+                  selectedTransaction.beneficiaryAccount && (
+                    <div className="p-3 bg-white/[0.02] border border-white/[0.06] rounded-xl">
+                      <p className="text-xs text-white/40 mb-1">CLABE Destino</p>
+                      <div className="flex items-center justify-between">
+                        <code className="text-white font-mono text-sm">{formatClabe(selectedTransaction.beneficiaryAccount)}</code>
+                        <button onClick={() => copyToClipboard(selectedTransaction.beneficiaryAccount!, 'beneficiary')} className="p-1.5 hover:bg-white/[0.05] rounded transition-colors">
+                          {copiedField === 'beneficiary' ? <Check className="w-4 h-4 text-green-400" /> : <Copy className="w-4 h-4 text-white/40" />}
+                        </button>
                       </div>
-                    )}
-                    <div className="flex justify-between py-2 border-b border-white/[0.06]">
-                      <span className="text-white/40">Banco</span>
-                      <span className="text-white/60">{getBankName(selectedTransaction.beneficiaryBank)}</span>
                     </div>
-                  </>
+                  )
                 )}
 
-                <div className="flex justify-between py-2 border-b border-white/[0.06]">
-                  <span className="text-white/40">Fecha</span>
-                  <span className="text-white/60">{formatDate(selectedTransaction.createdAt)}</span>
-                </div>
-
+                {/* Reference */}
                 {selectedTransaction.numericalReference && (
-                  <div className="flex justify-between py-2 border-b border-white/[0.06]">
-                    <span className="text-white/40">Referencia</span>
-                    <span className="text-white/60 font-mono">{selectedTransaction.numericalReference}</span>
-                  </div>
-                )}
-
-                {selectedTransaction.errorDetail && (
-                  <div className="py-2 border-b border-white/[0.06]">
-                    <span className="text-white/40 block mb-1">Error</span>
-                    <span className="text-red-400 text-xs">{selectedTransaction.errorDetail}</span>
+                  <div className="p-3 bg-white/[0.02] border border-white/[0.06] rounded-xl">
+                    <p className="text-xs text-white/40 mb-1">Referencia Numerica</p>
+                    <p className="text-white font-mono text-sm">{selectedTransaction.numericalReference}</p>
                   </div>
                 )}
               </div>
 
               {/* Actions */}
-              <div className="flex gap-3 pt-4 border-t border-white/[0.06]">
+              <div className="flex gap-3 pt-2">
                 <button
-                  onClick={() => {
-                    copyToClipboard(
-                      `Clave: ${selectedTransaction.trackingKey}\nMonto: ${formatCurrency(selectedTransaction.amount)}\n${selectedTransaction.type === 'incoming' ? 'Ordenante' : 'Beneficiario'}: ${selectedTransaction.type === 'incoming' ? selectedTransaction.payerName : selectedTransaction.beneficiaryName}`
-                    );
-                  }}
+                  onClick={() => copyToClipboard(`Clave: ${selectedTransaction.trackingKey}\nMonto: ${formatCurrency(selectedTransaction.amount)}\n${selectedTransaction.type === 'incoming' ? 'Ordenante' : 'Beneficiario'}: ${selectedTransaction.type === 'incoming' ? selectedTransaction.payerName : selectedTransaction.beneficiaryName}`, 'all')}
                   className="flex-1 flex items-center justify-center gap-2 py-2.5 px-4 bg-white/[0.05] hover:bg-white/[0.08] text-white/80 rounded-lg transition-colors text-sm"
                 >
-                  <Copy className="w-4 h-4" />
-                  Copiar
+                  {copiedField === 'all' ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                  Copiar Datos
                 </button>
                 <button
                   onClick={() => generateReceiptPDF(selectedTransaction)}
@@ -757,11 +595,7 @@ export default function HistoryPage() {
                   disabled={loadingCep}
                   className="w-full flex items-center justify-center gap-2 py-2.5 px-4 bg-white/[0.03] hover:bg-white/[0.05] text-white/60 rounded-lg transition-colors text-sm border border-white/[0.08]"
                 >
-                  {loadingCep ? (
-                    <RefreshCw className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <Download className="w-4 h-4" />
-                  )}
+                  {loadingCep ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
                   {loadingCep ? 'Obteniendo...' : 'Obtener CEP de Banxico'}
                 </button>
               )}

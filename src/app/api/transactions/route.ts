@@ -165,12 +165,16 @@ export async function GET(request: NextRequest) {
 
     // Stats query - in_transit only counts outgoing transactions that haven't settled
     // Note: pending_confirmation = during 20-second grace period (can still cancel)
+    // settled_incoming = incoming transactions that are fully settled (scattered)
+    // settled_outgoing = outgoing transactions that are sent or settled (reduces available balance)
     const statsQuery = `
       SELECT
         COUNT(*) as total_count,
         COALESCE(SUM(CASE WHEN type = 'incoming' THEN amount ELSE 0 END), 0) as total_incoming,
         COALESCE(SUM(CASE WHEN type = 'outgoing' THEN amount ELSE 0 END), 0) as total_outgoing,
-        COALESCE(SUM(CASE WHEN type = 'outgoing' AND status IN ('pending_confirmation', 'pending', 'sent', 'queued') THEN amount ELSE 0 END), 0) as in_transit
+        COALESCE(SUM(CASE WHEN type = 'outgoing' AND status IN ('pending_confirmation', 'pending', 'sent', 'queued') THEN amount ELSE 0 END), 0) as in_transit,
+        COALESCE(SUM(CASE WHEN type = 'incoming' AND status = 'scattered' THEN amount ELSE 0 END), 0) as settled_incoming,
+        COALESCE(SUM(CASE WHEN type = 'outgoing' AND status IN ('sent', 'scattered') THEN amount ELSE 0 END), 0) as settled_outgoing
       FROM transactions
       WHERE ${whereClause}
     `;
@@ -207,6 +211,9 @@ export async function GET(request: NextRequest) {
       totalIncoming: parseFloat(statsResult.rows[0]?.total_incoming || '0'),
       totalOutgoing: parseFloat(statsResult.rows[0]?.total_outgoing || '0'),
       inTransit: parseFloat(statsResult.rows[0]?.in_transit || '0'),
+      // For calculating available balance per CLABE
+      settledIncoming: parseFloat(statsResult.rows[0]?.settled_incoming || '0'),
+      settledOutgoing: parseFloat(statsResult.rows[0]?.settled_outgoing || '0'),
     };
 
     return NextResponse.json({

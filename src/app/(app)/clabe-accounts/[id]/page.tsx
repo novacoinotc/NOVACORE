@@ -10,7 +10,6 @@ import {
   Copy,
   Check,
   Search,
-  Filter,
   RefreshCw,
   Loader2,
   Eye,
@@ -19,8 +18,6 @@ import {
   TrendingUp,
   TrendingDown,
   Clock,
-  Calendar,
-  Building2,
   ChevronLeft,
   ChevronRight,
   CreditCard,
@@ -64,18 +61,14 @@ interface ClabeAccount {
   isMain: boolean;
 }
 
-interface Balance {
-  account: string;
-  balance: number;
-  transitBalance: number;
-  availableBalance: number;
-}
-
 interface Stats {
   totalCount: number;
   totalIncoming: number;
   totalOutgoing: number;
   inTransit: number;
+  // Calculated balance for this specific CLABE (incoming settled - outgoing sent/settled)
+  settledIncoming: number;
+  settledOutgoing: number;
 }
 
 const statusOptions = [
@@ -101,15 +94,23 @@ export default function ClabeDetailPage() {
 
   // State
   const [clabeAccount, setClabeAccount] = useState<ClabeAccount | null>(null);
-  const [balance, setBalance] = useState<Balance | null>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [stats, setStats] = useState<Stats>({ totalCount: 0, totalIncoming: 0, totalOutgoing: 0, inTransit: 0 });
+  const [stats, setStats] = useState<Stats>({
+    totalCount: 0,
+    totalIncoming: 0,
+    totalOutgoing: 0,
+    inTransit: 0,
+    settledIncoming: 0,
+    settledOutgoing: 0,
+  });
   const [pagination, setPagination] = useState({ page: 1, itemsPerPage: 20, total: 0, totalPages: 0 });
 
   const [isLoading, setIsLoading] = useState(true);
-  const [isLoadingBalance, setIsLoadingBalance] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copiedClabe, setCopiedClabe] = useState(false);
+
+  // Calculated balance for this CLABE (settled incoming - settled/sent outgoing)
+  const calculatedBalance = stats.settledIncoming - stats.settledOutgoing;
 
   // Filters
   const [searchQuery, setSearchQuery] = useState('');
@@ -131,26 +132,6 @@ export default function ClabeDetailPage() {
     } catch (err) {
       setError('No se pudo cargar la cuenta CLABE');
       return null;
-    }
-  };
-
-  // Fetch balance from OPM
-  const fetchBalance = async (clabe: string) => {
-    setIsLoadingBalance(true);
-    try {
-      const response = await fetch('/api/balance', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ account: clabe }),
-      });
-      if (response.ok) {
-        const data = await response.json();
-        setBalance(data.data || data);
-      }
-    } catch (err) {
-      console.error('Error fetching balance:', err);
-    } finally {
-      setIsLoadingBalance(false);
     }
   };
 
@@ -190,13 +171,7 @@ export default function ClabeDetailPage() {
 
   // Initial load
   useEffect(() => {
-    const init = async () => {
-      const account = await fetchClabeAccount();
-      if (account?.clabe) {
-        fetchBalance(account.clabe);
-      }
-    };
-    init();
+    fetchClabeAccount();
   }, [clabeId]);
 
   // Fetch transactions when filters change
@@ -215,11 +190,9 @@ export default function ClabeDetailPage() {
     }
   };
 
-  // Refresh balance
+  // Refresh balance (recalculate from transactions)
   const handleRefreshBalance = () => {
-    if (clabeAccount?.clabe) {
-      fetchBalance(clabeAccount.clabe);
-    }
+    fetchTransactions();
   };
 
   // Status badge color
@@ -309,7 +282,7 @@ export default function ClabeDetailPage() {
 
       {/* Stats Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Saldo Disponible */}
+        {/* Saldo Disponible - Calculated from transactions */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -319,21 +292,21 @@ export default function ClabeDetailPage() {
             <span className="text-white/60 text-sm">Saldo Disponible</span>
             <button
               onClick={handleRefreshBalance}
-              disabled={isLoadingBalance}
+              disabled={isLoading}
               className="p-1.5 text-white/30 hover:text-white hover:bg-white/[0.05] rounded transition-colors"
             >
-              <RefreshCw className={`w-4 h-4 ${isLoadingBalance ? 'animate-spin' : ''}`} />
+              <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
             </button>
           </div>
           <div className="flex items-baseline gap-2">
             <DollarSign className="w-5 h-5 text-purple-400" />
-            <span className="text-2xl font-bold text-white">
-              {isLoadingBalance ? '...' : formatCurrency(balance?.availableBalance || 0)}
+            <span className={`text-2xl font-bold ${calculatedBalance >= 0 ? 'text-white' : 'text-red-400'}`}>
+              {isLoading ? '...' : formatCurrency(calculatedBalance)}
             </span>
           </div>
-          {balance && balance.transitBalance > 0 && (
+          {stats.inTransit > 0 && (
             <p className="text-xs text-white/40 mt-2">
-              En tránsito: {formatCurrency(balance.transitBalance)}
+              En tránsito: {formatCurrency(stats.inTransit)}
             </p>
           )}
         </motion.div>

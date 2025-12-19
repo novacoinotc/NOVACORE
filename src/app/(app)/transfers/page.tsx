@@ -25,7 +25,7 @@ import {
 import { Button, Input, Select, Card, CardHeader, CardTitle, CardContent, Modal } from '@/components/ui';
 import { formatCurrency, formatClabe, validateClabe, sanitizeForSpei } from '@/lib/utils';
 import { getBankFromClabe, getBankSelectOptions, getPopularBanks, BankInfo } from '@/lib/banks';
-import { useAuth } from '@/context/AuthContext';
+import { useAuth, getAuthHeaders } from '@/context/AuthContext';
 import { SavedAccount } from '@/types';
 
 // Account types for SPEI
@@ -143,9 +143,7 @@ export default function TransfersPage() {
     setIsLoadingSavedAccounts(true);
     try {
       const response = await fetch('/api/saved-accounts', {
-        headers: {
-          'x-user-id': user.id,
-        },
+        headers: getAuthHeaders(),
       });
 
       if (response.ok) {
@@ -192,7 +190,7 @@ export default function TransfersPage() {
 
     try {
       // Call the confirm-pending endpoint to process this transaction
-      await fetch('/api/orders/confirm-pending', { method: 'POST' });
+      await fetch('/api/orders/confirm-pending', { method: 'POST', headers: getAuthHeaders() });
 
       // Show success modal
       setSuccessData({
@@ -222,6 +220,7 @@ export default function TransfersPage() {
     try {
       const response = await fetch(`/api/orders/${gracePeriodData.transactionId}/cancel`, {
         method: 'POST',
+        headers: getAuthHeaders(),
       });
 
       const data = await response.json();
@@ -255,9 +254,7 @@ export default function TransfersPage() {
       setIsLoadingClabeAccounts(true);
       try {
         const response = await fetch('/api/clabe-accounts', {
-          headers: {
-            ...(user?.id && { 'x-user-id': user.id }),
-          },
+          headers: getAuthHeaders(),
         });
         if (response.ok) {
           const data = await response.json();
@@ -413,12 +410,9 @@ export default function TransfersPage() {
     try {
       const response = await fetch('/api/orders', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: getAuthHeaders(),
         body: JSON.stringify({
-          // Authentication
-          userId: user?.id,
+          // 2FA code if required
           totpCode: requires2FA ? totpCode : undefined,
           // Source account
           payerAccount: formData.payerAccount,

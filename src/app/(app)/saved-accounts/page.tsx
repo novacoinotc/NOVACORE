@@ -25,7 +25,7 @@ import {
 } from '@/components/ui';
 import { cn, formatDate, validateClabe } from '@/lib/utils';
 import { SavedAccount, Bank } from '@/types';
-import { useAuth } from '@/context/AuthContext';
+import { useAuth, getAuthHeaders } from '@/context/AuthContext';
 import { getBankFromClabe, getAllBanks, BankInfo } from '@/lib/banks';
 
 export default function SavedAccountsPage() {
@@ -60,9 +60,7 @@ export default function SavedAccountsPage() {
     try {
       setIsLoading(true);
       const response = await fetch('/api/saved-accounts', {
-        headers: {
-          'x-user-id': user?.id || '',
-        },
+        headers: getAuthHeaders(),
       });
 
       if (!response.ok) {
@@ -196,10 +194,7 @@ export default function SavedAccountsPage() {
 
       const response = await fetch('/api/saved-accounts', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-user-id': user?.id || '',
-        },
+        headers: getAuthHeaders(),
         body: JSON.stringify(formData),
       });
 
@@ -229,10 +224,7 @@ export default function SavedAccountsPage() {
 
       const response = await fetch(`/api/saved-accounts/${selectedAccount.id}`, {
         method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-user-id': user?.id || '',
-        },
+        headers: getAuthHeaders(),
         body: JSON.stringify(formData),
       });
 
@@ -265,9 +257,7 @@ export default function SavedAccountsPage() {
 
       const response = await fetch(`/api/saved-accounts/${selectedAccount.id}`, {
         method: 'DELETE',
-        headers: {
-          'x-user-id': user?.id || '',
-        },
+        headers: getAuthHeaders(),
       });
 
       if (!response.ok) {

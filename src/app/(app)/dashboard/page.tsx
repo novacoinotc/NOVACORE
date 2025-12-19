@@ -7,7 +7,7 @@ import { TransactionChart } from '@/components/dashboard/TransactionChart';
 import { RecentTransactions } from '@/components/dashboard/RecentTransactions';
 import { QuickActions } from '@/components/dashboard/QuickActions';
 import { Transaction } from '@/types';
-import { useAuth } from '@/context/AuthContext';
+import { useAuth, getAuthHeaders } from '@/context/AuthContext';
 import { Loader2 } from 'lucide-react';
 
 interface DashboardData {
@@ -37,18 +37,7 @@ export default function DashboardPage() {
         setLoading(true);
         setError(null);
 
-        // Get session for user ID
-        const sessionStr = localStorage.getItem('novacorp_session');
-        let headers: HeadersInit = { 'Content-Type': 'application/json' };
-
-        if (sessionStr) {
-          const session = JSON.parse(sessionStr);
-          if (session.user?.id) {
-            headers['x-user-id'] = session.user.id;
-          }
-        }
-
-        const response = await fetch('/api/dashboard', { headers });
+        const response = await fetch('/api/dashboard', { headers: getAuthHeaders() });
 
         if (!response.ok) {
           throw new Error('Error al cargar datos del dashboard');

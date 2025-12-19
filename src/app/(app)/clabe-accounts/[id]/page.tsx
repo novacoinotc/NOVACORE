@@ -26,6 +26,7 @@ import {
 } from 'lucide-react';
 import { formatCurrency, formatDate, getStatusText, formatClabe } from '@/lib/utils';
 import { getBankFromSpeiCode } from '@/lib/banks';
+import { getAuthHeaders } from '@/context/AuthContext';
 import { NovacorpLogo } from '@/components/ui/NovacorpLogo';
 import { generateReceiptPDF } from '@/lib/generate-receipt-pdf';
 
@@ -127,7 +128,7 @@ export default function ClabeDetailPage() {
   // Fetch CLABE account details
   const fetchClabeAccount = async () => {
     try {
-      const response = await fetch(`/api/clabe-accounts/${clabeId}`);
+      const response = await fetch(`/api/clabe-accounts/${clabeId}`, { headers: getAuthHeaders() });
       if (!response.ok) throw new Error('Cuenta no encontrada');
       const data = await response.json();
       setClabeAccount(data);
@@ -154,7 +155,7 @@ export default function ClabeDetailPage() {
       if (typeFilter) params.append('type', typeFilter);
       if (searchQuery) params.append('search', searchQuery);
 
-      const response = await fetch(`/api/transactions?${params}`);
+      const response = await fetch(`/api/transactions?${params}`, { headers: getAuthHeaders() });
       if (!response.ok) throw new Error('Error al cargar transacciones');
 
       const data = await response.json();

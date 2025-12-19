@@ -16,7 +16,7 @@ import {
   Eye,
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import { useAuth, useRequirePermission } from '@/context/AuthContext';
+import { useAuth, useRequirePermission, getAuthHeaders } from '@/context/AuthContext';
 import { Company } from '@/types';
 
 interface CompanyFormData {
@@ -61,7 +61,7 @@ export default function CompaniesPage() {
   const fetchCompanies = async () => {
     try {
       setLoadingCompanies(true);
-      const response = await fetch('/api/companies');
+      const response = await fetch('/api/companies', { headers: getAuthHeaders() });
       if (response.ok) {
         const data = await response.json();
         setCompanies(data);
@@ -129,6 +129,7 @@ export default function CompaniesPage() {
         setSaving(true);
         const response = await fetch(`/api/companies/${selectedCompany.id}`, {
           method: 'DELETE',
+          headers: getAuthHeaders(),
         });
 
         if (response.ok) {
@@ -182,14 +183,14 @@ export default function CompaniesPage() {
         // Update existing company
         response = await fetch(`/api/companies/${selectedCompany.id}`, {
           method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
+          headers: getAuthHeaders(),
           body: JSON.stringify(companyData),
         });
       } else {
         // Create new company
         response = await fetch('/api/companies', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: getAuthHeaders(),
           body: JSON.stringify(companyData),
         });
       }

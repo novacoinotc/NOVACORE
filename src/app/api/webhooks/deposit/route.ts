@@ -8,6 +8,12 @@ import {
 import { processCommission, canReceiveSpei } from '@/lib/commissions';
 import { verifySignature } from '@/lib/crypto';
 import { buildSupplyOriginalString } from '@/lib/opm-api';
+import {
+  validateWebhookSource,
+  validateWebhookPayload,
+  sanitizeWebhookDataForLog,
+  logWebhookEvent,
+} from '@/lib/webhook-security';
 
 /**
  * POST /api/webhooks/deposit
@@ -26,14 +32,37 @@ export async function POST(request: NextRequest) {
   let body: any = null;
 
   try {
-    // Get raw body for logging
+    // Security check: Validate webhook source (IP whitelist + rate limiting)
+    const securityCheck = await validateWebhookSource(request);
+    if (!securityCheck.allowed) {
+      return NextResponse.json({
+        received: true,
+        timestamp,
+        processed: false,
+        message: securityCheck.reason || 'Request blocked',
+      }, { status: 403 });
+    }
+
+    // Get body
     body = await request.json();
 
-    // Log complete request for debugging
+    // Validate payload structure
+    const payloadCheck = validateWebhookPayload(body, 'deposit');
+    if (!payloadCheck.valid) {
+      console.warn('Invalid deposit webhook payload:', payloadCheck.error);
+      return NextResponse.json({
+        received: true,
+        timestamp,
+        processed: false,
+        message: payloadCheck.error,
+      });
+    }
+
+    // Log safely (without sensitive data)
     console.log('=== DEPOSIT WEBHOOK RECEIVED ===');
     console.log('Timestamp:', timestamp);
-    console.log('Headers:', Object.fromEntries(request.headers.entries()));
-    console.log('Body:', JSON.stringify(body, null, 2));
+    console.log('Client IP:', securityCheck.clientIp);
+    console.log('Payload (sanitized):', JSON.stringify(sanitizeWebhookDataForLog(body)));
     console.log('================================');
 
     // Optional: Validate webhook secret if configured
@@ -41,8 +70,7 @@ export async function POST(request: NextRequest) {
     const receivedSecret = request.headers.get('x-webhook-secret');
 
     if (webhookSecret && receivedSecret && webhookSecret !== receivedSecret) {
-      console.warn('Webhook secret mismatch - logging but continuing');
-      // Don't reject, just log the mismatch
+      console.warn('Webhook secret mismatch');
     }
 
     // RSA signature validation from OPM

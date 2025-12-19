@@ -26,6 +26,7 @@ import {
 } from 'lucide-react';
 import { formatCurrency, formatDate, getStatusText, formatClabe } from '@/lib/utils';
 import { getBankFromSpeiCode } from '@/lib/banks';
+import { NovacorpLogo } from '@/components/ui/NovacorpLogo';
 import { generateReceiptPDF } from '@/lib/generate-receipt-pdf';
 
 interface Transaction {
@@ -578,14 +579,13 @@ export default function ClabeDetailPage() {
             animate={{ opacity: 1, scale: 1, y: 0 }}
             className="relative w-full max-w-lg max-h-[90vh] overflow-y-auto bg-[#0a0a1a] border border-white/[0.08] rounded-2xl shadow-2xl"
           >
-            {/* Header */}
-            <div className="flex items-center justify-between p-4 border-b border-white/[0.06]">
-              <span className="text-lg font-bold bg-gradient-to-r from-cyan-400 via-purple-400 to-cyan-400 bg-clip-text text-transparent">
-                NOVACORP
-              </span>
+            {/* Logo Header */}
+            <div className="flex flex-col items-center pt-4 pb-3 border-b border-white/[0.06]">
+              <NovacorpLogo size="md" />
+              <p className="text-xs text-white/40 mt-2">Comprobante de Operacion</p>
               <button
                 onClick={() => setSelectedTransaction(null)}
-                className="p-2 hover:bg-white/[0.05] rounded-lg transition-colors"
+                className="absolute top-3 right-3 p-2 hover:bg-white/[0.05] rounded-lg transition-colors"
               >
                 <X className="w-5 h-5 text-white/60" />
               </button>

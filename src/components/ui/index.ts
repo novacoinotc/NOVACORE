@@ -7,3 +7,4 @@ export { Modal } from './Modal';
 export { StatsCard } from './StatsCard';
 export { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from './Table';
 export { Loader, PageLoader } from './Loader';
+export { NovacorpLogo } from './NovacorpLogo';

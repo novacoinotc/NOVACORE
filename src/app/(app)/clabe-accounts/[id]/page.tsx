@@ -22,9 +22,12 @@ import {
   ChevronRight,
   CreditCard,
   AlertCircle,
+  Download,
 } from 'lucide-react';
 import { formatCurrency, formatDate, getStatusText, formatClabe } from '@/lib/utils';
 import { getBankFromSpeiCode } from '@/lib/banks';
+import { NovacorpLogo } from '@/components/ui/NovacorpLogo';
+import { generateReceiptPDF } from '@/lib/generate-receipt-pdf';
 
 interface Transaction {
   id: string;
@@ -576,16 +579,16 @@ export default function ClabeDetailPage() {
             animate={{ opacity: 1, scale: 1, y: 0 }}
             className="relative w-full max-w-lg max-h-[90vh] overflow-y-auto bg-[#0a0a1a] border border-white/[0.08] rounded-2xl shadow-2xl"
           >
-            <div className="p-6 border-b border-white/[0.06]">
-              <div className="flex items-center justify-between">
-                <h3 className="text-lg font-semibold text-white">Detalle de Transacción</h3>
-                <button
-                  onClick={() => setSelectedTransaction(null)}
-                  className="p-2 hover:bg-white/[0.05] rounded-lg transition-colors"
-                >
-                  <X className="w-5 h-5 text-white/60" />
-                </button>
-              </div>
+            {/* Logo Header */}
+            <div className="flex flex-col items-center pt-6 pb-4 border-b border-white/[0.06]">
+              <NovacorpLogo size="lg" />
+              <p className="text-xs text-white/40 mt-3">Comprobante de Operacion</p>
+              <button
+                onClick={() => setSelectedTransaction(null)}
+                className="absolute top-4 right-4 p-2 hover:bg-white/[0.05] rounded-lg transition-colors"
+              >
+                <X className="w-5 h-5 text-white/60" />
+              </button>
             </div>
 
             <div className="p-6 space-y-4">
@@ -677,6 +680,28 @@ export default function ClabeDetailPage() {
                     <span className="text-red-400 text-xs">{selectedTransaction.errorDetail}</span>
                   </div>
                 )}
+              </div>
+
+              {/* Actions */}
+              <div className="flex gap-3 pt-4 border-t border-white/[0.06]">
+                <button
+                  onClick={() => {
+                    navigator.clipboard.writeText(
+                      `Clave: ${selectedTransaction.trackingKey}\nMonto: ${formatCurrency(selectedTransaction.amount)}\n${selectedTransaction.type === 'incoming' ? 'Ordenante' : 'Beneficiario'}: ${selectedTransaction.type === 'incoming' ? selectedTransaction.payerName : selectedTransaction.beneficiaryName}`
+                    );
+                  }}
+                  className="flex-1 flex items-center justify-center gap-2 py-2.5 px-4 bg-white/[0.05] hover:bg-white/[0.08] text-white/80 rounded-lg transition-colors text-sm"
+                >
+                  <Copy className="w-4 h-4" />
+                  Copiar Datos
+                </button>
+                <button
+                  onClick={() => generateReceiptPDF(selectedTransaction)}
+                  className="flex-1 flex items-center justify-center gap-2 py-2.5 px-4 bg-purple-600 hover:bg-purple-500 text-white rounded-lg transition-colors text-sm"
+                >
+                  <Download className="w-4 h-4" />
+                  Descargar Comprobante
+                </button>
               </div>
             </div>
           </motion.div>

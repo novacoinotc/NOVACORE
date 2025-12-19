@@ -22,30 +22,16 @@ export async function GET(
 
     console.log('OPM CEP response:', JSON.stringify(response, null, 2));
 
-    // OPM may return the CEP URL in different formats:
-    // 1. { data: { cepUrl: "..." } }
-    // 2. { data: "url" } - direct URL string
-    // 3. { cepUrl: "..." } - direct field
-    // 4. "url" - just the URL string
+    // ApiResponse<string> returns the CEP URL in response.data
+    // The data field should be the CEP URL string
     let cepUrl: string | null = null;
 
-    if (typeof response === 'string') {
-      cepUrl = response;
-    } else if (response?.data) {
-      if (typeof response.data === 'string') {
-        cepUrl = response.data;
-      } else if (response.data.cepUrl) {
-        cepUrl = response.data.cepUrl;
-      } else if (response.data.url) {
-        cepUrl = response.data.url;
-      }
-    } else if (response?.cepUrl) {
-      cepUrl = response.cepUrl;
-    } else if (response?.url) {
-      cepUrl = response.url;
+    if (response?.data) {
+      // response.data is typed as string (the CEP URL)
+      cepUrl = response.data;
     }
 
-    if (cepUrl) {
+    if (cepUrl && cepUrl.length > 0) {
       return NextResponse.json({ cepUrl });
     }
 

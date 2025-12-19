@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { updateClient, updateClientStatus } from '@/lib/opm-api';
 import { Client } from '@/types';
 import { authenticateRequest } from '@/lib/auth-middleware';
-import { createAuditLogEntry } from '@/lib/security';
+import { createAuditLogEntry } from '@/lib/db';
 
 /**
  * PUT /api/clients/[id]

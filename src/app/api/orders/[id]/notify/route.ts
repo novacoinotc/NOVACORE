@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { notifyOrder } from '@/lib/opm-api';
 import { authenticateRequest } from '@/lib/auth-middleware';
-import { createAuditLogEntry } from '@/lib/security';
+import { createAuditLogEntry } from '@/lib/db';
 
 /**
  * POST /api/orders/[id]/notify

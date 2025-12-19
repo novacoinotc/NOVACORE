@@ -136,13 +136,17 @@ export function truncateText(text: string, maxLength: number): string {
   return text.slice(0, maxLength - 3) + '...';
 }
 
-// Remove accents and special characters
+// Remove accents and special characters (for typing - preserves trailing spaces)
 export function sanitizeForSpei(text: string): string {
   return text
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^a-zA-Z0-9\s]/g, '')
-    .trim();
+    .replace(/[^a-zA-Z0-9\s]/g, '');
+}
+
+// Sanitize and trim for final submission
+export function sanitizeForSpeiSubmit(text: string): string {
+  return sanitizeForSpei(text).trim();
 }
 
 // Format epoch to YYYY-MM-DD for API

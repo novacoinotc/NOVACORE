@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { authenticateRequest } from '@/lib/auth-middleware';
 
 /**
  * POST /api/debug/probe-opm - Probe OPM API for undocumented endpoints
@@ -6,7 +7,8 @@ import { NextRequest, NextResponse } from 'next/server';
  * This endpoint tests various potential OPM API endpoints to find
  * undocumented ways to create subproducts/reference accounts.
  *
- * IMPORTANT: This is for debugging only. Remove in production.
+ * SECURITY: Requires super_admin authentication
+ * WARNING: This endpoint should be removed or disabled in production
  */
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_OPM_API_URL || 'https://api.opm.mx';
@@ -82,11 +84,27 @@ async function probeEndpoint(
 }
 
 export async function POST(request: NextRequest) {
-  // Only allow in development or with debug header
-  const debugHeader = request.headers.get('x-debug-probe');
-  if (process.env.NODE_ENV === 'production' && debugHeader !== 'allowed') {
+  // SECURITY FIX: Require super_admin authentication
+  // This endpoint exposes sensitive OPM API probing capability
+  const authResult = await authenticateRequest(request);
+  if (!authResult.success || !authResult.user) {
     return NextResponse.json(
-      { error: 'Debug endpoint not available in production' },
+      { error: 'No autorizado' },
+      { status: 401 }
+    );
+  }
+
+  if (authResult.user.role !== 'super_admin') {
+    return NextResponse.json(
+      { error: 'Solo super_admin puede usar este endpoint de debug' },
+      { status: 403 }
+    );
+  }
+
+  // Additional check: Block in production unless explicitly enabled
+  if (process.env.NODE_ENV === 'production' && process.env.ENABLE_DEBUG_ENDPOINTS !== 'true') {
+    return NextResponse.json(
+      { error: 'Debug endpoint disabled in production. Set ENABLE_DEBUG_ENDPOINTS=true to enable.' },
       { status: 403 }
     );
   }

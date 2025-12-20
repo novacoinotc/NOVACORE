@@ -67,9 +67,46 @@ export function middleware(request: NextRequest) {
   // Create response for the request
   const response = NextResponse.next();
 
+  // SECURITY FIX: Add essential security headers to ALL responses
+  // These headers protect against common web vulnerabilities
+
+  // Prevent clickjacking attacks
+  response.headers.set('X-Frame-Options', 'DENY');
+
+  // Prevent MIME type sniffing
+  response.headers.set('X-Content-Type-Options', 'nosniff');
+
+  // Enable XSS filter in browsers
+  response.headers.set('X-XSS-Protection', '1; mode=block');
+
+  // Control referrer information
+  response.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
+
+  // Permissions Policy (restrict browser features)
+  response.headers.set('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+
+  // HSTS - Force HTTPS in production
+  if (process.env.NODE_ENV === 'production') {
+    response.headers.set(
+      'Strict-Transport-Security',
+      'max-age=31536000; includeSubDomains; preload'
+    );
+  }
+
+  // Basic Content Security Policy
+  // Adjust as needed for your specific requirements
+  response.headers.set(
+    'Content-Security-Policy',
+    "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' https://api.opm.mx https://apiuat.opm.mx; frame-ancestors 'none';"
+  );
+
   // Handle preflight OPTIONS requests
   if (method === 'OPTIONS') {
     const preflightResponse = new NextResponse(null, { status: 204 });
+
+    // Add security headers to preflight response
+    preflightResponse.headers.set('X-Frame-Options', 'DENY');
+    preflightResponse.headers.set('X-Content-Type-Options', 'nosniff');
 
     // Only set CORS headers if origin is allowed
     if (origin && isOriginAllowed(origin)) {
@@ -78,7 +115,7 @@ export function middleware(request: NextRequest) {
       preflightResponse.headers.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
       preflightResponse.headers.set(
         'Access-Control-Allow-Headers',
-        'X-Custom-Auth, X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version'
+        'X-Custom-Auth, X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version, Authorization, x-auth-token'
       );
       preflightResponse.headers.set('Access-Control-Max-Age', '86400'); // 24 hours cache
     }

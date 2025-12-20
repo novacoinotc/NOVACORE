@@ -1161,7 +1161,9 @@ export async function getClabeAccountBalance(clabeAccountId: string): Promise<{
     settledIncoming,
     settledOutgoing,
     inTransit,
-    availableBalance: settledIncoming - settledOutgoing,
+    // SECURITY FIX: Include inTransit in available balance calculation
+    // This matches the atomic transaction check in createOutgoingTransactionAtomic
+    availableBalance: settledIncoming - settledOutgoing - inTransit,
   };
 }
 

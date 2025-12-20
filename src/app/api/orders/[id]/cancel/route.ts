@@ -168,7 +168,6 @@ export async function POST(
     return NextResponse.json(
       {
         error: 'Error al cancelar la transferencia',
-        details: error instanceof Error ? error.message : 'Error desconocido',
       },
       { status: 500 }
     );

@@ -214,6 +214,13 @@ export async function validateClabeAccess(
   userRole: string,
   userCompanyId?: string | null
 ): Promise<boolean> {
+  // SECURITY FIX: Validate that role is one of the known valid roles
+  const validRoles = ['super_admin', 'company_admin', 'user'];
+  if (!validRoles.includes(userRole)) {
+    console.error(`[SECURITY] Invalid role in validateClabeAccess: ${userRole}`);
+    return false;
+  }
+
   // Super admin has access to all
   if (userRole === 'super_admin') {
     return true;

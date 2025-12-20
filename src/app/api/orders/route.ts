@@ -281,6 +281,16 @@ export async function POST(request: NextRequest) {
           { status: 400 }
         );
       }
+      // SECURITY FIX: Check for duplicate tracking key
+      const { getTransactionByTrackingKey } = await import('@/lib/db');
+      const existingTx = await getTransactionByTrackingKey(sanitizedTrackingKey);
+      if (existingTx) {
+        console.error('ORDER ERROR: Duplicate tracking key:', sanitizedTrackingKey);
+        return NextResponse.json(
+          { error: 'La clave de rastreo ya existe. Por favor usa una diferente.' },
+          { status: 409 }
+        );
+      }
       finalTrackingKey = sanitizedTrackingKey;
     } else {
       finalTrackingKey = generateTrackingKey('NC');
@@ -469,7 +479,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       {
         error: 'Error al crear la orden',
-        details: error instanceof Error ? error.message : 'Error desconocido',
         hint: 'Revisa los logs del servidor para más detalles'
       },
       { status: 500 }
@@ -577,7 +586,7 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error('List orders error:', error);
     return NextResponse.json(
-      { error: 'Failed to list orders', details: error instanceof Error ? error.message : 'Unknown error' },
+      { error: 'Failed to list orders' },
       { status: 500 }
     );
   }

@@ -70,7 +70,7 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error('Get order status error:', error);
     return NextResponse.json(
-      { error: 'Failed to get order status', details: error instanceof Error ? error.message : 'Unknown error' },
+      { error: 'Failed to get order status' },
       { status: 500 }
     );
   }

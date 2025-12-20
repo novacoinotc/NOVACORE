@@ -76,7 +76,7 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error('List clients error:', error);
     return NextResponse.json(
-      { error: 'Failed to list clients', details: error instanceof Error ? error.message : 'Unknown error' },
+      { error: 'Failed to list clients' },
       { status: 500 }
     );
   }
@@ -197,7 +197,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('Create client error:', error);
     return NextResponse.json(
-      { error: 'Failed to create client', details: error instanceof Error ? error.message : 'Unknown error' },
+      { error: 'Failed to create client' },
       { status: 500 }
     );
   }

@@ -303,13 +303,19 @@ export async function POST(request: NextRequest) {
 
     // Save session to database for server-side validation
     try {
-      const { createSession } = await import('@/lib/db');
+      const { createSession, deleteExpiredSessions } = await import('@/lib/db');
       await createSession({
         id: sessionId,
         userId: dbUser.id,
         token: token,
         expiresAt: new Date(expiresAt),
       });
+
+      // SECURITY FIX: Probabilistic cleanup of expired sessions (1% chance)
+      // This prevents session table bloat without adding overhead to every login
+      if (Math.random() < 0.01) {
+        deleteExpiredSessions().catch(e => console.error('Session cleanup failed:', e));
+      }
     } catch (sessionError) {
       console.error('Failed to create session:', sessionError);
       // Continue anyway - session validation will fail but user can retry

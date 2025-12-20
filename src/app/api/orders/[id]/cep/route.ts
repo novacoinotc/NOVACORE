@@ -76,7 +76,7 @@ export async function GET(
   } catch (error) {
     console.error('Get CEP error:', error);
     return NextResponse.json(
-      { error: 'Error al obtener CEP', details: error instanceof Error ? error.message : 'Unknown error' },
+      { error: 'Error al obtener CEP' },
       { status: 500 }
     );
   }

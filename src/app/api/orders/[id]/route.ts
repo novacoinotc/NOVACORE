@@ -102,7 +102,7 @@ export async function GET(
   } catch (error) {
     console.error('Get order error:', error);
     return NextResponse.json(
-      { error: 'Failed to get order', details: error instanceof Error ? error.message : 'Unknown error' },
+      { error: 'Failed to get order' },
       { status: 500 }
     );
   }
@@ -192,7 +192,7 @@ export async function DELETE(
   } catch (error) {
     console.error('Cancel order error:', error);
     return NextResponse.json(
-      { error: 'Failed to cancel order', details: error instanceof Error ? error.message : 'Unknown error' },
+      { error: 'Failed to cancel order' },
       { status: 500 }
     );
   }

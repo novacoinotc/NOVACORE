@@ -294,7 +294,7 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error('List transactions error:', error);
     return NextResponse.json(
-      { error: 'Error al obtener transacciones', details: error instanceof Error ? error.message : 'Unknown error' },
+      { error: 'Error al obtener transacciones' },
       { status: 500 }
     );
   }

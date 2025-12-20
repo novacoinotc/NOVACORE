@@ -59,7 +59,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('Balance query error:', error);
     return NextResponse.json(
-      { error: 'Failed to get balance', details: error instanceof Error ? error.message : 'Unknown error' },
+      { error: 'Failed to get balance' },
       { status: 500 }
     );
   }
@@ -121,7 +121,7 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error('Balance query error:', error);
     return NextResponse.json(
-      { error: 'Failed to get balance', details: error instanceof Error ? error.message : 'Unknown error' },
+      { error: 'Failed to get balance' },
       { status: 500 }
     );
   }

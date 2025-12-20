@@ -43,12 +43,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // NOTE: Any authenticated user can trigger batch processing
-    // Security is enforced by:
-    // 1. In-memory lock prevents concurrent execution
-    // 2. Rate limiting (5 seconds between runs)
-    // 3. Only processes transactions past their confirmation deadline
-    // 4. All operations are logged in audit trail
+    // SECURITY FIX: Restrict to admin roles only (super_admin, company_admin)
+    // Batch processing of pending transactions is a privileged operation
+    if (!['super_admin', 'company_admin'].includes(authResult.user.role)) {
+      return NextResponse.json(
+        { error: 'No tienes permiso para ejecutar esta operación' },
+        { status: 403 }
+      );
+    }
 
     // SECURITY FIX: Prevent concurrent execution (race condition protection)
     const now = Date.now();

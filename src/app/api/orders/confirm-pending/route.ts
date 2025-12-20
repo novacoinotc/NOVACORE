@@ -108,7 +108,7 @@ export async function POST(request: NextRequest) {
           console.log(`Transaction ${tx.id} has no pending order data, marking as sent`);
           // SECURITY FIX: Use validated state transition with audit logging
           await updateTransactionStatusValidated(tx.id, 'sent', {
-            changeSource: 'batch_confirmation',
+            changeSource: 'api',
             changedBy: authResult.user.id,
             ipAddress: getClientIP(request),
           });
@@ -171,10 +171,10 @@ export async function POST(request: NextRequest) {
 
           // SECURITY FIX: Mark as failed with validated state transition
           await updateTransactionStatusValidated(tx.id, 'failed', {
-            changeSource: 'batch_confirmation',
+            changeSource: 'api',
             changedBy: authResult.user.id,
             ipAddress: getClientIP(request),
-            metadata: { errorDetail },
+            errorDetail: errorDetail,
           });
           results.failed++;
           results.errors.push(`Transaction ${tx.id}: OPM error - ${errorDetail}`);
@@ -189,10 +189,10 @@ export async function POST(request: NextRequest) {
         // SECURITY FIX: Mark as failed with validated state transition
         try {
           await updateTransactionStatusValidated(tx.id, 'failed', {
-            changeSource: 'batch_confirmation',
+            changeSource: 'api',
             changedBy: authResult.user.id,
             ipAddress: getClientIP(request),
-            metadata: { error: error instanceof Error ? error.message : 'Unknown error' },
+            errorDetail: error instanceof Error ? error.message : 'Unknown error',
           });
         } catch (updateError) {
           console.error('Failed to update transaction status:', updateError);

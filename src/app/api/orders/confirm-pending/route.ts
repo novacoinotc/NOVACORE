@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'crypto';
-import { getPendingConfirmationTransactions, confirmPendingTransaction, updateTransactionStatus, createAuditLogEntry } from '@/lib/db';
+import { getPendingConfirmationTransactions, confirmPendingTransaction, updateTransactionStatusValidated, createAuditLogEntry } from '@/lib/db';
 import { createOrder, buildOrderOriginalString } from '@/lib/opm-api';
 import { signWithPrivateKey } from '@/lib/crypto';
 import { CreateOrderRequest } from '@/types';
 import { authenticateRequest } from '@/lib/auth-middleware';
+import { getClientIP } from '@/lib/security';
 
 // SECURITY FIX: In-memory lock to prevent concurrent execution
 // In production, use Redis distributed lock
@@ -103,7 +104,12 @@ export async function POST(request: NextRequest) {
         if (!orderData) {
           // Transaction already has opm_order_id, just update status to sent
           console.log(`Transaction ${tx.id} has no pending order data, marking as sent`);
-          await updateTransactionStatus(tx.id, 'sent');
+          // SECURITY FIX: Use validated state transition with audit logging
+          await updateTransactionStatusValidated(tx.id, 'sent', {
+            changeSource: 'batch_confirmation',
+            changedBy: authResult.user.id,
+            ipAddress: getClientIP(request),
+          });
           results.confirmed++;
           results.processed++;
           continue;
@@ -161,8 +167,13 @@ export async function POST(request: NextRequest) {
           const errorDetail = opmResponse.error || `OPM returned code ${opmResponse.code}`;
           console.error(`OPM rejected order for transaction ${tx.id}:`, errorDetail);
 
-          // Mark as failed
-          await updateTransactionStatus(tx.id, 'failed', errorDetail);
+          // SECURITY FIX: Mark as failed with validated state transition
+          await updateTransactionStatusValidated(tx.id, 'failed', {
+            changeSource: 'batch_confirmation',
+            changedBy: authResult.user.id,
+            ipAddress: getClientIP(request),
+            metadata: { errorDetail },
+          });
           results.failed++;
           results.errors.push(`Transaction ${tx.id}: OPM error - ${errorDetail}`);
         }
@@ -173,9 +184,14 @@ export async function POST(request: NextRequest) {
         console.error(errorMsg);
         console.error('Stack:', error instanceof Error ? error.stack : 'No stack');
 
-        // Mark as failed
+        // SECURITY FIX: Mark as failed with validated state transition
         try {
-          await updateTransactionStatus(tx.id, 'failed', error instanceof Error ? error.message : 'Unknown error');
+          await updateTransactionStatusValidated(tx.id, 'failed', {
+            changeSource: 'batch_confirmation',
+            changedBy: authResult.user.id,
+            ipAddress: getClientIP(request),
+            metadata: { error: error instanceof Error ? error.message : 'Unknown error' },
+          });
         } catch (updateError) {
           console.error('Failed to update transaction status:', updateError);
         }
@@ -189,7 +205,7 @@ export async function POST(request: NextRequest) {
     console.log('=== CONFIRMATION PROCESSING COMPLETE ===');
     console.log(`Processed: ${results.processed}, Confirmed: ${results.confirmed}, Failed: ${results.failed}, Errors: ${results.errors.length}`);
 
-    // SECURITY FIX: Audit log for batch processing
+    // SECURITY FIX: Audit log for batch processing with secure IP extraction
     await createAuditLogEntry({
       id: `audit_${crypto.randomUUID()}`,
       action: 'BATCH_CONFIRM_PENDING',
@@ -200,7 +216,7 @@ export async function POST(request: NextRequest) {
         confirmed: results.confirmed,
         failed: results.failed,
       },
-      ipAddress: request.headers.get('x-forwarded-for') || 'unknown',
+      ipAddress: getClientIP(request),
       userAgent: request.headers.get('user-agent') || 'unknown',
     }).catch(err => console.error('Audit log error:', err));
 

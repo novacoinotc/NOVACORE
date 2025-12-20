@@ -74,6 +74,11 @@ export async function GET(request: NextRequest) {
       return value.substring(0, maxLength);
     };
 
+    // SECURITY FIX: Escape LIKE wildcards to prevent pattern injection
+    const escapeLikePattern = (str: string): string => {
+      return str.replace(/[%_\\]/g, '\\$&');
+    };
+
     // Extract query parameters with length limits
     const type = searchParams.get('type') as 'incoming' | 'outgoing' | null;
     const status = sanitizeInput(searchParams.get('status'), MAX_STATUS_LENGTH);
@@ -87,8 +92,9 @@ export async function GET(request: NextRequest) {
     const beneficiaryBank = sanitizeInput(searchParams.get('beneficiaryBank'), MAX_BANK_LENGTH);
     const payerBank = sanitizeInput(searchParams.get('payerBank'), MAX_BANK_LENGTH);
     const search = sanitizeInput(searchParams.get('search'), MAX_SEARCH_LENGTH);
-    const page = parseInt(searchParams.get('page') || '1');
-    const itemsPerPage = Math.min(parseInt(searchParams.get('itemsPerPage') || '50'), 100);
+    // SECURITY FIX: Validate pagination parameters are positive to prevent SQL errors
+    const page = Math.max(1, parseInt(searchParams.get('page') || '1') || 1);
+    const itemsPerPage = Math.min(Math.max(1, parseInt(searchParams.get('itemsPerPage') || '50') || 50), 100);
     const offset = (page - 1) * itemsPerPage;
 
     // Build dynamic WHERE clause
@@ -142,13 +148,15 @@ export async function GET(request: NextRequest) {
     }
 
     if (beneficiaryAccount) {
-      conditions.push(`beneficiary_account LIKE $${paramIndex++}`);
-      params.push(`%${beneficiaryAccount}%`);
+      // SECURITY FIX: Escape LIKE wildcards to prevent pattern injection
+      conditions.push(`beneficiary_account LIKE $${paramIndex++} ESCAPE '\\'`);
+      params.push(`%${escapeLikePattern(beneficiaryAccount)}%`);
     }
 
     if (payerAccount) {
-      conditions.push(`payer_account LIKE $${paramIndex++}`);
-      params.push(`%${payerAccount}%`);
+      // SECURITY FIX: Escape LIKE wildcards to prevent pattern injection
+      conditions.push(`payer_account LIKE $${paramIndex++} ESCAPE '\\'`);
+      params.push(`%${escapeLikePattern(payerAccount)}%`);
     }
 
     if (beneficiaryBank) {
@@ -162,12 +170,13 @@ export async function GET(request: NextRequest) {
     }
 
     if (search) {
-      const searchPattern = `%${search}%`;
+      // SECURITY FIX: Escape LIKE wildcards to prevent pattern injection
+      const searchPattern = `%${escapeLikePattern(search)}%`;
       conditions.push(`(
-        tracking_key ILIKE $${paramIndex} OR
-        beneficiary_name ILIKE $${paramIndex} OR
-        payer_name ILIKE $${paramIndex} OR
-        concept ILIKE $${paramIndex}
+        tracking_key ILIKE $${paramIndex} ESCAPE '\\' OR
+        beneficiary_name ILIKE $${paramIndex} ESCAPE '\\' OR
+        payer_name ILIKE $${paramIndex} ESCAPE '\\' OR
+        concept ILIKE $${paramIndex} ESCAPE '\\'
       )`);
       paramIndex++;
       params.push(searchPattern);

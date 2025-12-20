@@ -203,7 +203,27 @@ export async function POST(request: NextRequest) {
     }
 
     // Parse amount to ensure it's a valid, finite number
-    const parsedAmount = parseFloat(amount);
+    const amountStr = String(amount);
+
+    // SECURITY FIX: Reject scientific notation (e.g., "1e10") to prevent limit bypass
+    if (/[eE]/.test(amountStr)) {
+      console.error('ORDER ERROR: Scientific notation not allowed:', amount);
+      return NextResponse.json(
+        { error: 'El monto no puede usar notación científica', providedAmount: amount },
+        { status: 400 }
+      );
+    }
+
+    // SECURITY FIX: Only allow valid decimal format (digits, optional decimal point, max 2 decimals)
+    if (!/^\d+(\.\d{1,2})?$/.test(amountStr)) {
+      console.error('ORDER ERROR: Invalid amount format:', amount);
+      return NextResponse.json(
+        { error: 'El monto debe ser un número válido con máximo 2 decimales', providedAmount: amount },
+        { status: 400 }
+      );
+    }
+
+    const parsedAmount = parseFloat(amountStr);
     // SECURITY: Check for NaN, Infinity, negative, and zero amounts
     if (isNaN(parsedAmount) || !isFinite(parsedAmount)) {
       console.error('ORDER ERROR: Invalid amount (NaN or Infinity):', amount);
@@ -243,9 +263,28 @@ export async function POST(request: NextRequest) {
     );
 
     // Generate tracking key if not provided (max 30 chars)
-    const finalTrackingKey = trackingKey
-      ? trackingKey.substring(0, 30)
-      : generateTrackingKey('NC');
+    let finalTrackingKey: string;
+    if (trackingKey) {
+      // SECURITY FIX: Validate user-provided tracking key format
+      const sanitizedTrackingKey = String(trackingKey).substring(0, 30).toUpperCase();
+      if (!/^[A-Z0-9]+$/.test(sanitizedTrackingKey)) {
+        console.error('ORDER ERROR: Invalid tracking key format:', trackingKey);
+        return NextResponse.json(
+          { error: 'La clave de rastreo solo puede contener letras mayúsculas y números' },
+          { status: 400 }
+        );
+      }
+      if (sanitizedTrackingKey.length < 5) {
+        console.error('ORDER ERROR: Tracking key too short:', trackingKey);
+        return NextResponse.json(
+          { error: 'La clave de rastreo debe tener al menos 5 caracteres' },
+          { status: 400 }
+        );
+      }
+      finalTrackingKey = sanitizedTrackingKey;
+    } else {
+      finalTrackingKey = generateTrackingKey('NC');
+    }
 
     // Generate numerical reference if not provided OR if provided value is invalid (not 7 digits)
     let finalNumericalReference: number;

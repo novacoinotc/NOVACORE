@@ -28,6 +28,12 @@ jobs:
 
             cd /home/ubuntu/NOVACORE
 
+            # SECURITY: Backup .env before deployment (never overwrite server secrets)
+            echo "🔐 Backing up .env file..."
+            if [ -f .env ]; then
+              cp .env /tmp/.env.backup
+            fi
+
             echo "📦 Saving local changes..."
             git add -A
             git stash || true
@@ -41,6 +47,16 @@ jobs:
 
             echo "🔄 Resetting to match GitHub (force sync)..."
             git reset --hard origin/main
+
+            # SECURITY: Restore .env from backup (server secrets stay on server)
+            echo "🔐 Restoring .env file..."
+            if [ -f /tmp/.env.backup ]; then
+              cp /tmp/.env.backup .env
+              rm /tmp/.env.backup
+              echo "✅ .env restored successfully"
+            else
+              echo "⚠️  WARNING: No .env backup found! Create .env manually on server."
+            fi
 
             echo "🔧 Removing temporary git config..."
             git config --local --unset url."https://${GH_PAT}@github.com/".insteadOf || true

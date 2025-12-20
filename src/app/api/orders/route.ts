@@ -4,7 +4,7 @@ import { listOrders } from '@/lib/opm-api';
 import { generateNumericalReference, generateTrackingKey } from '@/lib/crypto';
 import { validateOrderFields, prepareTextForSpei, sanitizeForSpei } from '@/lib/utils';
 import { verifyTOTP, getClientIP, getUserAgent } from '@/lib/security';
-import { getUserTotpSecret, isUserTotpEnabled, createAuditLogEntry, getUserById, createOutgoingTransactionAtomic, getClabeAccountByClabe } from '@/lib/db';
+import { getUserTotpSecret, isUserTotpEnabled, createAuditLogEntry, getUserById, createOutgoingTransactionAtomic, getClabeAccountByClabe, getClabeAccountsByCompanyId } from '@/lib/db';
 import { authenticateRequest, validateClabeAccess } from '@/lib/auth-middleware';
 
 /**
@@ -95,7 +95,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const hasAccess = await validateClabeAccess(userId, sourceClabeAccount.id, authenticatedUser.role);
+    const hasAccess = await validateClabeAccess(userId, sourceClabeAccount.id, authenticatedUser.role, authenticatedUser.companyId);
     if (!hasAccess) {
       console.error('ORDER ERROR: User does not have access to source CLABE');
       await createAuditLogEntry({
@@ -520,6 +520,27 @@ export async function GET(request: NextRequest) {
       },
       apiKey
     );
+
+    // SECURITY FIX: Filter orders by company for company_admin
+    // Super admin sees all orders, company_admin only sees orders for their CLABEs
+    if (authenticatedUser.role === 'company_admin' && authenticatedUser.companyId) {
+      const companyClabes = await getClabeAccountsByCompanyId(authenticatedUser.companyId);
+      const companyClabeNumbers = new Set(companyClabes.map(c => c.clabe));
+
+      // Filter orders to only include those involving company's CLABEs
+      if (response.data && Array.isArray(response.data)) {
+        response.data = response.data.filter((order: any) => {
+          const payerAccount = order.payerAccount;
+          const beneficiaryAccount = order.beneficiaryAccount;
+          return (
+            (payerAccount && companyClabeNumbers.has(payerAccount)) ||
+            (beneficiaryAccount && companyClabeNumbers.has(beneficiaryAccount))
+          );
+        });
+        // Update total count to reflect filtered results
+        response.total = response.data.length;
+      }
+    }
 
     return NextResponse.json(response);
   } catch (error) {

@@ -35,7 +35,8 @@ export async function GET(
       const hasAccess = await validateClabeAccess(
         authResult.user.id,
         transaction.clabe_account_id,
-        authResult.user.role
+        authResult.user.role,
+        authResult.user.companyId  // SECURITY FIX: Add companyId for company_admin validation
       );
       if (!hasAccess) {
         return NextResponse.json(
@@ -75,7 +76,7 @@ export async function GET(
   } catch (error) {
     console.error('Get CEP error:', error);
     return NextResponse.json(
-      { error: 'Error al obtener CEP', details: error instanceof Error ? error.message : 'Unknown error' },
+      { error: 'Error al obtener CEP' },
       { status: 500 }
     );
   }

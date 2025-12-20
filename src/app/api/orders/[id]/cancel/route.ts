@@ -73,7 +73,8 @@ export async function POST(
       const hasAccess = await validateClabeAccess(
         authenticatedUser.id,
         existingTx.clabe_account_id,
-        authenticatedUser.role
+        authenticatedUser.role,
+        authenticatedUser.companyId  // SECURITY FIX: Add companyId for company_admin validation
       );
 
       if (!hasAccess) {
@@ -167,7 +168,6 @@ export async function POST(
     return NextResponse.json(
       {
         error: 'Error al cancelar la transferencia',
-        details: error instanceof Error ? error.message : 'Error desconocido',
       },
       { status: 500 }
     );
@@ -217,7 +217,8 @@ export async function GET(
       const hasAccess = await validateClabeAccess(
         authenticatedUser.id,
         existingTx.clabe_account_id,
-        authenticatedUser.role
+        authenticatedUser.role,
+        authenticatedUser.companyId  // SECURITY FIX: Add companyId for company_admin validation
       );
 
       if (!hasAccess) {

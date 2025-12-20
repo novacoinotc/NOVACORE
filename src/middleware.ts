@@ -93,11 +93,12 @@ export function middleware(request: NextRequest) {
     );
   }
 
-  // Basic Content Security Policy
-  // Adjust as needed for your specific requirements
+  // SECURITY FIX: Strict Content Security Policy
+  // Removed unsafe-inline and unsafe-eval for script-src (XSS protection)
+  // Note: If inline scripts are needed, use nonces instead
   response.headers.set(
     'Content-Security-Policy',
-    "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' https://api.opm.mx https://apiuat.opm.mx; frame-ancestors 'none';"
+    "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' https://api.opm.mx https://apiuat.opm.mx; frame-ancestors 'none'; base-uri 'self'; form-action 'self';"
   );
 
   // Handle preflight OPTIONS requests

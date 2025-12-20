@@ -4,7 +4,7 @@ import { listOrders } from '@/lib/opm-api';
 import { generateNumericalReference, generateTrackingKey } from '@/lib/crypto';
 import { validateOrderFields, prepareTextForSpei, sanitizeForSpei } from '@/lib/utils';
 import { verifyTOTP, getClientIP, getUserAgent } from '@/lib/security';
-import { getUserTotpSecret, isUserTotpEnabled, createAuditLogEntry, getUserById, createOutgoingTransactionAtomic, getClabeAccountByClabe } from '@/lib/db';
+import { getUserTotpSecret, isUserTotpEnabled, createAuditLogEntry, getUserById, createOutgoingTransactionAtomic, getClabeAccountByClabe, getClabeAccountsByCompanyId } from '@/lib/db';
 import { authenticateRequest, validateClabeAccess } from '@/lib/auth-middleware';
 
 /**
@@ -95,7 +95,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const hasAccess = await validateClabeAccess(userId, sourceClabeAccount.id, authenticatedUser.role);
+    const hasAccess = await validateClabeAccess(userId, sourceClabeAccount.id, authenticatedUser.role, authenticatedUser.companyId);
     if (!hasAccess) {
       console.error('ORDER ERROR: User does not have access to source CLABE');
       await createAuditLogEntry({
@@ -203,7 +203,27 @@ export async function POST(request: NextRequest) {
     }
 
     // Parse amount to ensure it's a valid, finite number
-    const parsedAmount = parseFloat(amount);
+    const amountStr = String(amount);
+
+    // SECURITY FIX: Reject scientific notation (e.g., "1e10") to prevent limit bypass
+    if (/[eE]/.test(amountStr)) {
+      console.error('ORDER ERROR: Scientific notation not allowed:', amount);
+      return NextResponse.json(
+        { error: 'El monto no puede usar notación científica', providedAmount: amount },
+        { status: 400 }
+      );
+    }
+
+    // SECURITY FIX: Only allow valid decimal format (digits, optional decimal point, max 2 decimals)
+    if (!/^\d+(\.\d{1,2})?$/.test(amountStr)) {
+      console.error('ORDER ERROR: Invalid amount format:', amount);
+      return NextResponse.json(
+        { error: 'El monto debe ser un número válido con máximo 2 decimales', providedAmount: amount },
+        { status: 400 }
+      );
+    }
+
+    const parsedAmount = parseFloat(amountStr);
     // SECURITY: Check for NaN, Infinity, negative, and zero amounts
     if (isNaN(parsedAmount) || !isFinite(parsedAmount)) {
       console.error('ORDER ERROR: Invalid amount (NaN or Infinity):', amount);
@@ -243,9 +263,38 @@ export async function POST(request: NextRequest) {
     );
 
     // Generate tracking key if not provided (max 30 chars)
-    const finalTrackingKey = trackingKey
-      ? trackingKey.substring(0, 30)
-      : generateTrackingKey('NC');
+    let finalTrackingKey: string;
+    if (trackingKey) {
+      // SECURITY FIX: Validate user-provided tracking key format
+      const sanitizedTrackingKey = String(trackingKey).substring(0, 30).toUpperCase();
+      if (!/^[A-Z0-9]+$/.test(sanitizedTrackingKey)) {
+        console.error('ORDER ERROR: Invalid tracking key format:', trackingKey);
+        return NextResponse.json(
+          { error: 'La clave de rastreo solo puede contener letras mayúsculas y números' },
+          { status: 400 }
+        );
+      }
+      if (sanitizedTrackingKey.length < 5) {
+        console.error('ORDER ERROR: Tracking key too short:', trackingKey);
+        return NextResponse.json(
+          { error: 'La clave de rastreo debe tener al menos 5 caracteres' },
+          { status: 400 }
+        );
+      }
+      // SECURITY FIX: Check for duplicate tracking key
+      const { getTransactionByTrackingKey } = await import('@/lib/db');
+      const existingTx = await getTransactionByTrackingKey(sanitizedTrackingKey);
+      if (existingTx) {
+        console.error('ORDER ERROR: Duplicate tracking key:', sanitizedTrackingKey);
+        return NextResponse.json(
+          { error: 'La clave de rastreo ya existe. Por favor usa una diferente.' },
+          { status: 409 }
+        );
+      }
+      finalTrackingKey = sanitizedTrackingKey;
+    } else {
+      finalTrackingKey = generateTrackingKey('NC');
+    }
 
     // Generate numerical reference if not provided OR if provided value is invalid (not 7 digits)
     let finalNumericalReference: number;
@@ -267,16 +316,8 @@ export async function POST(request: NextRequest) {
     const resolvedPayerBank = payerBank || process.env.DEFAULT_PAYER_BANK || '90684';
     const resolvedPayerAccountType = payerAccountType ?? 40;
 
-    console.log('Resolved order data:', {
-      beneficiaryAccount,
-      beneficiaryBank,
-      beneficiaryName: sanitizedBeneficiaryName,
-      payerAccount: resolvedPayerAccount,
-      payerBank: resolvedPayerBank,
-      amount: parsedAmount,
-      numericalReference: finalNumericalReference,
-      trackingKey: finalTrackingKey,
-    });
+    // SECURITY FIX: Removed logging of sensitive account/amount data
+    console.log('Order data prepared, trackingKey:', finalTrackingKey);
 
     // Validate all fields according to OPM API specification
     const validationErrors = validateOrderFields({
@@ -334,8 +375,8 @@ export async function POST(request: NextRequest) {
       ...(cepPayerAccount && { cepPayerAccount }),
     };
 
+    // SECURITY FIX: Removed logging of sensitive order data
     console.log('=== CREATING TRANSACTION WITH ATOMIC BALANCE CHECK ===');
-    console.log('Order data (will be sent after grace period):', JSON.stringify(pendingOrderData, null, 2));
 
     // Calculate confirmation deadline
     const confirmationDeadline = new Date(Date.now() + GRACE_PERIOD_SECONDS * 1000);
@@ -428,7 +469,7 @@ export async function POST(request: NextRequest) {
         confirmationDeadline: confirmationDeadline.toISOString(),
         secondsRemaining: GRACE_PERIOD_SECONDS,
         canCancel: true,
-        message: 'La transferencia se enviará automáticamente en 20 segundos. Puedes cancelar antes de que expire el tiempo.',
+        message: `La transferencia se enviará automáticamente en ${GRACE_PERIOD_SECONDS} segundos. Puedes cancelar antes de que expire el tiempo.`,
       },
     });
   } catch (error) {
@@ -438,7 +479,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       {
         error: 'Error al crear la orden',
-        details: error instanceof Error ? error.message : 'Error desconocido',
         hint: 'Revisa los logs del servidor para más detalles'
       },
       { status: 500 }
@@ -521,11 +561,32 @@ export async function GET(request: NextRequest) {
       apiKey
     );
 
+    // SECURITY FIX: Filter orders by company for company_admin
+    // Super admin sees all orders, company_admin only sees orders for their CLABEs
+    if (authenticatedUser.role === 'company_admin' && authenticatedUser.companyId) {
+      const companyClabes = await getClabeAccountsByCompanyId(authenticatedUser.companyId);
+      const companyClabeNumbers = new Set(companyClabes.map(c => c.clabe));
+
+      // Filter orders to only include those involving company's CLABEs
+      if (response.data && Array.isArray(response.data)) {
+        response.data = response.data.filter((order: any) => {
+          const payerAccount = order.payerAccount;
+          const beneficiaryAccount = order.beneficiaryAccount;
+          return (
+            (payerAccount && companyClabeNumbers.has(payerAccount)) ||
+            (beneficiaryAccount && companyClabeNumbers.has(beneficiaryAccount))
+          );
+        });
+        // Update total count to reflect filtered results
+        response.total = response.data.length;
+      }
+    }
+
     return NextResponse.json(response);
   } catch (error) {
     console.error('List orders error:', error);
     return NextResponse.json(
-      { error: 'Failed to list orders', details: error instanceof Error ? error.message : 'Unknown error' },
+      { error: 'Failed to list orders' },
       { status: 500 }
     );
   }

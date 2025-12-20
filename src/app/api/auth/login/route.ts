@@ -303,13 +303,19 @@ export async function POST(request: NextRequest) {
 
     // Save session to database for server-side validation
     try {
-      const { createSession } = await import('@/lib/db');
+      const { createSession, deleteExpiredSessions } = await import('@/lib/db');
       await createSession({
         id: sessionId,
         userId: dbUser.id,
         token: token,
         expiresAt: new Date(expiresAt),
       });
+
+      // SECURITY FIX: Probabilistic cleanup of expired sessions (1% chance)
+      // This prevents session table bloat without adding overhead to every login
+      if (Math.random() < 0.01) {
+        deleteExpiredSessions().catch(e => console.error('Session cleanup failed:', e));
+      }
     } catch (sessionError) {
       console.error('Failed to create session:', sessionError);
       // Continue anyway - session validation will fail but user can retry
@@ -345,12 +351,26 @@ export async function POST(request: NextRequest) {
     // Check if user needs to setup 2FA (required for security)
     const requiresTotpSetup = !securityStatus.totpEnabled;
 
-    return NextResponse.json({
+    // SECURITY FIX: Create response with httpOnly secure cookie
+    const response = NextResponse.json({
       user,
-      token,
+      token, // Still include token in response for backward compatibility
       expiresAt,
       requiresTotpSetup, // Frontend should redirect to 2FA setup if true
     });
+
+    // Set httpOnly secure cookie for session token
+    response.cookies.set({
+      name: 'novacorp_token',
+      value: token,
+      httpOnly: true,           // Prevent XSS access to cookie
+      secure: process.env.NODE_ENV === 'production', // HTTPS only in production
+      sameSite: 'strict',       // Prevent CSRF
+      maxAge: 24 * 60 * 60,     // 24 hours (matches session expiry)
+      path: '/',
+    });
+
+    return response;
   } catch (error) {
     console.error('Login error:', error);
 

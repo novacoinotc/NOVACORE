@@ -43,25 +43,31 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url);
 
+    // SECURITY: Define max lengths for input validation to prevent DoS
+    const MAX_CLABE_LENGTH = 20;
+    const MAX_RFC_LENGTH = 15;
+    const MAX_CURP_LENGTH = 20;
+    const MAX_STATUS_LENGTH = 20;
+
     const params: Record<string, string | number | undefined> = {};
 
     const virtualAccountNumber = searchParams.get('virtualAccountNumber');
-    if (virtualAccountNumber) params.virtualAccountNumber = virtualAccountNumber;
+    if (virtualAccountNumber) params.virtualAccountNumber = virtualAccountNumber.substring(0, MAX_CLABE_LENGTH);
 
     const rfc = searchParams.get('rfc');
-    if (rfc) params.rfc = rfc;
+    if (rfc) params.rfc = rfc.substring(0, MAX_RFC_LENGTH);
 
     const curp = searchParams.get('curp');
-    if (curp) params.curp = curp;
+    if (curp) params.curp = curp.substring(0, MAX_CURP_LENGTH);
 
     const page = searchParams.get('page');
-    if (page) params.page = parseInt(page);
+    if (page) params.page = Math.min(parseInt(page) || 1, 10000);
 
     const itemsPerPage = searchParams.get('itemsPerPage');
-    if (itemsPerPage) params.itemsPerPage = parseInt(itemsPerPage);
+    if (itemsPerPage) params.itemsPerPage = Math.min(parseInt(itemsPerPage) || 50, 100);
 
     const status = searchParams.get('status');
-    if (status) params.status = status;
+    if (status) params.status = status.substring(0, MAX_STATUS_LENGTH);
 
     const apiKey = process.env.OPM_API_KEY;
     const response = await listClients(params as any, apiKey);
@@ -70,7 +76,7 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error('List clients error:', error);
     return NextResponse.json(
-      { error: 'Failed to list clients', details: error instanceof Error ? error.message : 'Unknown error' },
+      { error: 'Failed to list clients' },
       { status: 500 }
     );
   }
@@ -191,7 +197,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('Create client error:', error);
     return NextResponse.json(
-      { error: 'Failed to create client', details: error instanceof Error ? error.message : 'Unknown error' },
+      { error: 'Failed to create client' },
       { status: 500 }
     );
   }

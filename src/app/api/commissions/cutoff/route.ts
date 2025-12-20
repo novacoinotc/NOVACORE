@@ -104,7 +104,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       {
         error: 'Error interno al ejecutar el corte de comisiones',
-        details: error instanceof Error ? error.message : 'Unknown error',
       },
       { status: 500 }
     );

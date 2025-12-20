@@ -111,7 +111,8 @@ export async function POST(request: NextRequest) {
 
   console.log('=== OPM ENDPOINT PROBE STARTED ===');
   console.log(`API Base: ${API_BASE_URL}`);
-  console.log(`API Key: ${API_KEY ? API_KEY.substring(0, 8) + '...' : 'NOT SET'}`);
+  // SECURITY FIX: Don't log any part of the API key
+  console.log(`API Key configured: ${API_KEY ? 'YES' : 'NOT SET'}`);
 
   const results: ProbeResult[] = [];
 

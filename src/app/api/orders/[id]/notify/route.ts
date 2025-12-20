@@ -1,8 +1,35 @@
 import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'crypto';
-import { notifyOrder } from '@/lib/opm-api';
+import { notifyOrder, getOrder } from '@/lib/opm-api';
 import { authenticateRequest } from '@/lib/auth-middleware';
-import { createAuditLogEntry } from '@/lib/db';
+import { createAuditLogEntry, getClabeAccountsByCompanyId } from '@/lib/db';
+import { getClientIP, getUserAgent } from '@/lib/security';
+
+/**
+ * SECURITY: Validate that an order belongs to the user's company
+ */
+async function validateOrderAccess(
+  order: any,
+  userRole: string,
+  userCompanyId: string | null
+): Promise<boolean> {
+  if (userRole === 'super_admin') return true;
+
+  if (userRole === 'company_admin' && userCompanyId) {
+    const companyClabes = await getClabeAccountsByCompanyId(userCompanyId);
+    const companyClabeNumbers = companyClabes.map(c => c.clabe);
+
+    const payerAccount = order?.payerAccount || order?.data?.payerAccount;
+    const beneficiaryAccount = order?.beneficiaryAccount || order?.data?.beneficiaryAccount;
+
+    return !!(
+      (payerAccount && companyClabeNumbers.includes(payerAccount)) ||
+      (beneficiaryAccount && companyClabeNumbers.includes(beneficiaryAccount))
+    );
+  }
+
+  return false;
+}
 
 /**
  * POST /api/orders/[id]/notify
@@ -37,17 +64,39 @@ export async function POST(
     }
 
     const apiKey = process.env.OPM_API_KEY;
+
+    // SECURITY FIX: Validate that the order belongs to the user's company
+    const orderInfo = await getOrder(params.id, apiKey);
+    const hasAccess = await validateOrderAccess(orderInfo, authResult.user.role, authResult.user.companyId);
+    if (!hasAccess) {
+      await createAuditLogEntry({
+        id: `audit_${crypto.randomUUID()}`,
+        action: 'SUSPICIOUS_ACTIVITY',
+        userId: authResult.user.id,
+        userEmail: authResult.user.email,
+        ipAddress: getClientIP(request),
+        userAgent: getUserAgent(request),
+        details: { reason: 'Attempted to notify order from another company', orderId: params.id },
+        severity: 'warning',
+      });
+
+      return NextResponse.json(
+        { error: 'No tienes permiso para esta orden' },
+        { status: 403 }
+      );
+    }
+
     const response = await notifyOrder(params.id, apiKey);
 
-    // SECURITY FIX: Audit log
+    // SECURITY FIX: Audit log using secure IP extraction
     await createAuditLogEntry({
       id: `audit_${crypto.randomUUID()}`,
       action: 'WEBHOOK_RESENT',
       userId: authResult.user.id,
       userEmail: authResult.user.email,
       details: { orderId: params.id },
-      ipAddress: request.headers.get('x-forwarded-for') || 'unknown',
-      userAgent: request.headers.get('user-agent') || 'unknown',
+      ipAddress: getClientIP(request),
+      userAgent: getUserAgent(request),
     }).catch(err => console.error('Audit log error:', err));
 
     return NextResponse.json({

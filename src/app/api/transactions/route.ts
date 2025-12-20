@@ -61,21 +61,40 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // Extract query parameters
+    // SECURITY: Define max lengths for input validation to prevent DoS
+    const MAX_SEARCH_LENGTH = 100;
+    const MAX_ACCOUNT_LENGTH = 20; // CLABE is 18 digits
+    const MAX_BANK_LENGTH = 10;
+    const MAX_STATUS_LENGTH = 30;
+    const MAX_ID_LENGTH = 100;
+
+    // Helper to sanitize and limit input length
+    const sanitizeInput = (value: string | null, maxLength: number): string | null => {
+      if (!value) return null;
+      return value.substring(0, maxLength);
+    };
+
+    // SECURITY FIX: Escape LIKE wildcards to prevent pattern injection
+    const escapeLikePattern = (str: string): string => {
+      return str.replace(/[%_\\]/g, '\\$&');
+    };
+
+    // Extract query parameters with length limits
     const type = searchParams.get('type') as 'incoming' | 'outgoing' | null;
-    const status = searchParams.get('status');
-    const clabeAccountId = searchParams.get('clabeAccountId');
+    const status = sanitizeInput(searchParams.get('status'), MAX_STATUS_LENGTH);
+    const clabeAccountId = sanitizeInput(searchParams.get('clabeAccountId'), MAX_ID_LENGTH);
     const from = searchParams.get('from');
     const to = searchParams.get('to');
     const minAmount = searchParams.get('minAmount');
     const maxAmount = searchParams.get('maxAmount');
-    const beneficiaryAccount = searchParams.get('beneficiaryAccount');
-    const payerAccount = searchParams.get('payerAccount');
-    const beneficiaryBank = searchParams.get('beneficiaryBank');
-    const payerBank = searchParams.get('payerBank');
-    const search = searchParams.get('search');
-    const page = parseInt(searchParams.get('page') || '1');
-    const itemsPerPage = Math.min(parseInt(searchParams.get('itemsPerPage') || '50'), 100);
+    const beneficiaryAccount = sanitizeInput(searchParams.get('beneficiaryAccount'), MAX_ACCOUNT_LENGTH);
+    const payerAccount = sanitizeInput(searchParams.get('payerAccount'), MAX_ACCOUNT_LENGTH);
+    const beneficiaryBank = sanitizeInput(searchParams.get('beneficiaryBank'), MAX_BANK_LENGTH);
+    const payerBank = sanitizeInput(searchParams.get('payerBank'), MAX_BANK_LENGTH);
+    const search = sanitizeInput(searchParams.get('search'), MAX_SEARCH_LENGTH);
+    // SECURITY FIX: Validate pagination parameters are positive to prevent SQL errors
+    const page = Math.max(1, parseInt(searchParams.get('page') || '1') || 1);
+    const itemsPerPage = Math.min(Math.max(1, parseInt(searchParams.get('itemsPerPage') || '50') || 50), 100);
     const offset = (page - 1) * itemsPerPage;
 
     // Build dynamic WHERE clause
@@ -129,13 +148,15 @@ export async function GET(request: NextRequest) {
     }
 
     if (beneficiaryAccount) {
-      conditions.push(`beneficiary_account LIKE $${paramIndex++}`);
-      params.push(`%${beneficiaryAccount}%`);
+      // SECURITY FIX: Escape LIKE wildcards to prevent pattern injection
+      conditions.push(`beneficiary_account LIKE $${paramIndex++} ESCAPE '\\'`);
+      params.push(`%${escapeLikePattern(beneficiaryAccount)}%`);
     }
 
     if (payerAccount) {
-      conditions.push(`payer_account LIKE $${paramIndex++}`);
-      params.push(`%${payerAccount}%`);
+      // SECURITY FIX: Escape LIKE wildcards to prevent pattern injection
+      conditions.push(`payer_account LIKE $${paramIndex++} ESCAPE '\\'`);
+      params.push(`%${escapeLikePattern(payerAccount)}%`);
     }
 
     if (beneficiaryBank) {
@@ -149,12 +170,13 @@ export async function GET(request: NextRequest) {
     }
 
     if (search) {
-      const searchPattern = `%${search}%`;
+      // SECURITY FIX: Escape LIKE wildcards to prevent pattern injection
+      const searchPattern = `%${escapeLikePattern(search)}%`;
       conditions.push(`(
-        tracking_key ILIKE $${paramIndex} OR
-        beneficiary_name ILIKE $${paramIndex} OR
-        payer_name ILIKE $${paramIndex} OR
-        concept ILIKE $${paramIndex}
+        tracking_key ILIKE $${paramIndex} ESCAPE '\\' OR
+        beneficiary_name ILIKE $${paramIndex} ESCAPE '\\' OR
+        payer_name ILIKE $${paramIndex} ESCAPE '\\' OR
+        concept ILIKE $${paramIndex} ESCAPE '\\'
       )`);
       paramIndex++;
       params.push(searchPattern);
@@ -272,7 +294,7 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error('List transactions error:', error);
     return NextResponse.json(
-      { error: 'Error al obtener transacciones', details: error instanceof Error ? error.message : 'Unknown error' },
+      { error: 'Error al obtener transacciones' },
       { status: 500 }
     );
   }

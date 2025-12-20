@@ -50,36 +50,42 @@ export interface WebhookSecurityResult {
 }
 
 /**
- * Get client IP from request
+ * Get client IP from request for webhook validation
  *
- * SECURITY NOTE: IP extraction in cloud environments
- * - X-Forwarded-For can be spoofed by clients, BUT trusted proxies (Vercel, AWS ALB)
- *   append or overwrite the header with the actual connecting IP
- * - For AWS ALB: The rightmost non-private IP is typically the real client
- * - For Vercel: The header is set by Vercel's edge network
+ * SECURITY CRITICAL: IP extraction for webhook authentication
  *
- * We use X-Vercel-Forwarded-For when available (more trustworthy)
- * and fall back to the rightmost public IP in X-Forwarded-For
+ * X-Forwarded-For format: "client, proxy1, proxy2, ..."
+ * - Attackers can PREPEND fake IPs to this header
+ * - Trusted proxies (AWS ALB, Vercel) APPEND the actual client IP
+ *
+ * SECURITY FIX: For AWS ALB and most reverse proxies:
+ * - The LAST IP in the chain is the one the proxy actually saw connecting
+ * - This is what we trust for webhook validation
+ *
+ * For Vercel: x-vercel-forwarded-for is set by Vercel's edge (trusted)
  */
 export function getClientIpFromWebhook(request: NextRequest): string {
-  // Vercel provides a more trustworthy header
+  // Vercel provides a trusted header set by their edge network
   const vercelForwarded = request.headers.get('x-vercel-forwarded-for');
   if (vercelForwarded) {
+    // Vercel sets this directly, take the first (and usually only) IP
     return vercelForwarded.split(',')[0].trim();
   }
 
-  // For AWS/other proxies, the connecting client IP is typically appended last
-  // But the FIRST entry is often the original client (what we want for webhook validation)
-  // AWS ALB adds the client IP at the end of the chain
+  // SECURITY FIX: For AWS ALB and standard reverse proxies,
+  // the proxy APPENDS the actual client IP at the END of the chain
+  // An attacker can prepend fake IPs, but cannot control what the proxy appends
   const forwarded = request.headers.get('x-forwarded-for');
   if (forwarded) {
-    const ips = forwarded.split(',').map(ip => ip.trim());
-    // For webhook validation from OPM, they connect directly to our edge
-    // So the first IP should be OPM's IP (unless there's a CDN in front of them)
-    // Return the first IP as it's what OPM would present
-    return ips[0];
+    const ips = forwarded.split(',').map(ip => ip.trim()).filter(ip => ip);
+    if (ips.length > 0) {
+      // SECURITY: Use the LAST IP - this is what the trusted proxy actually saw
+      // Attacker cannot spoof this because they cannot control what ALB appends
+      return ips[ips.length - 1];
+    }
   }
 
+  // x-real-ip is typically set by nginx, relatively trusted
   const realIp = request.headers.get('x-real-ip');
   if (realIp) {
     return realIp.trim();

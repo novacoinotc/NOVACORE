@@ -801,7 +801,7 @@ export async function updateLastLogin(id: string): Promise<void> {
 }
 
 // ==================== SESSION OPERATIONS ====================
-// Note: Database uses camelCase columns (Prisma default)
+// SECURITY FIX: Use snake_case column names to match table definition (user_id, expires_at, created_at)
 
 export async function createSession(session: {
   id: string;
@@ -811,7 +811,7 @@ export async function createSession(session: {
 }): Promise<void> {
   const now = new Date();
   await sql`
-    INSERT INTO sessions (id, "userId", token, "expiresAt", "createdAt")
+    INSERT INTO sessions (id, user_id, token, expires_at, created_at)
     VALUES (${session.id}, ${session.userId}, ${session.token}, ${session.expiresAt}, ${now})
   `;
 }
@@ -823,7 +823,8 @@ export async function getSessionByToken(token: string): Promise<{
   expiresAt: Date;
 } | null> {
   const result = await sql`
-    SELECT * FROM sessions WHERE token = ${token} AND "expiresAt" > CURRENT_TIMESTAMP
+    SELECT id, user_id as "userId", token, expires_at as "expiresAt"
+    FROM sessions WHERE token = ${token} AND expires_at > CURRENT_TIMESTAMP
   `;
   return result[0] as any || null;
 }
@@ -836,7 +837,7 @@ export async function deleteSession(token: string): Promise<void> {
 
 export async function deleteExpiredSessions(): Promise<void> {
   await sql`
-    DELETE FROM sessions WHERE "expiresAt" < CURRENT_TIMESTAMP
+    DELETE FROM sessions WHERE expires_at < CURRENT_TIMESTAMP
   `;
 }
 
@@ -848,7 +849,7 @@ export async function invalidateSession(token: string): Promise<void> {
 
 export async function invalidateAllUserSessions(userId: string): Promise<void> {
   await sql`
-    DELETE FROM sessions WHERE "userId" = ${userId}
+    DELETE FROM sessions WHERE user_id = ${userId}
   `;
 }
 
@@ -1160,7 +1161,9 @@ export async function getClabeAccountBalance(clabeAccountId: string): Promise<{
     settledIncoming,
     settledOutgoing,
     inTransit,
-    availableBalance: settledIncoming - settledOutgoing,
+    // SECURITY FIX: Include inTransit in available balance calculation
+    // This matches the atomic transaction check in createOutgoingTransactionAtomic
+    availableBalance: settledIncoming - settledOutgoing - inTransit,
   };
 }
 

@@ -31,13 +31,19 @@ export interface CommissionResult {
 
 /**
  * Calculate commission amount for a transaction
+ * SECURITY FIX: Use integer arithmetic to avoid floating point precision errors
  */
 export function calculateCommission(amount: number, percentage: number): number {
   if (percentage <= 0 || percentage > 100) {
     return 0;
   }
-  // Round to 2 decimal places
-  return Math.round(amount * (percentage / 100) * 100) / 100;
+  // SECURITY FIX: Convert to cents (integer) to avoid floating point errors
+  // e.g., 0.1 + 0.2 !== 0.3 in IEEE 754 floating point
+  const amountCents = Math.round(amount * 100);
+  const percentageBasisPoints = Math.round(percentage * 100); // 1% = 100 basis points
+  // Calculate in integer space, then convert back
+  const commissionCents = Math.round((amountCents * percentageBasisPoints) / 10000);
+  return commissionCents / 100;
 }
 
 /**

@@ -41,9 +41,10 @@ export async function signWithPrivateKey(
     // Decode the key if it's Base64 encoded
     const privateKeyPem = decodeKeyFromEnv(privateKeyInput);
 
+    // SECURITY FIX: Removed logging of originalString which contains sensitive account data
     console.log('Signing with private key...');
     console.log('Key format detected:', privateKeyPem.includes('RSA PRIVATE KEY') ? 'PKCS#1' : 'PKCS#8');
-    console.log('Original string to sign:', originalString);
+    console.log('Original string length:', originalString.length);
 
     // Create a private key object - Node.js crypto handles both PKCS#1 and PKCS#8
     const privateKey = createPrivateKey({

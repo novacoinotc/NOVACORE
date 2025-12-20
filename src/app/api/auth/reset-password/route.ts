@@ -95,9 +95,22 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      if (newPassword.length < 8) {
+      // SECURITY FIX: Enhanced password complexity requirements
+      if (newPassword.length < 12) {
         return NextResponse.json(
-          { error: 'La contraseña debe tener al menos 8 caracteres' },
+          { error: 'La contraseña debe tener al menos 12 caracteres' },
+          { status: 400 }
+        );
+      }
+
+      const hasUppercase = /[A-Z]/.test(newPassword);
+      const hasLowercase = /[a-z]/.test(newPassword);
+      const hasNumber = /\d/.test(newPassword);
+      const hasSpecial = /[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(newPassword);
+
+      if (!(hasUppercase && hasLowercase && hasNumber && hasSpecial)) {
+        return NextResponse.json(
+          { error: 'La contraseña debe contener mayúsculas, minúsculas, números y caracteres especiales' },
           { status: 400 }
         );
       }

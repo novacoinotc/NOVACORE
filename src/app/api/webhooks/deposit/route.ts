@@ -73,8 +73,18 @@ export async function POST(request: NextRequest) {
     const webhookSecret = process.env.WEBHOOK_SECRET;
     const receivedSecret = request.headers.get('x-webhook-secret');
 
-    if (webhookSecret && receivedSecret && webhookSecret !== receivedSecret) {
-      console.warn('Webhook secret mismatch');
+    // SECURITY FIX: Use timing-safe comparison for webhook secret
+    if (webhookSecret && receivedSecret) {
+      try {
+        const secretBuffer = Buffer.from(webhookSecret);
+        const receivedBuffer = Buffer.from(receivedSecret);
+        if (secretBuffer.length !== receivedBuffer.length ||
+            !crypto.timingSafeEqual(secretBuffer, receivedBuffer)) {
+          console.warn('Webhook secret mismatch');
+        }
+      } catch {
+        console.warn('Webhook secret comparison failed');
+      }
     }
 
     // RSA signature validation from OPM
@@ -86,10 +96,11 @@ export async function POST(request: NextRequest) {
     if (!skipSignatureValidation) {
       const signatureValid = await validateOpmSignature(body);
       if (!signatureValid) {
+        // SECURITY FIX: Don't log full body - use sanitized version
         console.error('=== DEPOSIT WEBHOOK SIGNATURE VALIDATION FAILED ===');
         console.error('Timestamp:', timestamp);
-        console.error('Body:', JSON.stringify(body, null, 2));
-        console.error('Sign field:', body?.sign || body?.data?.sign || 'NOT PROVIDED');
+        console.error('Payload (sanitized):', JSON.stringify(sanitizeWebhookDataForLog(body)));
+        console.error('Sign field present:', !!(body?.sign || body?.data?.sign));
         console.error('================================================');
 
         return NextResponse.json({
@@ -172,11 +183,11 @@ export async function POST(request: NextRequest) {
     });
 
   } catch (error) {
-    // Log error but always return 200 OK
+    // SECURITY FIX: Log error but don't expose sensitive body data
     console.error('=== DEPOSIT WEBHOOK ERROR ===');
     console.error('Timestamp:', timestamp);
-    console.error('Error:', error);
-    console.error('Body received:', body);
+    console.error('Error:', error instanceof Error ? error.message : 'Unknown error');
+    console.error('Body structure:', body ? Object.keys(body) : 'null');
     console.error('=============================');
 
     return NextResponse.json({
@@ -366,12 +377,45 @@ async function processDeposit(data: DepositData): Promise<ProcessResult> {
       };
     }
 
-    // Validate amount is positive
-    if (data.amount <= 0) {
+    // SECURITY FIX: Comprehensive amount validation (matching orders endpoint)
+    const amountStr = String(data.amount);
+
+    // Reject scientific notation (e.g., "1e10")
+    if (/[eE]/.test(amountStr)) {
       return {
         success: false,
         returnCode: 7,
-        message: 'Invalid amount',
+        message: 'Invalid amount format - scientific notation not allowed',
+      };
+    }
+
+    // Validate decimal format (max 2 decimal places)
+    if (!/^\d+(\.\d{1,2})?$/.test(amountStr)) {
+      return {
+        success: false,
+        returnCode: 7,
+        message: 'Invalid amount format - max 2 decimal places allowed',
+      };
+    }
+
+    const parsedAmount = parseFloat(amountStr);
+
+    // Check for NaN, Infinity, negative, and zero
+    if (isNaN(parsedAmount) || !isFinite(parsedAmount) || parsedAmount <= 0) {
+      return {
+        success: false,
+        returnCode: 7,
+        message: 'Invalid amount - must be a positive number',
+      };
+    }
+
+    // Maximum transaction limit (same as orders endpoint)
+    const MAX_TRANSACTION_AMOUNT = 999999999.99;
+    if (parsedAmount > MAX_TRANSACTION_AMOUNT) {
+      return {
+        success: false,
+        returnCode: 7,
+        message: 'Amount exceeds maximum allowed',
       };
     }
 
@@ -431,7 +475,7 @@ async function processDeposit(data: DepositData): Promise<ProcessResult> {
         clabeAccountId: clabeAccount.id,
         type: 'incoming',
         status: 'scattered',
-        amount: data.amount,
+        amount: parsedAmount,  // Use validated/parsed amount
         concept: data.concept,
         trackingKey: data.trackingKey,
         numericalReference: isNaN(numRef as number) ? undefined : numRef,

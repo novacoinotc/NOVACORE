@@ -210,8 +210,9 @@ export async function createAuditLog(entry: Omit<AuditLogEntry, 'id' | 'timestam
   };
 
   // Log to console (in production, save to database)
-  const logPrefix = entry.severity === 'critical' ? '🚨 CRITICAL' :
-                    entry.severity === 'warning' ? '⚠️ WARNING' : 'ℹ️ INFO';
+  // SECURITY FIX: Removed emoji characters that can break log parsers
+  const logPrefix = entry.severity === 'critical' ? '[CRITICAL]' :
+                    entry.severity === 'warning' ? '[WARNING]' : '[INFO]';
 
   console.log(`[AUDIT] ${logPrefix} | ${entry.action} | User: ${entry.userEmail || 'anonymous'} | IP: ${entry.ipAddress || 'unknown'}`);
 

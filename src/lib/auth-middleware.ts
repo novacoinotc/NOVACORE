@@ -202,15 +202,38 @@ export function forbiddenResponse(message: string = 'Acceso denegado'): NextResp
 /**
  * Validate that user has access to specific CLABE accounts
  * Used for IDOR protection
+ *
+ * SECURITY: This is a CRITICAL function for multi-tenant isolation.
+ * - super_admin: Access to all CLABE accounts
+ * - company_admin: Access to all CLABE accounts in their company
+ * - user: Access only to explicitly assigned CLABE accounts
  */
 export async function validateClabeAccess(
   userId: string,
   clabeAccountId: string,
-  userRole: string
+  userRole: string,
+  userCompanyId?: string | null
 ): Promise<boolean> {
+  // SECURITY FIX: Validate that role is one of the known valid roles
+  const validRoles = ['super_admin', 'company_admin', 'user'];
+  if (!validRoles.includes(userRole)) {
+    console.error(`[SECURITY] Invalid role in validateClabeAccess: ${userRole}`);
+    return false;
+  }
+
   // Super admin has access to all
   if (userRole === 'super_admin') {
     return true;
+  }
+
+  // SECURITY FIX: Company admin has access to all CLABEs in their company
+  if (userRole === 'company_admin' && userCompanyId) {
+    const { getClabeAccountById } = await import('./db');
+    const clabeAccount = await getClabeAccountById(clabeAccountId);
+    if (clabeAccount && clabeAccount.company_id === userCompanyId) {
+      return true;
+    }
+    return false;
   }
 
   // For regular users, check user_clabe_access table

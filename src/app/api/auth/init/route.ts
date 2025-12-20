@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
-import { initializeDatabase, getUserByEmail, createUser, sql } from '@/lib/db';
+import { initializeDatabase, getUserByEmail, createUser, sql, initializeSecurityTables } from '@/lib/db';
 import { DEFAULT_ROLE_PERMISSIONS } from '@/types';
 
 // SECURITY: Bcrypt rounds for password hashing (12+ recommended for production)
@@ -43,6 +43,11 @@ export async function POST() {
     // Ensure security columns exist (run separately to ensure they're added)
     await ensureSecurityColumns();
     console.log('Security columns migration completed');
+
+    // SECURITY FIX: Initialize security tables (processed_webhooks, transaction_state_log)
+    // These are critical for webhook idempotency and transaction state auditing
+    await initializeSecurityTables();
+    console.log('Security tables initialized (processed_webhooks, transaction_state_log)');
 
     // Check if super admin exists
     const existingSuperAdmin = await getUserByEmail('admin@novacorp.mx');

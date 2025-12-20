@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
-import { getUserById, updateUser, deleteUser, getUserByEmail, setUserClabeAccess, getUserClabeAccess } from '@/lib/db';
+import { getUserById, updateUser, deleteUser, getUserByEmail, setUserClabeAccess, getUserClabeAccess, invalidateAllUserSessions, createAuditLogEntry } from '@/lib/db';
 import { ALL_PERMISSIONS, Permission, UserRole } from '@/types';
 import { authenticateRequest } from '@/lib/auth-middleware';
+import { getClientIP, getUserAgent } from '@/lib/security';
+import crypto from 'crypto';
 
 // GET /api/users/[id] - Get single user
 export async function GET(
@@ -182,6 +184,32 @@ export async function PUT(
     }
 
     const dbUser = await updateUser(params.id, updates);
+
+    // SECURITY FIX: Invalidate ALL sessions when password is changed
+    // This ensures that if an account is compromised and password is reset,
+    // the attacker's session is immediately terminated
+    if (password && dbUser) {
+      await invalidateAllUserSessions(params.id);
+
+      // Audit log the password change
+      await createAuditLogEntry({
+        id: `audit_${crypto.randomUUID()}`,
+        action: 'PASSWORD_CHANGED',
+        userId: params.id,
+        userEmail: dbUser.email,
+        ipAddress: getClientIP(request),
+        userAgent: getUserAgent(request),
+        details: {
+          changedBy: currentUser.id,
+          changedByEmail: currentUser.email,
+          changedByRole: currentUser.role,
+          selfChange: currentUser.id === params.id,
+        },
+        severity: 'warning',
+      });
+
+      console.log(`SECURITY: All sessions invalidated for user ${params.id} after password change`);
+    }
 
     if (!dbUser) {
       return NextResponse.json(

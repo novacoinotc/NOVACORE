@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import crypto from 'crypto';
 import { processDailyCommissionCutoff } from '@/lib/commissions';
 import { authenticateRequest } from '@/lib/auth-middleware';
 
@@ -24,9 +25,22 @@ export async function POST(request: NextRequest) {
     let isAuthorized = false;
 
     // Option 1: Cron secret authentication
-    if (cronSecret && expectedSecret && cronSecret === expectedSecret) {
-      isAuthorized = true;
-      console.log('Commission cutoff triggered by cron job');
+    // SECURITY FIX: Use timing-safe comparison to prevent timing attacks
+    if (cronSecret && expectedSecret) {
+      try {
+        const cronSecretBuffer = Buffer.from(cronSecret, 'utf8');
+        const expectedSecretBuffer = Buffer.from(expectedSecret, 'utf8');
+
+        // Only compare if same length to prevent timing leaks
+        if (cronSecretBuffer.length === expectedSecretBuffer.length) {
+          if (crypto.timingSafeEqual(cronSecretBuffer, expectedSecretBuffer)) {
+            isAuthorized = true;
+            console.log('Commission cutoff triggered by cron job');
+          }
+        }
+      } catch {
+        // Ignore comparison errors, isAuthorized remains false
+      }
     }
 
     // Option 2: Super admin authentication via proper auth token

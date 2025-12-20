@@ -578,7 +578,9 @@ export async function GET(request: NextRequest) {
           );
         });
         // Update total count to reflect filtered results
-        response.total = response.data.length;
+        if (response.meta) {
+          response.meta.totalItems = response.data.length;
+        }
       }
     }
 

@@ -31,7 +31,8 @@ export async function GET(
     const hasAccess = await validateClabeAccess(
       currentUser.id,
       params.id,
-      currentUser.role
+      currentUser.role,
+      currentUser.companyId
     );
 
     if (!hasAccess) {

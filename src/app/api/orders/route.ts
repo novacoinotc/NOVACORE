@@ -467,7 +467,7 @@ export async function POST(request: NextRequest) {
         confirmationDeadline: confirmationDeadline.toISOString(),
         secondsRemaining: GRACE_PERIOD_SECONDS,
         canCancel: true,
-        message: 'La transferencia se enviará automáticamente en 20 segundos. Puedes cancelar antes de que expire el tiempo.',
+        message: `La transferencia se enviará automáticamente en ${GRACE_PERIOD_SECONDS} segundos. Puedes cancelar antes de que expire el tiempo.`,
       },
     });
   } catch (error) {

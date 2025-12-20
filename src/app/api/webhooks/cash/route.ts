@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { validateWebhookSource, sanitizeWebhookDataForLog } from '@/lib/webhook-security';
 
 /**
  * POST /api/webhooks/cash
@@ -14,13 +15,24 @@ export async function POST(request: NextRequest) {
   let body: any = null;
 
   try {
+    // SECURITY FIX: Validate webhook source IP (critical - prevents unauthorized access)
+    const securityCheck = await validateWebhookSource(request);
+    if (!securityCheck.allowed) {
+      return NextResponse.json({
+        received: true,
+        timestamp,
+        processed: false,
+        message: securityCheck.reason || 'Request blocked',
+      }, { status: 403 });
+    }
+
     body = await request.json();
 
-    // Log complete request for debugging
+    // SECURITY FIX: Log safely without sensitive data
     console.log('=== CASH COLLECTION WEBHOOK RECEIVED ===');
     console.log('Timestamp:', timestamp);
-    console.log('Headers:', Object.fromEntries(request.headers.entries()));
-    console.log('Body:', JSON.stringify(body, null, 2));
+    console.log('Client IP:', securityCheck.clientIp);
+    console.log('Payload (sanitized):', JSON.stringify(sanitizeWebhookDataForLog(body)));
     console.log('========================================');
 
     // Optional: Validate webhook secret if configured
@@ -61,10 +73,11 @@ export async function POST(request: NextRequest) {
     });
 
   } catch (error) {
+    // SECURITY FIX: Don't log sensitive data from body in error handlers
     console.error('=== CASH WEBHOOK ERROR ===');
     console.error('Timestamp:', timestamp);
-    console.error('Error:', error);
-    console.error('Body received:', body);
+    console.error('Error:', error instanceof Error ? error.message : 'Unknown error');
+    console.error('Body structure:', body ? Object.keys(body) : 'null');
     console.error('==========================');
 
     return NextResponse.json({

@@ -86,10 +86,11 @@ export async function POST(request: NextRequest) {
     if (!skipSignatureValidation) {
       const signatureValid = await validateOpmSignature(body);
       if (!signatureValid) {
+        // SECURITY FIX: Don't log full body - use sanitized version
         console.error('=== DEPOSIT WEBHOOK SIGNATURE VALIDATION FAILED ===');
         console.error('Timestamp:', timestamp);
-        console.error('Body:', JSON.stringify(body, null, 2));
-        console.error('Sign field:', body?.sign || body?.data?.sign || 'NOT PROVIDED');
+        console.error('Payload (sanitized):', JSON.stringify(sanitizeWebhookDataForLog(body)));
+        console.error('Sign field present:', !!(body?.sign || body?.data?.sign));
         console.error('================================================');
 
         return NextResponse.json({
@@ -172,11 +173,11 @@ export async function POST(request: NextRequest) {
     });
 
   } catch (error) {
-    // Log error but always return 200 OK
+    // SECURITY FIX: Log error but don't expose sensitive body data
     console.error('=== DEPOSIT WEBHOOK ERROR ===');
     console.error('Timestamp:', timestamp);
-    console.error('Error:', error);
-    console.error('Body received:', body);
+    console.error('Error:', error instanceof Error ? error.message : 'Unknown error');
+    console.error('Body structure:', body ? Object.keys(body) : 'null');
     console.error('=============================');
 
     return NextResponse.json({

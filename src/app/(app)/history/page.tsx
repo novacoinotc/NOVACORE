@@ -117,8 +117,28 @@ export default function HistoryPage() {
       const response = await fetch(`/api/orders/${transaction.opmOrderId}/cep`, { headers: getAuthHeaders() });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Error al obtener CEP');
-      if (data.data?.cepUrl || data.cepUrl) {
-        window.open(data.data?.cepUrl || data.cepUrl, '_blank');
+      const cepUrl = data.data?.cepUrl || data.cepUrl;
+      if (cepUrl) {
+        // SECURITY FIX: Validate CEP URL to prevent Open Redirect attacks
+        // CEP URLs should only be from Banxico's trusted domain
+        try {
+          const url = new URL(cepUrl);
+          const trustedDomains = ['banxico.org.mx', 'www.banxico.org.mx', 'ceproban.banxico.org.mx'];
+          if (!trustedDomains.some(domain => url.hostname === domain || url.hostname.endsWith('.' + domain))) {
+            console.error('Invalid CEP URL domain:', url.hostname);
+            alert('URL de CEP no válida. Por favor contacta soporte.');
+            return;
+          }
+          if (url.protocol !== 'https:') {
+            console.error('CEP URL must use HTTPS');
+            alert('URL de CEP no segura.');
+            return;
+          }
+          window.open(cepUrl, '_blank', 'noopener,noreferrer');
+        } catch {
+          console.error('Invalid CEP URL format');
+          alert('Formato de URL de CEP inválido.');
+        }
       } else {
         alert('CEP no disponible aún. Por favor intenta más tarde.');
       }

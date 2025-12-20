@@ -24,14 +24,16 @@ const MIN_PROCESSING_INTERVAL_MS = 5000; // Minimum 5 seconds between runs
  * 2. Send the order to OPM API (order is created NOW, not before)
  * 3. Update local transaction with OPM order ID and status
  *
- * SECURITY: Requires authentication and super_admin role
+ * SECURITY: Requires authentication (any authenticated user can trigger)
+ * The endpoint only processes transactions past their deadline, so timing
+ * security is enforced by the grace period, not by role restrictions.
  */
 export async function POST(request: NextRequest) {
   console.log('=== PROCESSING PENDING CONFIRMATIONS ===');
   console.log('Timestamp:', new Date().toISOString());
 
   try {
-    // SECURITY FIX: Require authentication
+    // SECURITY: Require authentication (any authenticated user can trigger batch processing)
     const authResult = await authenticateRequest(request);
     if (!authResult.success || !authResult.user) {
       return NextResponse.json(
@@ -40,13 +42,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // SECURITY FIX: Only super_admin can execute this critical operation
-    if (authResult.user.role !== 'super_admin') {
-      return NextResponse.json(
-        { error: 'Solo super administradores pueden procesar transacciones pendientes' },
-        { status: 403 }
-      );
-    }
+    // NOTE: Any authenticated user can trigger batch processing
+    // Security is enforced by:
+    // 1. In-memory lock prevents concurrent execution
+    // 2. Rate limiting (5 seconds between runs)
+    // 3. Only processes transactions past their confirmation deadline
+    // 4. All operations are logged in audit trail
 
     // SECURITY FIX: Prevent concurrent execution (race condition protection)
     const now = Date.now();

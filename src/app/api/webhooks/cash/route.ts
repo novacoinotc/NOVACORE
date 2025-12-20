@@ -51,13 +51,14 @@ export async function POST(request: NextRequest) {
 
       // TODO: Implement cash collection processing logic
       // For now, just log and acknowledge
+      // SECURITY FIX: Return processed=false since we don't actually process this yet
 
       return NextResponse.json({
         received: true,
         timestamp,
-        processed: true,
+        processed: false,  // SECURITY FIX: Honest about not actually processing
         returnCode: 0,
-        message: 'Cash collection notification received',
+        message: 'Cash collection notification received and logged (processing not implemented)',
         data: {
           amount: cashData.amount,
           reference: cashData.reference,

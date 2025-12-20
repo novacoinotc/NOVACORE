@@ -166,11 +166,11 @@ export async function POST(request: NextRequest) {
     });
 
   } catch (error) {
-    // Log error but always return 200 OK
+    // SECURITY FIX: Log error but don't expose sensitive body data
     console.error('=== ORDER STATUS WEBHOOK ERROR ===');
     console.error('Timestamp:', timestamp);
-    console.error('Error:', error);
-    console.error('Body received:', body);
+    console.error('Error:', error instanceof Error ? error.message : 'Unknown error');
+    console.error('Body structure:', body ? Object.keys(body) : 'null');
     console.error('==================================');
 
     return NextResponse.json({

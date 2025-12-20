@@ -73,7 +73,8 @@ export async function POST(
       const hasAccess = await validateClabeAccess(
         authenticatedUser.id,
         existingTx.clabe_account_id,
-        authenticatedUser.role
+        authenticatedUser.role,
+        authenticatedUser.companyId  // SECURITY FIX: Add companyId for company_admin validation
       );
 
       if (!hasAccess) {
@@ -217,7 +218,8 @@ export async function GET(
       const hasAccess = await validateClabeAccess(
         authenticatedUser.id,
         existingTx.clabe_account_id,
-        authenticatedUser.role
+        authenticatedUser.role,
+        authenticatedUser.companyId  // SECURITY FIX: Add companyId for company_admin validation
       );
 
       if (!hasAccess) {

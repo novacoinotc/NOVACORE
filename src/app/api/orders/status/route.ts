@@ -1,10 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getOrderByTrackingKey } from '@/lib/opm-api';
+import { authenticateRequest } from '@/lib/auth-middleware';
 
 /**
  * GET /api/orders/status
  *
  * Get order status by tracking key
+ *
+ * SECURITY: Requires authentication. Only authenticated users can query order status.
  *
  * Query parameters:
  * - trackingKey: The tracking key of the order (required)
@@ -16,6 +19,17 @@ import { getOrderByTrackingKey } from '@/lib/opm-api';
  */
 export async function GET(request: NextRequest) {
   try {
+    // ============================================
+    // SECURITY FIX: Require authentication
+    // ============================================
+    const authResult = await authenticateRequest(request);
+    if (!authResult.success || !authResult.user) {
+      return NextResponse.json(
+        { error: authResult.error || 'No autorizado' },
+        { status: authResult.statusCode || 401 }
+      );
+    }
+
     const { searchParams } = new URL(request.url);
 
     const trackingKey = searchParams.get('trackingKey');

@@ -306,16 +306,8 @@ export async function POST(request: NextRequest) {
     const resolvedPayerBank = payerBank || process.env.DEFAULT_PAYER_BANK || '90684';
     const resolvedPayerAccountType = payerAccountType ?? 40;
 
-    console.log('Resolved order data:', {
-      beneficiaryAccount,
-      beneficiaryBank,
-      beneficiaryName: sanitizedBeneficiaryName,
-      payerAccount: resolvedPayerAccount,
-      payerBank: resolvedPayerBank,
-      amount: parsedAmount,
-      numericalReference: finalNumericalReference,
-      trackingKey: finalTrackingKey,
-    });
+    // SECURITY FIX: Removed logging of sensitive account/amount data
+    console.log('Order data prepared, trackingKey:', finalTrackingKey);
 
     // Validate all fields according to OPM API specification
     const validationErrors = validateOrderFields({
@@ -373,8 +365,8 @@ export async function POST(request: NextRequest) {
       ...(cepPayerAccount && { cepPayerAccount }),
     };
 
+    // SECURITY FIX: Removed logging of sensitive order data
     console.log('=== CREATING TRANSACTION WITH ATOMIC BALANCE CHECK ===');
-    console.log('Order data (will be sent after grace period):', JSON.stringify(pendingOrderData, null, 2));
 
     // Calculate confirmation deadline
     const confirmationDeadline = new Date(Date.now() + GRACE_PERIOD_SECONDS * 1000);

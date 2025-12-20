@@ -35,7 +35,8 @@ export async function GET(
       const hasAccess = await validateClabeAccess(
         authResult.user.id,
         transaction.clabe_account_id,
-        authResult.user.role
+        authResult.user.role,
+        authResult.user.companyId  // SECURITY FIX: Add companyId for company_admin validation
       );
       if (!hasAccess) {
         return NextResponse.json(

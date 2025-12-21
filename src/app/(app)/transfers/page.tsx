@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   SendHorizontal,
   Download,
@@ -21,7 +21,11 @@ import {
   XCircle,
   Clock,
   Ban,
+  RotateCcw,
+  Camera,
+  ImageIcon,
 } from 'lucide-react';
+import Tesseract from 'tesseract.js';
 import { Button, Input, Select, Card, CardHeader, CardTitle, CardContent, Modal } from '@/components/ui';
 import { formatCurrency, formatClabe, validateClabe, sanitizeForSpei } from '@/lib/utils';
 import { getBankFromClabe, getBankSelectOptions, getPopularBanks, BankInfo } from '@/lib/banks';
@@ -64,9 +68,38 @@ export default function TransfersPage() {
   const [isLoadingSavedAccounts, setIsLoadingSavedAccounts] = useState(false);
   const [showSavedAccountsDropdown, setShowSavedAccountsDropdown] = useState(false);
 
-  // Source CLABE accounts (payer accounts)
-  const [clabeAccounts, setClabeAccounts] = useState<{ id: string; clabe: string; alias: string }[]>([]);
+  // Source CLABE accounts (payer accounts) - includes balance info
+  const [clabeAccounts, setClabeAccounts] = useState<{
+    id: string;
+    clabe: string;
+    alias: string;
+    availableBalance?: number;
+    inTransit?: number;
+  }[]>([]);
   const [isLoadingClabeAccounts, setIsLoadingClabeAccounts] = useState(false);
+
+  // Get selected account balance
+  const selectedAccount = clabeAccounts.find(acc => acc.clabe === formData.payerAccount);
+
+  // Recent transfers for "repeat transfer" feature
+  interface RecentTransfer {
+    id: string;
+    beneficiaryAccount: string;
+    beneficiaryBank: string;
+    beneficiaryName: string;
+    amount: number;
+    concept: string;
+    createdAt: number;
+    payerAccount: string;
+  }
+  const [recentTransfers, setRecentTransfers] = useState<RecentTransfer[]>([]);
+  const [showRecentTransfers, setShowRecentTransfers] = useState(false);
+
+  // OCR state for image extraction
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isProcessingOcr, setIsProcessingOcr] = useState(false);
+  const [ocrProgress, setOcrProgress] = useState(0);
+  const [ocrStatus, setOcrStatus] = useState('');
 
   // 2FA state for transfers - initialize based on user's 2FA status
   const [requires2FA, setRequires2FA] = useState(false);
@@ -160,6 +193,230 @@ export default function TransfersPage() {
   useEffect(() => {
     loadSavedAccounts();
   }, [loadSavedAccounts]);
+
+  // Load recent outgoing transfers for "repeat transfer" feature
+  const loadRecentTransfers = useCallback(async () => {
+    try {
+      const response = await fetch('/api/transactions?type=outgoing&itemsPerPage=5', {
+        headers: getAuthHeaders(),
+      });
+      if (response.ok) {
+        const data = await response.json();
+        const transfers = data.transactions
+          .filter((tx: any) => tx.status === 'scattered' || tx.status === 'sent')
+          .map((tx: any) => ({
+            id: tx.id,
+            beneficiaryAccount: tx.beneficiaryAccount,
+            beneficiaryBank: tx.beneficiaryBank,
+            beneficiaryName: tx.beneficiaryName,
+            amount: tx.amount,
+            concept: tx.concept,
+            createdAt: tx.createdAt,
+            payerAccount: tx.payerAccount,
+          }));
+        setRecentTransfers(transfers);
+      }
+    } catch (error) {
+      console.error('Error loading recent transfers:', error);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadRecentTransfers();
+  }, [loadRecentTransfers]);
+
+  // Select a recent transfer to repeat (pre-fills form but does NOT execute)
+  const selectRecentTransfer = (transfer: RecentTransfer) => {
+    // Pre-fill the form with transfer data
+    setFormData(prev => ({
+      ...prev,
+      payerAccount: transfer.payerAccount || prev.payerAccount,
+      beneficiaryAccount: transfer.beneficiaryAccount || '',
+      beneficiaryBank: transfer.beneficiaryBank || '',
+      beneficiaryName: transfer.beneficiaryName || '',
+      amount: transfer.amount.toString(),
+      concept: transfer.concept || '',
+    }));
+    setShowRecentTransfers(false);
+    // Detect bank from CLABE
+    if (transfer.beneficiaryAccount && transfer.beneficiaryAccount.length >= 3) {
+      const bank = getBankFromClabe(transfer.beneficiaryAccount);
+      setDetectedBank(bank);
+    }
+  };
+
+  // Smart paste handler - detects CLABE, name, and amount from pasted text
+  const handleSmartPaste = useCallback((pastedText: string) => {
+    const updates: Partial<typeof formData> = {};
+
+    // Clean the text
+    const text = pastedText.replace(/\s+/g, ' ').trim();
+
+    // Detect CLABE (18 consecutive digits or with spaces/separators)
+    const clabePatterns = [
+      /CLABE[:\s]*(\d{18})/i,
+      /Cuenta[:\s]*(\d{18})/i,
+      /(\d{3}[\s.-]?\d{3}[\s.-]?\d{11}[\s.-]?\d{1})/,
+      /\b(\d{18})\b/,
+    ];
+
+    for (const pattern of clabePatterns) {
+      const match = text.match(pattern);
+      if (match) {
+        const clabe = match[1].replace(/[\s.-]/g, '');
+        if (clabe.length === 18 && validateClabe(clabe)) {
+          updates.beneficiaryAccount = clabe;
+          const bank = getBankFromClabe(clabe);
+          if (bank) {
+            updates.beneficiaryBank = bank.code;
+            setDetectedBank(bank);
+          }
+          break;
+        }
+      }
+    }
+
+    // Detect beneficiary name
+    const namePatterns = [
+      /(?:Beneficiario|Nombre|Titular|A nombre de)[:\s]+([A-Za-záéíóúñÁÉÍÓÚÑ\s]+?)(?:\n|$|CLABE|Cuenta|RFC|Banco)/i,
+      /(?:Razón Social)[:\s]+([A-Za-záéíóúñÁÉÍÓÚÑ\s.,]+?)(?:\n|$)/i,
+    ];
+
+    for (const pattern of namePatterns) {
+      const match = text.match(pattern);
+      if (match) {
+        const name = sanitizeForSpei(match[1].trim());
+        if (name.length >= 3) {
+          updates.beneficiaryName = name.substring(0, 40); // SPEI limit
+          break;
+        }
+      }
+    }
+
+    // Detect amount
+    const amountPatterns = [
+      /(?:Monto|Importe|Total|Cantidad)[:\s]*\$?[\s]*([0-9,]+(?:\.[0-9]{2})?)/i,
+      /\$[\s]*([0-9,]+(?:\.[0-9]{2})?)/,
+    ];
+
+    for (const pattern of amountPatterns) {
+      const match = text.match(pattern);
+      if (match) {
+        const amount = match[1].replace(/,/g, '');
+        const numAmount = parseFloat(amount);
+        if (!isNaN(numAmount) && numAmount > 0) {
+          updates.amount = numAmount.toString();
+          break;
+        }
+      }
+    }
+
+    // Detect concept
+    const conceptPatterns = [
+      /(?:Concepto|Referencia|Descripción)[:\s]+([A-Za-z0-9áéíóúñÁÉÍÓÚÑ\s.,]+?)(?:\n|$)/i,
+    ];
+
+    for (const pattern of conceptPatterns) {
+      const match = text.match(pattern);
+      if (match) {
+        const concept = sanitizeForSpei(match[1].trim());
+        if (concept.length >= 3) {
+          updates.concept = concept.substring(0, 40);
+          break;
+        }
+      }
+    }
+
+    // Apply updates if any were found
+    if (Object.keys(updates).length > 0) {
+      setFormData(prev => ({ ...prev, ...updates }));
+      return true;
+    }
+    return false;
+  }, []);
+
+  // OCR image processing handler
+  const handleImageUpload = useCallback(async (file: File) => {
+    if (!file || !file.type.startsWith('image/')) {
+      return;
+    }
+
+    setIsProcessingOcr(true);
+    setOcrProgress(0);
+    setOcrStatus('Cargando imagen...');
+
+    try {
+      const result = await Tesseract.recognize(
+        file,
+        'spa', // Spanish language for better accuracy with Mexican banking documents
+        {
+          logger: (info) => {
+            if (info.status === 'recognizing text') {
+              setOcrProgress(Math.round(info.progress * 100));
+              setOcrStatus('Extrayendo texto...');
+            } else if (info.status === 'loading language traineddata') {
+              setOcrStatus('Cargando idioma español...');
+            } else if (info.status === 'initializing tesseract') {
+              setOcrStatus('Inicializando OCR...');
+            }
+          },
+        }
+      );
+
+      const extractedText = result.data.text;
+
+      if (extractedText && extractedText.length > 10) {
+        // Use the smart paste handler to extract data from OCR text
+        const found = handleSmartPaste(extractedText);
+        if (found) {
+          setOcrStatus('¡Datos detectados y llenados!');
+        } else {
+          setOcrStatus('No se detectaron datos bancarios');
+        }
+      } else {
+        setOcrStatus('No se pudo extraer texto de la imagen');
+      }
+    } catch (error) {
+      console.error('OCR error:', error);
+      setOcrStatus('Error al procesar la imagen');
+    } finally {
+      setIsProcessingOcr(false);
+      // Clear status after a delay
+      setTimeout(() => {
+        setOcrStatus('');
+        setOcrProgress(0);
+      }, 3000);
+    }
+  }, [handleSmartPaste]);
+
+  // File input change handler
+  const handleFileInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      handleImageUpload(file);
+    }
+    // Reset the input so the same file can be selected again
+    e.target.value = '';
+  }, [handleImageUpload]);
+
+  // Global paste event listener
+  useEffect(() => {
+    const handlePaste = (e: ClipboardEvent) => {
+      // Only process if we're in the transfers tab and sending
+      if (activeTab !== 'send') return;
+
+      const pastedText = e.clipboardData?.getData('text');
+      if (pastedText && pastedText.length > 10) {
+        // Only auto-detect if pasting more than just a single value
+        if (pastedText.includes('\n') || pastedText.length > 20) {
+          handleSmartPaste(pastedText);
+        }
+      }
+    };
+
+    document.addEventListener('paste', handlePaste);
+    return () => document.removeEventListener('paste', handlePaste);
+  }, [activeTab, handleSmartPaste]);
 
   // Grace period countdown effect
   useEffect(() => {
@@ -548,8 +805,8 @@ export default function TransfersPage() {
           <div className="lg:col-span-2 space-y-4">
             {/* Saved Accounts Selector */}
             {savedAccounts.length > 0 && (
-              <Card>
-                <CardContent className="py-3">
+              <Card className="overflow-visible relative z-20">
+                <CardContent className="py-3 overflow-visible">
                   <div className="relative">
                     <button
                       type="button"
@@ -565,7 +822,7 @@ export default function TransfersPage() {
                     </button>
 
                     {showSavedAccountsDropdown && (
-                      <div className="absolute top-full left-0 right-0 mt-1 z-50 bg-[#0a0a1a] border border-white/[0.08] rounded-lg shadow-xl max-h-64 overflow-y-auto">
+                      <div className="absolute top-full left-0 right-0 mt-1 z-[100] bg-[#0a0a1a] border border-white/[0.08] rounded-lg shadow-2xl max-h-64 overflow-y-auto">
                         {savedAccounts.map((account) => (
                           <button
                             key={account.id}
@@ -595,12 +852,136 @@ export default function TransfersPage() {
               </Card>
             )}
 
+            {/* Recent Transfers - Repeat Feature */}
+            {recentTransfers.length > 0 && (
+              <Card className="overflow-visible relative z-10">
+                <CardContent className="py-3 overflow-visible">
+                  <div className="relative">
+                    <button
+                      type="button"
+                      onClick={() => setShowRecentTransfers(!showRecentTransfers)}
+                      className="w-full flex items-center justify-between px-4 py-3 rounded-lg bg-white/[0.02] border border-white/[0.08] hover:bg-white/[0.04] transition-colors"
+                    >
+                      <div className="flex items-center gap-3">
+                        <RotateCcw className="w-4 h-4 text-blue-400" />
+                        <span className="text-white/70 text-sm">Repetir transferencia reciente</span>
+                        <span className="text-xs text-white/30">({recentTransfers.length} recientes)</span>
+                      </div>
+                      <ChevronDown className={`w-4 h-4 text-white/40 transition-transform ${showRecentTransfers ? 'rotate-180' : ''}`} />
+                    </button>
+
+                    {showRecentTransfers && (
+                      <div className="absolute top-full left-0 right-0 mt-1 z-[90] bg-[#0a0a1a] border border-white/[0.08] rounded-lg shadow-2xl max-h-72 overflow-y-auto">
+                        <p className="px-4 py-2 text-xs text-amber-400/80 bg-amber-500/5 border-b border-white/[0.04]">
+                          Al seleccionar, se llenarán los datos pero NO se ejecutará la transferencia automáticamente.
+                        </p>
+                        {recentTransfers.map((transfer) => (
+                          <button
+                            key={transfer.id}
+                            type="button"
+                            onClick={() => selectRecentTransfer(transfer)}
+                            className="w-full flex items-start gap-3 px-4 py-3 hover:bg-white/[0.04] transition-colors text-left border-b border-white/[0.04] last:border-b-0"
+                          >
+                            <div className="w-8 h-8 rounded-md bg-blue-500/10 flex items-center justify-center flex-shrink-0 mt-0.5">
+                              <SendHorizontal className="w-4 h-4 text-blue-400" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="text-white/80 text-sm font-medium truncate">{transfer.beneficiaryName || 'Sin nombre'}</span>
+                                <span className="text-green-400 text-sm font-mono font-medium">{formatCurrency(transfer.amount)}</span>
+                              </div>
+                              <p className="text-xs text-white/40 truncate">{transfer.concept || 'Sin concepto'}</p>
+                              <p className="text-xs text-white/30 font-mono">{formatClabe(transfer.beneficiaryAccount)}</p>
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* OCR Image Upload */}
+            <Card>
+              <CardContent className="py-3">
+                {/* Hidden file input */}
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handleFileInputChange}
+                  className="hidden"
+                  capture="environment"
+                />
+
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={isProcessingOcr}
+                  className="w-full flex items-center justify-between px-4 py-3 rounded-lg bg-white/[0.02] border border-white/[0.08] hover:bg-white/[0.04] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <div className="flex items-center gap-3">
+                    {isProcessingOcr ? (
+                      <Loader2 className="w-4 h-4 text-green-400 animate-spin" />
+                    ) : (
+                      <Camera className="w-4 h-4 text-green-400" />
+                    )}
+                    <span className="text-white/70 text-sm">
+                      {isProcessingOcr ? ocrStatus : 'Extraer datos de imagen'}
+                    </span>
+                    {!isProcessingOcr && (
+                      <span className="text-xs text-white/30">(OCR)</span>
+                    )}
+                  </div>
+                  {isProcessingOcr ? (
+                    <span className="text-xs text-green-400 font-mono">{ocrProgress}%</span>
+                  ) : (
+                    <ImageIcon className="w-4 h-4 text-white/40" />
+                  )}
+                </button>
+
+                {/* Progress bar during OCR */}
+                {isProcessingOcr && (
+                  <div className="mt-2 w-full h-1.5 bg-white/[0.06] rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-gradient-to-r from-green-500 to-green-400 transition-all duration-300"
+                      style={{ width: `${ocrProgress}%` }}
+                    />
+                  </div>
+                )}
+
+                {/* Status message */}
+                {ocrStatus && !isProcessingOcr && (
+                  <p className={`text-xs mt-2 px-4 ${
+                    ocrStatus.includes('detectados') ? 'text-green-400' : 'text-amber-400/80'
+                  }`}>
+                    {ocrStatus}
+                  </p>
+                )}
+
+                <p className="text-[10px] text-white/20 mt-2 px-4">
+                  Sube una foto de un comprobante bancario para extraer CLABE, nombre y monto
+                </p>
+              </CardContent>
+            </Card>
+
             {/* Source Account Selector */}
             <Card>
               <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Building2 className="w-4 h-4 text-white/40" />
-                  Cuenta de Origen
+                <CardTitle className="flex items-center justify-between">
+                  <span className="flex items-center gap-2">
+                    <Building2 className="w-4 h-4 text-white/40" />
+                    Cuenta de Origen
+                  </span>
+                  {selectedAccount && typeof selectedAccount.availableBalance === 'number' && (
+                    <span className="text-sm font-normal">
+                      <span className="text-white/40">Disponible: </span>
+                      <span className="text-green-400 font-mono font-medium">
+                        {formatCurrency(selectedAccount.availableBalance)}
+                      </span>
+                    </span>
+                  )}
                 </CardTitle>
               </CardHeader>
               <CardContent>
@@ -610,7 +991,7 @@ export default function TransfersPage() {
                     { value: '', label: 'Seleccionar cuenta...' },
                     ...clabeAccounts.map((acc) => ({
                       value: acc.clabe,
-                      label: `${acc.alias} - ${acc.clabe.replace(/(.{4})/g, '$1 ').trim()}`,
+                      label: `${acc.alias} - ${acc.clabe.replace(/(.{4})/g, '$1 ').trim()}${typeof acc.availableBalance === 'number' ? ` (${formatCurrency(acc.availableBalance)})` : ''}`,
                     })),
                   ]}
                   value={formData.payerAccount}
@@ -618,6 +999,11 @@ export default function TransfersPage() {
                   error={errors.payerAccount}
                   disabled={isLoadingClabeAccounts}
                 />
+                {selectedAccount && typeof selectedAccount.inTransit === 'number' && selectedAccount.inTransit > 0 && (
+                  <p className="text-xs text-yellow-400/70 mt-2">
+                    En tránsito: {formatCurrency(selectedAccount.inTransit)}
+                  </p>
+                )}
                 {clabeAccounts.length === 0 && !isLoadingClabeAccounts && (
                   <p className="text-xs text-amber-400/70 mt-2">
                     No hay cuentas CLABE registradas. Ve a "Cuentas CLABE" para agregar una.

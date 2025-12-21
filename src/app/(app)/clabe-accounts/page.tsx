@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { useAuth, useRequirePermission, getAuthHeaders } from '@/context/AuthContext';
 import { ClabeAccount, Company } from '@/types';
+import { formatCurrency } from '@/lib/utils';
 import Link from 'next/link';
 
 interface ClabeFormData {
@@ -453,6 +454,9 @@ export default function ClabeAccountsPage() {
                 <th className="text-left text-white/40 text-xs font-medium uppercase tracking-wider px-6 py-4">
                   Alias
                 </th>
+                <th className="text-right text-white/40 text-xs font-medium uppercase tracking-wider px-6 py-4">
+                  Saldo Disponible
+                </th>
                 {currentUser?.role === 'super_admin' && (
                   <th className="text-left text-white/40 text-xs font-medium uppercase tracking-wider px-6 py-4">
                     Empresa
@@ -505,6 +509,20 @@ export default function ClabeAccountsPage() {
                       </div>
                       {clabeAccount.description && (
                         <p className="text-white/40 text-sm">{clabeAccount.description}</p>
+                      )}
+                    </div>
+                  </td>
+                  <td className="px-6 py-4 text-right">
+                    <div className="flex flex-col items-end">
+                      <span className="font-mono text-sm text-green-400 font-medium">
+                        {typeof clabeAccount.availableBalance === 'number'
+                          ? formatCurrency(clabeAccount.availableBalance)
+                          : '-'}
+                      </span>
+                      {typeof clabeAccount.inTransit === 'number' && clabeAccount.inTransit > 0 && (
+                        <span className="text-xs text-yellow-400/70 mt-0.5">
+                          En tránsito: {formatCurrency(clabeAccount.inTransit)}
+                        </span>
                       )}
                     </div>
                   </td>

@@ -81,6 +81,12 @@ export function verifyTransactionSignature(
     // Regenerate the signature
     const expectedSignature = signTransaction(data);
 
+    // If signing failed (key not configured), can't verify
+    if (!expectedSignature) {
+      console.error('[SECURITY] Cannot verify signature - signing not available');
+      return false;
+    }
+
     // Use timing-safe comparison to prevent timing attacks
     const sigBuffer = Buffer.from(signature, 'base64');
     const expectedBuffer = Buffer.from(expectedSignature, 'base64');

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   SendHorizontal,
   Download,
@@ -22,7 +22,10 @@ import {
   Clock,
   Ban,
   RotateCcw,
+  Camera,
+  ImageIcon,
 } from 'lucide-react';
+import Tesseract from 'tesseract.js';
 import { Button, Input, Select, Card, CardHeader, CardTitle, CardContent, Modal } from '@/components/ui';
 import { formatCurrency, formatClabe, validateClabe, sanitizeForSpei } from '@/lib/utils';
 import { getBankFromClabe, getBankSelectOptions, getPopularBanks, BankInfo } from '@/lib/banks';
@@ -91,6 +94,12 @@ export default function TransfersPage() {
   }
   const [recentTransfers, setRecentTransfers] = useState<RecentTransfer[]>([]);
   const [showRecentTransfers, setShowRecentTransfers] = useState(false);
+
+  // OCR state for image extraction
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isProcessingOcr, setIsProcessingOcr] = useState(false);
+  const [ocrProgress, setOcrProgress] = useState(0);
+  const [ocrStatus, setOcrStatus] = useState('');
 
   // 2FA state for transfers - initialize based on user's 2FA status
   const [requires2FA, setRequires2FA] = useState(false);
@@ -324,7 +333,71 @@ export default function TransfersPage() {
       return true;
     }
     return false;
-  }, [formData]);
+  }, []);
+
+  // OCR image processing handler
+  const handleImageUpload = useCallback(async (file: File) => {
+    if (!file || !file.type.startsWith('image/')) {
+      return;
+    }
+
+    setIsProcessingOcr(true);
+    setOcrProgress(0);
+    setOcrStatus('Cargando imagen...');
+
+    try {
+      const result = await Tesseract.recognize(
+        file,
+        'spa', // Spanish language for better accuracy with Mexican banking documents
+        {
+          logger: (info) => {
+            if (info.status === 'recognizing text') {
+              setOcrProgress(Math.round(info.progress * 100));
+              setOcrStatus('Extrayendo texto...');
+            } else if (info.status === 'loading language traineddata') {
+              setOcrStatus('Cargando idioma español...');
+            } else if (info.status === 'initializing tesseract') {
+              setOcrStatus('Inicializando OCR...');
+            }
+          },
+        }
+      );
+
+      const extractedText = result.data.text;
+
+      if (extractedText && extractedText.length > 10) {
+        // Use the smart paste handler to extract data from OCR text
+        const found = handleSmartPaste(extractedText);
+        if (found) {
+          setOcrStatus('¡Datos detectados y llenados!');
+        } else {
+          setOcrStatus('No se detectaron datos bancarios');
+        }
+      } else {
+        setOcrStatus('No se pudo extraer texto de la imagen');
+      }
+    } catch (error) {
+      console.error('OCR error:', error);
+      setOcrStatus('Error al procesar la imagen');
+    } finally {
+      setIsProcessingOcr(false);
+      // Clear status after a delay
+      setTimeout(() => {
+        setOcrStatus('');
+        setOcrProgress(0);
+      }, 3000);
+    }
+  }, [handleSmartPaste]);
+
+  // File input change handler
+  const handleFileInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      handleImageUpload(file);
+    }
+    // Reset the input so the same file can be selected again
+    e.target.value = '';
+  }, [handleImageUpload]);
 
   // Global paste event listener
   useEffect(() => {
@@ -828,6 +901,70 @@ export default function TransfersPage() {
                 </CardContent>
               </Card>
             )}
+
+            {/* OCR Image Upload */}
+            <Card>
+              <CardContent className="py-3">
+                {/* Hidden file input */}
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handleFileInputChange}
+                  className="hidden"
+                  capture="environment"
+                />
+
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={isProcessingOcr}
+                  className="w-full flex items-center justify-between px-4 py-3 rounded-lg bg-white/[0.02] border border-white/[0.08] hover:bg-white/[0.04] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <div className="flex items-center gap-3">
+                    {isProcessingOcr ? (
+                      <Loader2 className="w-4 h-4 text-green-400 animate-spin" />
+                    ) : (
+                      <Camera className="w-4 h-4 text-green-400" />
+                    )}
+                    <span className="text-white/70 text-sm">
+                      {isProcessingOcr ? ocrStatus : 'Extraer datos de imagen'}
+                    </span>
+                    {!isProcessingOcr && (
+                      <span className="text-xs text-white/30">(OCR)</span>
+                    )}
+                  </div>
+                  {isProcessingOcr ? (
+                    <span className="text-xs text-green-400 font-mono">{ocrProgress}%</span>
+                  ) : (
+                    <ImageIcon className="w-4 h-4 text-white/40" />
+                  )}
+                </button>
+
+                {/* Progress bar during OCR */}
+                {isProcessingOcr && (
+                  <div className="mt-2 w-full h-1.5 bg-white/[0.06] rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-gradient-to-r from-green-500 to-green-400 transition-all duration-300"
+                      style={{ width: `${ocrProgress}%` }}
+                    />
+                  </div>
+                )}
+
+                {/* Status message */}
+                {ocrStatus && !isProcessingOcr && (
+                  <p className={`text-xs mt-2 px-4 ${
+                    ocrStatus.includes('detectados') ? 'text-green-400' : 'text-amber-400/80'
+                  }`}>
+                    {ocrStatus}
+                  </p>
+                )}
+
+                <p className="text-[10px] text-white/20 mt-2 px-4">
+                  Sube una foto de un comprobante bancario para extraer CLABE, nombre y monto
+                </p>
+              </CardContent>
+            </Card>
 
             {/* Source Account Selector */}
             <Card>

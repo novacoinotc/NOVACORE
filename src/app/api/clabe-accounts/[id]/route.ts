@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getClabeAccountById, updateClabeAccount, deleteClabeAccount, getCompanyById } from '@/lib/db';
+import { getClabeAccountById, updateClabeAccount, deleteClabeAccount, getCompanyById, getClabeAccountBalance } from '@/lib/db';
 import { authenticateRequest, validateClabeAccess } from '@/lib/auth-middleware';
 
 // GET /api/clabe-accounts/[id] - Get single CLABE account
@@ -161,7 +161,7 @@ export async function PUT(
   }
 }
 
-// DELETE /api/clabe-accounts/[id] - Delete CLABE account
+// DELETE /api/clabe-accounts/[id] - Soft delete (deactivate) CLABE account
 export async function DELETE(
   request: NextRequest,
   { params }: { params: { id: string } }
@@ -194,15 +194,125 @@ export async function DELETE(
       );
     }
 
-    // Note: This will also cascade delete user_clabe_access entries
+    // SECURITY: Check if account has balance before allowing deletion
+    const balance = await getClabeAccountBalance(params.id);
+    if (balance.availableBalance > 0 || balance.inTransit > 0) {
+      return NextResponse.json(
+        {
+          error: 'No se puede eliminar una cuenta con saldo. Transfiere el saldo a otra cuenta primero.',
+          balance: {
+            available: balance.availableBalance,
+            inTransit: balance.inTransit
+          }
+        },
+        { status: 400 }
+      );
+    }
 
-    await deleteClabeAccount(params.id);
+    // SOFT DELETE: Instead of hard delete, just deactivate the account
+    // This preserves transaction history and allows restoration if needed
+    const deactivatedAccount = await updateClabeAccount(params.id, {
+      isActive: false,
+    });
 
-    return NextResponse.json({ success: true });
+    if (!deactivatedAccount) {
+      return NextResponse.json(
+        { error: 'Error al desactivar cuenta CLABE' },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json({
+      success: true,
+      message: 'Cuenta CLABE desactivada. Puede ser restaurada por un administrador.',
+      canRestore: true
+    });
   } catch (error) {
     console.error('Delete CLABE account error:', error);
     return NextResponse.json(
       { error: 'Error al eliminar cuenta CLABE' },
+      { status: 500 }
+    );
+  }
+}
+
+// POST /api/clabe-accounts/[id] - Restore (reactivate) CLABE account
+export async function POST(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  try {
+    const authResult = await authenticateRequest(request);
+    if (!authResult.success || !authResult.user) {
+      return NextResponse.json(
+        { error: authResult.error || 'No autorizado' },
+        { status: authResult.statusCode || 401 }
+      );
+    }
+    const currentUser = authResult.user;
+
+    const body = await request.json();
+    const { action } = body;
+
+    // Only handle restore action
+    if (action !== 'restore') {
+      return NextResponse.json(
+        { error: 'Acción no válida' },
+        { status: 400 }
+      );
+    }
+
+    // Check if CLABE account exists
+    const existingClabeAccount = await getClabeAccountById(params.id);
+    if (!existingClabeAccount) {
+      return NextResponse.json(
+        { error: 'Cuenta CLABE no encontrada' },
+        { status: 404 }
+      );
+    }
+
+    // Authorization: only super_admin can restore CLABE accounts
+    if (currentUser.role !== 'super_admin') {
+      return NextResponse.json(
+        { error: 'No tienes permiso para restaurar cuentas CLABE' },
+        { status: 403 }
+      );
+    }
+
+    // Check if account is already active
+    if (existingClabeAccount.is_active) {
+      return NextResponse.json(
+        { error: 'La cuenta CLABE ya está activa' },
+        { status: 400 }
+      );
+    }
+
+    // Restore the account
+    const restoredAccount = await updateClabeAccount(params.id, {
+      isActive: true,
+    });
+
+    if (!restoredAccount) {
+      return NextResponse.json(
+        { error: 'Error al restaurar cuenta CLABE' },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json({
+      success: true,
+      message: 'Cuenta CLABE restaurada exitosamente',
+      clabeAccount: {
+        id: restoredAccount.id,
+        clabe: restoredAccount.clabe,
+        alias: restoredAccount.alias,
+        isActive: restoredAccount.is_active,
+      }
+    });
+  } catch (error) {
+    console.error('Restore CLABE account error:', error);
+    return NextResponse.json(
+      { error: 'Error al restaurar cuenta CLABE' },
       { status: 500 }
     );
   }

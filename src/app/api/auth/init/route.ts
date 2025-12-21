@@ -98,7 +98,7 @@ export async function POST() {
   } catch (error) {
     console.error('Init error:', error);
     return NextResponse.json(
-      { error: 'Error al inicializar la base de datos', details: String(error) },
+      { error: 'Error al inicializar la base de datos' },
       { status: 500 }
     );
   }

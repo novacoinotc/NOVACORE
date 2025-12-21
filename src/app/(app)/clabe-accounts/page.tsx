@@ -448,25 +448,25 @@ export default function ClabeAccountsPage() {
           <table className="w-full">
             <thead>
               <tr className="border-b border-white/[0.06]">
-                <th className="text-left text-white/40 text-xs font-medium uppercase tracking-wider px-6 py-4">
-                  Cuenta CLABE
+                <th className="text-left text-white/40 text-xs font-medium uppercase tracking-wider px-3 md:px-6 py-3">
+                  CLABE
                 </th>
-                <th className="text-left text-white/40 text-xs font-medium uppercase tracking-wider px-6 py-4">
+                <th className="text-left text-white/40 text-xs font-medium uppercase tracking-wider px-3 md:px-6 py-3 hidden sm:table-cell">
                   Alias
                 </th>
-                <th className="text-right text-white/40 text-xs font-medium uppercase tracking-wider px-6 py-4">
-                  Saldo Disponible
+                <th className="text-right text-white/40 text-xs font-medium uppercase tracking-wider px-3 md:px-6 py-3">
+                  Saldo
                 </th>
                 {currentUser?.role === 'super_admin' && (
-                  <th className="text-left text-white/40 text-xs font-medium uppercase tracking-wider px-6 py-4">
+                  <th className="text-left text-white/40 text-xs font-medium uppercase tracking-wider px-3 md:px-6 py-3 hidden lg:table-cell">
                     Empresa
                   </th>
                 )}
-                <th className="text-left text-white/40 text-xs font-medium uppercase tracking-wider px-6 py-4">
+                <th className="text-left text-white/40 text-xs font-medium uppercase tracking-wider px-3 md:px-6 py-3 hidden md:table-cell">
                   Estado
                 </th>
-                <th className="text-right text-white/40 text-xs font-medium uppercase tracking-wider px-6 py-4">
-                  Acciones
+                <th className="text-right text-white/40 text-xs font-medium uppercase tracking-wider px-2 md:px-6 py-3">
+
                 </th>
               </tr>
             </thead>
@@ -479,14 +479,14 @@ export default function ClabeAccountsPage() {
                   transition={{ delay: index * 0.05 }}
                   className="border-b border-white/[0.04] hover:bg-white/[0.02] transition-colors"
                 >
-                  <td className="px-6 py-4">
-                    <div className="flex items-center gap-2">
-                      <code className="text-purple-400 font-mono text-sm">
+                  <td className="px-3 md:px-6 py-3 md:py-4">
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2">
+                      <code className="text-purple-400 font-mono text-xs md:text-sm truncate max-w-[120px] sm:max-w-none">
                         {formatClabe(clabeAccount.clabe)}
                       </code>
                       <button
                         onClick={() => handleCopyClabe(clabeAccount.clabe, clabeAccount.id)}
-                        className="p-1.5 text-white/30 hover:text-white hover:bg-white/[0.05] rounded transition-colors"
+                        className="p-1.5 text-white/30 hover:text-white hover:bg-white/[0.05] rounded transition-colors touch-manipulation self-start sm:self-auto"
                         title="Copiar CLABE"
                       >
                         {copiedId === clabeAccount.id ? (
@@ -496,11 +496,13 @@ export default function ClabeAccountsPage() {
                         )}
                       </button>
                     </div>
+                    {/* Show alias on mobile below CLABE */}
+                    <p className="text-white/60 text-xs mt-1 sm:hidden truncate">{clabeAccount.alias}</p>
                   </td>
-                  <td className="px-6 py-4">
+                  <td className="px-3 md:px-6 py-3 md:py-4 hidden sm:table-cell">
                     <div>
                       <div className="flex items-center gap-2">
-                        <p className="text-white font-medium">{clabeAccount.alias}</p>
+                        <p className="text-white font-medium text-sm">{clabeAccount.alias}</p>
                         {clabeAccount.isMain && (
                           <span className="px-2 py-0.5 bg-purple-500/20 text-purple-400 text-xs font-medium rounded-full border border-purple-500/30">
                             Principal
@@ -508,35 +510,35 @@ export default function ClabeAccountsPage() {
                         )}
                       </div>
                       {clabeAccount.description && (
-                        <p className="text-white/40 text-sm">{clabeAccount.description}</p>
+                        <p className="text-white/40 text-xs">{clabeAccount.description}</p>
                       )}
                     </div>
                   </td>
-                  <td className="px-6 py-4 text-right">
+                  <td className="px-3 md:px-6 py-3 md:py-4 text-right">
                     <div className="flex flex-col items-end">
-                      <span className="font-mono text-sm text-green-400 font-medium">
+                      <span className="font-mono text-xs md:text-sm text-green-400 font-medium">
                         {typeof clabeAccount.availableBalance === 'number'
                           ? formatCurrency(clabeAccount.availableBalance)
                           : '-'}
                       </span>
                       {typeof clabeAccount.inTransit === 'number' && clabeAccount.inTransit > 0 && (
-                        <span className="text-xs text-yellow-400/70 mt-0.5">
-                          En tránsito: {formatCurrency(clabeAccount.inTransit)}
+                        <span className="text-[10px] md:text-xs text-yellow-400/70 mt-0.5">
+                          +{formatCurrency(clabeAccount.inTransit)}
                         </span>
                       )}
                     </div>
                   </td>
                   {currentUser?.role === 'super_admin' && (
-                    <td className="px-6 py-4">
+                    <td className="px-3 md:px-6 py-3 md:py-4 hidden lg:table-cell">
                       <span className="text-white/60 text-sm flex items-center gap-1.5">
                         <Building2 className="w-3.5 h-3.5 text-white/40" />
                         {getCompanyName(clabeAccount.companyId)}
                       </span>
                     </td>
                   )}
-                  <td className="px-6 py-4">
+                  <td className="px-3 md:px-6 py-3 md:py-4 hidden md:table-cell">
                     <span
-                      className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${
+                      className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium ${
                         clabeAccount.isActive
                           ? 'bg-green-500/10 text-green-400 border border-green-500/20'
                           : 'bg-red-500/10 text-red-400 border border-red-500/20'
@@ -550,7 +552,7 @@ export default function ClabeAccountsPage() {
                       {clabeAccount.isActive ? 'Activo' : 'Inactivo'}
                     </span>
                   </td>
-                  <td className="px-6 py-4">
+                  <td className="px-2 md:px-6 py-3 md:py-4">
                     <div className="flex items-center justify-end gap-2">
                       <Link
                         href={`/clabe-accounts/${clabeAccount.id}`}

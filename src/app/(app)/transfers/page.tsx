@@ -868,18 +868,18 @@ export default function TransfersPage() {
   };
 
   return (
-    <div className="space-y-6 max-w-5xl">
+    <div className="space-y-4 md:space-y-6 max-w-5xl">
       {/* Header */}
       <div>
-        <h1 className="text-xl font-medium text-white/90">Transferencias SPEI</h1>
-        <p className="text-sm text-white/40 mt-1">Envia y recibe fondos</p>
+        <h1 className="text-lg md:text-xl font-medium text-white/90">Transferencias SPEI</h1>
+        <p className="text-xs md:text-sm text-white/40 mt-1">Envia y recibe fondos</p>
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 p-1 rounded-lg bg-white/[0.02] border border-white/[0.06] w-fit">
+      <div className="flex gap-1 p-1 rounded-lg bg-white/[0.02] border border-white/[0.06] w-full sm:w-fit">
         <button
           onClick={() => setActiveTab('send')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm transition-colors ${
+          className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2.5 rounded-md text-sm transition-colors touch-manipulation ${
             activeTab === 'send'
               ? 'bg-white/[0.08] text-white'
               : 'text-white/40 hover:text-white/60'
@@ -890,7 +890,7 @@ export default function TransfersPage() {
         </button>
         <button
           onClick={() => setActiveTab('receive')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm transition-colors ${
+          className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2.5 rounded-md text-sm transition-colors touch-manipulation ${
             activeTab === 'receive'
               ? 'bg-white/[0.08] text-white'
               : 'text-white/40 hover:text-white/60'
@@ -908,42 +908,42 @@ export default function TransfersPage() {
             {/* Saved Accounts Selector */}
             {savedAccounts.length > 0 && (
               <Card className="overflow-visible relative z-20">
-                <CardContent className="py-3 overflow-visible">
+                <CardContent className="py-2 md:py-3 overflow-visible">
                   <div className="relative">
                     <button
                       type="button"
                       onClick={() => setShowSavedAccountsDropdown(!showSavedAccountsDropdown)}
-                      className="w-full flex items-center justify-between px-4 py-3 rounded-lg bg-white/[0.02] border border-white/[0.08] hover:bg-white/[0.04] transition-colors"
+                      className="w-full flex items-center justify-between px-3 md:px-4 py-3 rounded-lg bg-white/[0.02] border border-white/[0.08] hover:bg-white/[0.04] transition-colors touch-manipulation"
                     >
-                      <div className="flex items-center gap-3">
-                        <Bookmark className="w-4 h-4 text-purple-400" />
-                        <span className="text-white/70 text-sm">Seleccionar cuenta guardada</span>
-                        <span className="text-xs text-white/30">({savedAccounts.length} disponibles)</span>
+                      <div className="flex items-center gap-2 md:gap-3 min-w-0">
+                        <Bookmark className="w-4 h-4 text-purple-400 flex-shrink-0" />
+                        <span className="text-white/70 text-sm truncate">Cuenta guardada</span>
+                        <span className="text-xs text-white/30 hidden sm:inline">({savedAccounts.length})</span>
                       </div>
-                      <ChevronDown className={`w-4 h-4 text-white/40 transition-transform ${showSavedAccountsDropdown ? 'rotate-180' : ''}`} />
+                      <ChevronDown className={`w-4 h-4 text-white/40 transition-transform flex-shrink-0 ${showSavedAccountsDropdown ? 'rotate-180' : ''}`} />
                     </button>
 
                     {showSavedAccountsDropdown && (
-                      <div className="absolute top-full left-0 right-0 mt-1 z-[100] bg-[#0a0a1a] border border-white/[0.08] rounded-lg shadow-2xl max-h-64 overflow-y-auto">
+                      <div className="absolute top-full left-0 right-0 mt-1 z-[100] bg-[#0a0a1a] border border-white/[0.08] rounded-lg shadow-2xl max-h-[50vh] overflow-y-auto">
                         {savedAccounts.map((account) => (
                           <button
                             key={account.id}
                             type="button"
                             onClick={() => selectSavedAccount(account)}
-                            className="w-full flex items-start gap-3 px-4 py-3 hover:bg-white/[0.04] transition-colors text-left border-b border-white/[0.04] last:border-b-0"
+                            className="w-full flex items-start gap-2 md:gap-3 px-3 md:px-4 py-3 hover:bg-white/[0.04] active:bg-white/[0.06] transition-colors text-left border-b border-white/[0.04] last:border-b-0 touch-manipulation"
                           >
                             <div className="w-8 h-8 rounded-md bg-white/[0.06] flex items-center justify-center flex-shrink-0 mt-0.5">
                               <Building2 className="w-4 h-4 text-white/40" />
                             </div>
                             <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2">
-                                <span className="text-white/80 text-sm font-medium truncate">{account.alias}</span>
-                                <span className="text-xs text-white/30 px-1.5 py-0.5 bg-white/[0.04] rounded">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="text-white/80 text-sm font-medium truncate max-w-[150px] md:max-w-none">{account.alias}</span>
+                                <span className="text-[10px] md:text-xs text-white/30 px-1.5 py-0.5 bg-white/[0.04] rounded">
                                   {account.bankName}
                                 </span>
                               </div>
                               <p className="text-xs text-white/40 truncate">{account.beneficiaryName}</p>
-                              <p className="text-xs text-white/30 font-mono">{formatClabe(account.clabe)}</p>
+                              <p className="text-[10px] md:text-xs text-white/30 font-mono truncate">{formatClabe(account.clabe)}</p>
                             </div>
                           </button>
                         ))}
@@ -957,43 +957,43 @@ export default function TransfersPage() {
             {/* Recent Transfers - Repeat Feature */}
             {recentTransfers.length > 0 && (
               <Card className="overflow-visible relative z-10">
-                <CardContent className="py-3 overflow-visible">
+                <CardContent className="py-2 md:py-3 overflow-visible">
                   <div className="relative">
                     <button
                       type="button"
                       onClick={() => setShowRecentTransfers(!showRecentTransfers)}
-                      className="w-full flex items-center justify-between px-4 py-3 rounded-lg bg-white/[0.02] border border-white/[0.08] hover:bg-white/[0.04] transition-colors"
+                      className="w-full flex items-center justify-between px-3 md:px-4 py-3 rounded-lg bg-white/[0.02] border border-white/[0.08] hover:bg-white/[0.04] transition-colors touch-manipulation"
                     >
-                      <div className="flex items-center gap-3">
-                        <RotateCcw className="w-4 h-4 text-blue-400" />
-                        <span className="text-white/70 text-sm">Repetir transferencia reciente</span>
-                        <span className="text-xs text-white/30">({recentTransfers.length} recientes)</span>
+                      <div className="flex items-center gap-2 md:gap-3 min-w-0">
+                        <RotateCcw className="w-4 h-4 text-blue-400 flex-shrink-0" />
+                        <span className="text-white/70 text-sm truncate">Repetir reciente</span>
+                        <span className="text-xs text-white/30 hidden sm:inline">({recentTransfers.length})</span>
                       </div>
-                      <ChevronDown className={`w-4 h-4 text-white/40 transition-transform ${showRecentTransfers ? 'rotate-180' : ''}`} />
+                      <ChevronDown className={`w-4 h-4 text-white/40 transition-transform flex-shrink-0 ${showRecentTransfers ? 'rotate-180' : ''}`} />
                     </button>
 
                     {showRecentTransfers && (
-                      <div className="absolute top-full left-0 right-0 mt-1 z-[90] bg-[#0a0a1a] border border-white/[0.08] rounded-lg shadow-2xl max-h-72 overflow-y-auto">
-                        <p className="px-4 py-2 text-xs text-amber-400/80 bg-amber-500/5 border-b border-white/[0.04]">
-                          Al seleccionar, se llenarán los datos pero NO se ejecutará la transferencia automáticamente.
+                      <div className="absolute top-full left-0 right-0 mt-1 z-[90] bg-[#0a0a1a] border border-white/[0.08] rounded-lg shadow-2xl max-h-[50vh] overflow-y-auto">
+                        <p className="px-3 md:px-4 py-2 text-[10px] md:text-xs text-amber-400/80 bg-amber-500/5 border-b border-white/[0.04]">
+                          Al seleccionar, se llenarán los datos pero NO se ejecutará automáticamente.
                         </p>
                         {recentTransfers.map((transfer) => (
                           <button
                             key={transfer.id}
                             type="button"
                             onClick={() => selectRecentTransfer(transfer)}
-                            className="w-full flex items-start gap-3 px-4 py-3 hover:bg-white/[0.04] transition-colors text-left border-b border-white/[0.04] last:border-b-0"
+                            className="w-full flex items-start gap-2 md:gap-3 px-3 md:px-4 py-3 hover:bg-white/[0.04] active:bg-white/[0.06] transition-colors text-left border-b border-white/[0.04] last:border-b-0 touch-manipulation"
                           >
                             <div className="w-8 h-8 rounded-md bg-blue-500/10 flex items-center justify-center flex-shrink-0 mt-0.5">
                               <SendHorizontal className="w-4 h-4 text-blue-400" />
                             </div>
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center justify-between gap-2">
-                                <span className="text-white/80 text-sm font-medium truncate">{transfer.beneficiaryName || 'Sin nombre'}</span>
-                                <span className="text-green-400 text-sm font-mono font-medium">{formatCurrency(transfer.amount)}</span>
+                                <span className="text-white/80 text-sm font-medium truncate max-w-[120px] md:max-w-none">{transfer.beneficiaryName || 'Sin nombre'}</span>
+                                <span className="text-green-400 text-xs md:text-sm font-mono font-medium flex-shrink-0">{formatCurrency(transfer.amount)}</span>
                               </div>
                               <p className="text-xs text-white/40 truncate">{transfer.concept || 'Sin concepto'}</p>
-                              <p className="text-xs text-white/30 font-mono">{formatClabe(transfer.beneficiaryAccount)}</p>
+                              <p className="text-[10px] md:text-xs text-white/30 font-mono truncate">{formatClabe(transfer.beneficiaryAccount)}</p>
                             </div>
                           </button>
                         ))}
@@ -1006,7 +1006,7 @@ export default function TransfersPage() {
 
             {/* Smart Data Extraction Tools */}
             <Card>
-              <CardContent className="py-3 space-y-2">
+              <CardContent className="py-2 md:py-3 space-y-2">
                 {/* OCR Image Upload Button */}
                 <div>
                   <input
@@ -1022,25 +1022,25 @@ export default function TransfersPage() {
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
                     disabled={isProcessingOcr}
-                    className="w-full flex items-center justify-between px-4 py-3 rounded-lg bg-white/[0.02] border border-white/[0.08] hover:bg-white/[0.04] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="w-full flex items-center justify-between px-3 md:px-4 py-3 rounded-lg bg-white/[0.02] border border-white/[0.08] hover:bg-white/[0.04] active:bg-white/[0.06] transition-colors disabled:opacity-50 disabled:cursor-not-allowed touch-manipulation"
                   >
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-2 md:gap-3 min-w-0">
                       {isProcessingOcr ? (
-                        <Loader2 className="w-4 h-4 text-green-400 animate-spin" />
+                        <Loader2 className="w-4 h-4 text-green-400 animate-spin flex-shrink-0" />
                       ) : (
-                        <Camera className="w-4 h-4 text-green-400" />
+                        <Camera className="w-4 h-4 text-green-400 flex-shrink-0" />
                       )}
-                      <span className="text-white/70 text-sm">
-                        {isProcessingOcr ? ocrStatus : 'Extraer datos de imagen'}
+                      <span className="text-white/70 text-sm truncate">
+                        {isProcessingOcr ? ocrStatus : 'Extraer de imagen'}
                       </span>
                       {!isProcessingOcr && (
-                        <span className="text-xs text-white/30">(OCR)</span>
+                        <span className="text-xs text-white/30 hidden sm:inline">(OCR)</span>
                       )}
                     </div>
                     {isProcessingOcr ? (
-                      <span className="text-xs text-green-400 font-mono">{ocrProgress}%</span>
+                      <span className="text-xs text-green-400 font-mono flex-shrink-0">{ocrProgress}%</span>
                     ) : (
-                      <ImageIcon className="w-4 h-4 text-white/40" />
+                      <ImageIcon className="w-4 h-4 text-white/40 flex-shrink-0" />
                     )}
                   </button>
 
@@ -1068,36 +1068,37 @@ export default function TransfersPage() {
                 <button
                   type="button"
                   onClick={() => setShowPasteField(!showPasteField)}
-                  className="w-full flex items-center justify-between px-4 py-3 rounded-lg bg-white/[0.02] border border-white/[0.08] hover:bg-white/[0.04] transition-colors"
+                  className="w-full flex items-center justify-between px-3 md:px-4 py-3 rounded-lg bg-white/[0.02] border border-white/[0.08] hover:bg-white/[0.04] active:bg-white/[0.06] transition-colors touch-manipulation"
                 >
-                  <div className="flex items-center gap-3">
-                    <ClipboardPaste className="w-4 h-4 text-purple-400" />
-                    <span className="text-white/70 text-sm">Pegar texto con datos bancarios</span>
+                  <div className="flex items-center gap-2 md:gap-3 min-w-0">
+                    <ClipboardPaste className="w-4 h-4 text-purple-400 flex-shrink-0" />
+                    <span className="text-white/70 text-sm truncate">Pegar datos bancarios</span>
                   </div>
-                  <ChevronDown className={`w-4 h-4 text-white/40 transition-transform ${showPasteField ? 'rotate-180' : ''}`} />
+                  <ChevronDown className={`w-4 h-4 text-white/40 transition-transform flex-shrink-0 ${showPasteField ? 'rotate-180' : ''}`} />
                 </button>
 
                 {/* Paste Text Field - Expandable */}
                 {showPasteField && (
-                  <div className="p-3 rounded-lg bg-white/[0.02] border border-white/[0.06] space-y-3">
+                  <div className="p-2 md:p-3 rounded-lg bg-white/[0.02] border border-white/[0.06] space-y-2 md:space-y-3">
                     <textarea
                       value={pasteText}
                       onChange={(e) => setPasteText(e.target.value)}
-                      placeholder="Pega aquí el texto del comprobante, mensaje o datos bancarios...
+                      placeholder="Pega aquí el texto del comprobante...
 
 Ejemplo:
-Beneficiario: JUAN PEREZ LOPEZ
-CLABE: 012180015000000001
-Monto: $1,500.00"
-                      className="w-full h-32 px-3 py-2 text-sm bg-white/[0.02] border border-white/[0.08] rounded-lg text-white/80 placeholder:text-white/20 resize-none focus:outline-none focus:ring-1 focus:ring-purple-500/50"
+JUAN PEREZ LOPEZ
+012180015000000001
+$1,500.00"
+                      className="w-full h-28 md:h-32 px-3 py-2 text-sm bg-white/[0.02] border border-white/[0.08] rounded-lg text-white/80 placeholder:text-white/20 resize-none focus:outline-none focus:ring-1 focus:ring-purple-500/50"
                     />
-                    <div className="flex items-center justify-between gap-3">
+                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
                       <Button
                         size="sm"
                         variant="secondary"
                         onClick={handleProcessPasteText}
                         disabled={!pasteText.trim()}
                         leftIcon={<CheckCircle className="w-4 h-4" />}
+                        className="w-full sm:w-auto touch-manipulation"
                       >
                         Detectar datos
                       </Button>
@@ -1110,7 +1111,7 @@ Monto: $1,500.00"
                       )}
                     </div>
                     <p className="text-[10px] text-white/20">
-                      Detecta automáticamente: CLABE, nombre del beneficiario, monto y concepto
+                      Detecta: CLABE, nombre, monto y concepto
                     </p>
                   </div>
                 )}
@@ -1305,63 +1306,63 @@ Monto: $1,500.00"
           </div>
 
           {/* Summary Sidebar */}
-          <div className="space-y-4">
-            <Card className="sticky top-8">
-              <CardHeader>
-                <CardTitle>Resumen</CardTitle>
+          <div className="space-y-4 order-first lg:order-none">
+            <Card className="lg:sticky lg:top-8">
+              <CardHeader className="py-3 md:py-4">
+                <CardTitle className="text-sm md:text-base">Resumen</CardTitle>
               </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="space-y-3">
-                  <div className="flex justify-between text-sm">
+              <CardContent className="space-y-3 md:space-y-4 py-3 md:py-4">
+                <div className="space-y-2 md:space-y-3">
+                  <div className="flex justify-between text-xs md:text-sm">
                     <span className="text-white/40">Monto a enviar</span>
                     <span className="font-mono text-white/80">
                       {formData.amount ? formatCurrency(parseFloat(formData.amount)) : '$0.00'}
                     </span>
                   </div>
-                  <div className="flex justify-between text-sm">
+                  <div className="flex justify-between text-xs md:text-sm">
                     <span className="text-white/40">Comision</span>
                     <span className="font-mono text-green-400/80">$0.00</span>
                   </div>
-                  <div className="border-t border-white/[0.06] pt-3 flex justify-between">
-                    <span className="text-white/70 text-sm">Total</span>
-                    <span className="font-mono text-lg text-white/90">
+                  <div className="border-t border-white/[0.06] pt-2 md:pt-3 flex justify-between">
+                    <span className="text-white/70 text-xs md:text-sm">Total</span>
+                    <span className="font-mono text-base md:text-lg text-white/90">
                       {formData.amount ? formatCurrency(parseFloat(formData.amount)) : '$0.00'}
                     </span>
                   </div>
                 </div>
 
-                <div className="p-3 rounded-md bg-white/[0.02] border border-white/[0.06]">
-                  <div className="flex items-center gap-2 text-sm">
-                    <Shield className="w-4 h-4 text-green-400/60" />
+                <div className="p-2 md:p-3 rounded-md bg-white/[0.02] border border-white/[0.06]">
+                  <div className="flex items-center gap-2 text-xs md:text-sm">
+                    <Shield className="w-3.5 h-3.5 md:w-4 md:h-4 text-green-400/60" />
                     <span className="text-white/40">Transferencia protegida</span>
                   </div>
                 </div>
 
                 {formData.beneficiaryName && (
-                  <div className="p-3 rounded-md bg-white/[0.02] border border-white/[0.06]">
-                    <p className="text-xs text-white/30 mb-1">Beneficiario</p>
-                    <p className="text-sm text-white/80">{formData.beneficiaryName}</p>
+                  <div className="p-2 md:p-3 rounded-md bg-white/[0.02] border border-white/[0.06]">
+                    <p className="text-[10px] md:text-xs text-white/30 mb-1">Beneficiario</p>
+                    <p className="text-xs md:text-sm text-white/80 truncate">{formData.beneficiaryName}</p>
                     {formData.beneficiaryAccount && (
-                      <p className="text-xs text-white/30 font-mono mt-1">
+                      <p className="text-[10px] md:text-xs text-white/30 font-mono mt-1 truncate">
                         {formatClabe(formData.beneficiaryAccount)}
                       </p>
                     )}
                     {detectedBank && (
-                      <p className="text-xs text-white/40 mt-1">{detectedBank.shortName}</p>
+                      <p className="text-[10px] md:text-xs text-white/40 mt-1">{detectedBank.shortName}</p>
                     )}
                   </div>
                 )}
 
-                {/* Quick bank selection */}
+                {/* Quick bank selection - hide on mobile to save space */}
                 {!formData.beneficiaryBank && !detectedBank && (
-                  <div className="p-3 rounded-md bg-white/[0.02] border border-white/[0.06]">
+                  <div className="hidden md:block p-3 rounded-md bg-white/[0.02] border border-white/[0.06]">
                     <p className="text-xs text-white/30 mb-2">Bancos frecuentes</p>
                     <div className="flex flex-wrap gap-1">
                       {getPopularBanks().slice(0, 6).map(bank => (
                         <button
                           key={bank.speiCode}
                           onClick={() => handleInputChange('beneficiaryBank', bank.speiCode)}
-                          className="px-2 py-1 text-xs bg-white/[0.04] hover:bg-white/[0.08] rounded border border-white/[0.08] text-white/60 hover:text-white/80 transition-colors"
+                          className="px-2 py-1 text-xs bg-white/[0.04] hover:bg-white/[0.08] rounded border border-white/[0.08] text-white/60 hover:text-white/80 transition-colors touch-manipulation"
                         >
                           {bank.shortName}
                         </button>

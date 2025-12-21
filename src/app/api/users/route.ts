@@ -159,6 +159,24 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // SECURITY FIX: Validate password policy (same as reset-password)
+    if (password.length < 12) {
+      return NextResponse.json(
+        { error: 'La contraseña debe tener al menos 12 caracteres' },
+        { status: 400 }
+      );
+    }
+    const hasUppercase = /[A-Z]/.test(password);
+    const hasLowercase = /[a-z]/.test(password);
+    const hasNumber = /\d/.test(password);
+    const hasSpecial = /[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(password);
+    if (!(hasUppercase && hasLowercase && hasNumber && hasSpecial)) {
+      return NextResponse.json(
+        { error: 'La contraseña debe incluir mayúsculas, minúsculas, números y caracteres especiales' },
+        { status: 400 }
+      );
+    }
+
     // Hash password - SECURITY: Use 12 rounds for production security
     const hashedPassword = await bcrypt.hash(password, 12);
 

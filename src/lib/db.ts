@@ -1,5 +1,6 @@
 import { Pool, QueryResult } from 'pg';
 import crypto from 'crypto';
+import { signTransaction, isSigningConfigured } from './transaction-signing';
 
 // Create PostgreSQL connection pool for AWS RDS
 // SECURITY: SSL is REQUIRED for database connections
@@ -911,12 +912,31 @@ export async function createTransaction(transaction: {
   confirmationDeadline?: Date;
   pendingOrderData?: Record<string, unknown>;
 }): Promise<DbTransaction> {
+  // SECURITY: Generate cryptographic signature for transaction integrity
+  let signature: string | null = null;
+  if (isSigningConfigured()) {
+    try {
+      signature = signTransaction({
+        transactionId: transaction.id,
+        type: transaction.type,
+        amount: transaction.amount,
+        beneficiaryAccount: transaction.beneficiaryAccount,
+        beneficiaryName: transaction.beneficiaryName,
+        payerAccount: transaction.payerAccount,
+        trackingKey: transaction.trackingKey,
+        createdAt: new Date(),
+      });
+    } catch (signError) {
+      console.error('[SECURITY] Failed to sign transaction:', signError);
+    }
+  }
+
   const result = await sql`
     INSERT INTO transactions (
       id, clabe_account_id, type, status, amount, concept, tracking_key,
       numerical_reference, beneficiary_account, beneficiary_bank, beneficiary_name,
       beneficiary_uid, payer_account, payer_bank, payer_name, payer_uid, opm_order_id,
-      confirmation_deadline, pending_order_data
+      confirmation_deadline, pending_order_data, signature
     )
     VALUES (
       ${transaction.id},
@@ -937,7 +957,8 @@ export async function createTransaction(transaction: {
       ${transaction.payerUid || null},
       ${transaction.opmOrderId || null},
       ${transaction.confirmationDeadline?.toISOString() || null},
-      ${transaction.pendingOrderData ? JSON.stringify(transaction.pendingOrderData) : null}
+      ${transaction.pendingOrderData ? JSON.stringify(transaction.pendingOrderData) : null},
+      ${signature}
     )
     RETURNING *
   `;
@@ -1022,15 +1043,34 @@ export async function createOutgoingTransactionAtomic(transaction: {
         };
       }
 
-      // Insert the transaction
+      // SECURITY: Generate cryptographic signature for transaction integrity
+      let signature: string | null = null;
+      if (isSigningConfigured()) {
+        try {
+          signature = signTransaction({
+            transactionId: transaction.id,
+            type: transaction.type,
+            amount: transaction.amount,
+            beneficiaryAccount: transaction.beneficiaryAccount,
+            beneficiaryName: transaction.beneficiaryName,
+            trackingKey: transaction.trackingKey,
+            createdAt: new Date(),
+          });
+        } catch (signError) {
+          console.error('[SECURITY] Failed to sign transaction:', signError);
+          // Continue without signature - logging will alert ops team
+        }
+      }
+
+      // Insert the transaction with cryptographic signature
       const insertResult = await client.query(`
         INSERT INTO transactions (
           id, clabe_account_id, type, status, amount, concept, tracking_key,
           numerical_reference, beneficiary_account, beneficiary_bank, beneficiary_name,
           beneficiary_uid, payer_account, payer_bank, payer_name, payer_uid, opm_order_id,
-          confirmation_deadline, pending_order_data
+          confirmation_deadline, pending_order_data, signature
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
         RETURNING *
       `, [
         transaction.id,
@@ -1052,6 +1092,7 @@ export async function createOutgoingTransactionAtomic(transaction: {
         transaction.opmOrderId || null,
         transaction.confirmationDeadline?.toISOString() || null,
         transaction.pendingOrderData ? JSON.stringify(transaction.pendingOrderData) : null,
+        signature,
       ]);
 
       // Commit the transaction

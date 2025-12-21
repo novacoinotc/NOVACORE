@@ -347,11 +347,15 @@ function base32Decode(encoded: string): Uint8Array {
 
 /**
  * Get client IP from request headers
+ * SECURITY: Takes the LAST IP from X-Forwarded-For chain to prevent IP spoofing
+ * The last IP is what the proxy/load balancer actually saw
  */
 export function getClientIP(request: Request): string {
   const forwarded = request.headers.get('x-forwarded-for');
   if (forwarded) {
-    return forwarded.split(',')[0].trim();
+    // SECURITY FIX: Take LAST IP (what proxy saw), not first (attacker can prepend)
+    const ips = forwarded.split(',').map(ip => ip.trim()).filter(ip => ip);
+    return ips[ips.length - 1] || 'unknown';
   }
 
   const realIP = request.headers.get('x-real-ip');

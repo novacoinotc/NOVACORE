@@ -38,21 +38,27 @@ interface TransactionSigningData {
  * Generate a cryptographic signature for a transaction
  *
  * @param data - Critical transaction fields to sign
- * @returns Base64-encoded HMAC-SHA256 signature
- * @throws Error if signing key is not configured
+ * @returns Base64-encoded HMAC-SHA256 signature, or null if signing not configured
  */
-export function signTransaction(data: TransactionSigningData): string {
+export function signTransaction(data: TransactionSigningData): string | null {
+  // Gracefully handle missing signing key - don't break the app
   if (!SIGNING_KEY || SIGNING_KEY.length < 32) {
-    throw new Error('TRANSACTION_SIGNING_KEY not configured or too short. Must be at least 32 characters.');
+    console.warn('[SECURITY] TRANSACTION_SIGNING_KEY not configured or too short. Transactions will not be signed.');
+    return null;
   }
 
-  // Normalize and canonicalize the data to ensure consistent signing
-  const canonicalData = buildCanonicalString(data);
+  try {
+    // Normalize and canonicalize the data to ensure consistent signing
+    const canonicalData = buildCanonicalString(data);
 
-  // Create HMAC-SHA256 signature
-  const hmac = createHmac('sha256', SIGNING_KEY);
-  hmac.update(canonicalData);
-  return hmac.digest('base64');
+    // Create HMAC-SHA256 signature
+    const hmac = createHmac('sha256', SIGNING_KEY);
+    hmac.update(canonicalData);
+    return hmac.digest('base64');
+  } catch (error) {
+    console.error('[SECURITY] Failed to sign transaction:', error);
+    return null;
+  }
 }
 
 /**

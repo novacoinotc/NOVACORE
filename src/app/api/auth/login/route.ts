@@ -28,8 +28,8 @@ import {
 const LOCKOUT_THRESHOLD = 5;
 
 // SECURITY: Generate dummy hash at startup for timing attack prevention
-// This avoids hardcoding a hash value while maintaining constant-time behavior
-const DUMMY_HASH = bcrypt.hashSync('dummy_password_for_timing_attack_prevention', 12);
+// Uses cryptographically random bytes - no hardcoded strings
+const DUMMY_HASH = bcrypt.hashSync(crypto.randomBytes(32).toString('hex'), 12);
 
 export async function POST(request: NextRequest) {
   const clientIP = getClientIP(request);

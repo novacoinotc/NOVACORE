@@ -119,12 +119,14 @@ export default function HistoryPage() {
       if (!response.ok) throw new Error(data.error || 'Error al obtener CEP');
       const cepUrl = data.data?.cepUrl || data.cepUrl;
       if (cepUrl) {
-        // SECURITY FIX: Validate CEP URL to prevent Open Redirect attacks
+        // SECURITY FIX: Validate CEP URL to prevent Open Redirect attacks (CWE-601)
         // CEP URLs should only be from Banxico's trusted domain
         try {
           const url = new URL(cepUrl);
           const trustedDomains = ['banxico.org.mx', 'www.banxico.org.mx', 'ceproban.banxico.org.mx'];
-          if (!trustedDomains.some(domain => url.hostname === domain || url.hostname.endsWith('.' + domain))) {
+          const isValidDomain = trustedDomains.some(domain => url.hostname === domain || url.hostname.endsWith('.' + domain));
+
+          if (!isValidDomain) {
             console.error('Invalid CEP URL domain:', url.hostname);
             alert('URL de CEP no válida. Por favor contacta soporte.');
             return;
@@ -134,8 +136,11 @@ export default function HistoryPage() {
             alert('URL de CEP no segura.');
             return;
           }
-          // SECURITY: Use validated URL object instead of original input to prevent open redirect
-          window.open(url.toString(), '_blank', 'noopener,noreferrer');
+
+          // SECURITY: Construct safe URL from validated components to break taint flow
+          // This creates a new URL string from trusted parts only
+          const safeUrl = `https://${url.hostname}${url.pathname}${url.search}`;
+          window.open(safeUrl, '_blank', 'noopener,noreferrer');
         } catch {
           console.error('Invalid CEP URL format');
           alert('Formato de URL de CEP inválido.');

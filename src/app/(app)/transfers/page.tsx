@@ -24,6 +24,7 @@ import {
   RotateCcw,
   Camera,
   ImageIcon,
+  ClipboardPaste,
 } from 'lucide-react';
 import Tesseract from 'tesseract.js';
 import { Button, Input, Select, Card, CardHeader, CardTitle, CardContent, Modal } from '@/components/ui';
@@ -97,6 +98,11 @@ export default function TransfersPage() {
   const [isProcessingOcr, setIsProcessingOcr] = useState(false);
   const [ocrProgress, setOcrProgress] = useState(0);
   const [ocrStatus, setOcrStatus] = useState('');
+
+  // Smart paste text field state
+  const [showPasteField, setShowPasteField] = useState(false);
+  const [pasteText, setPasteText] = useState('');
+  const [pasteStatus, setPasteStatus] = useState('');
 
   // 2FA state for transfers - initialize based on user's 2FA status
   const [requires2FA, setRequires2FA] = useState(false);
@@ -398,6 +404,30 @@ export default function TransfersPage() {
     // Reset the input so the same file can be selected again
     e.target.value = '';
   }, [handleImageUpload]);
+
+  // Manual paste text processing
+  const handleProcessPasteText = useCallback(() => {
+    if (!pasteText.trim()) {
+      setPasteStatus('Ingresa texto para procesar');
+      return;
+    }
+
+    const found = handleSmartPaste(pasteText);
+    if (found) {
+      setPasteStatus('¡Datos detectados y llenados!');
+      setPasteText('');
+      // Auto-hide after success
+      setTimeout(() => {
+        setShowPasteField(false);
+        setPasteStatus('');
+      }, 2000);
+    } else {
+      setPasteStatus('No se detectaron datos bancarios en el texto');
+    }
+
+    // Clear status after delay
+    setTimeout(() => setPasteStatus(''), 3000);
+  }, [pasteText, handleSmartPaste]);
 
   // Global paste event listener
   useEffect(() => {
@@ -902,67 +932,116 @@ export default function TransfersPage() {
               </Card>
             )}
 
-            {/* OCR Image Upload */}
+            {/* Smart Data Extraction Tools */}
             <Card>
-              <CardContent className="py-3">
-                {/* Hidden file input */}
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/*"
-                  onChange={handleFileInputChange}
-                  className="hidden"
-                  capture="environment"
-                />
+              <CardContent className="py-3 space-y-2">
+                {/* OCR Image Upload Button */}
+                <div>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    onChange={handleFileInputChange}
+                    className="hidden"
+                    capture="environment"
+                  />
 
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={isProcessingOcr}
+                    className="w-full flex items-center justify-between px-4 py-3 rounded-lg bg-white/[0.02] border border-white/[0.08] hover:bg-white/[0.04] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <div className="flex items-center gap-3">
+                      {isProcessingOcr ? (
+                        <Loader2 className="w-4 h-4 text-green-400 animate-spin" />
+                      ) : (
+                        <Camera className="w-4 h-4 text-green-400" />
+                      )}
+                      <span className="text-white/70 text-sm">
+                        {isProcessingOcr ? ocrStatus : 'Extraer datos de imagen'}
+                      </span>
+                      {!isProcessingOcr && (
+                        <span className="text-xs text-white/30">(OCR)</span>
+                      )}
+                    </div>
+                    {isProcessingOcr ? (
+                      <span className="text-xs text-green-400 font-mono">{ocrProgress}%</span>
+                    ) : (
+                      <ImageIcon className="w-4 h-4 text-white/40" />
+                    )}
+                  </button>
+
+                  {/* Progress bar during OCR */}
+                  {isProcessingOcr && (
+                    <div className="mt-2 w-full h-1.5 bg-white/[0.06] rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-gradient-to-r from-green-500 to-green-400 transition-all duration-300"
+                        style={{ width: `${ocrProgress}%` }}
+                      />
+                    </div>
+                  )}
+
+                  {/* OCR Status message */}
+                  {ocrStatus && !isProcessingOcr && (
+                    <p className={`text-xs mt-2 px-4 ${
+                      ocrStatus.includes('detectados') ? 'text-green-400' : 'text-amber-400/80'
+                    }`}>
+                      {ocrStatus}
+                    </p>
+                  )}
+                </div>
+
+                {/* Paste Text Button */}
                 <button
                   type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={isProcessingOcr}
-                  className="w-full flex items-center justify-between px-4 py-3 rounded-lg bg-white/[0.02] border border-white/[0.08] hover:bg-white/[0.04] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  onClick={() => setShowPasteField(!showPasteField)}
+                  className="w-full flex items-center justify-between px-4 py-3 rounded-lg bg-white/[0.02] border border-white/[0.08] hover:bg-white/[0.04] transition-colors"
                 >
                   <div className="flex items-center gap-3">
-                    {isProcessingOcr ? (
-                      <Loader2 className="w-4 h-4 text-green-400 animate-spin" />
-                    ) : (
-                      <Camera className="w-4 h-4 text-green-400" />
-                    )}
-                    <span className="text-white/70 text-sm">
-                      {isProcessingOcr ? ocrStatus : 'Extraer datos de imagen'}
-                    </span>
-                    {!isProcessingOcr && (
-                      <span className="text-xs text-white/30">(OCR)</span>
-                    )}
+                    <ClipboardPaste className="w-4 h-4 text-purple-400" />
+                    <span className="text-white/70 text-sm">Pegar texto con datos bancarios</span>
                   </div>
-                  {isProcessingOcr ? (
-                    <span className="text-xs text-green-400 font-mono">{ocrProgress}%</span>
-                  ) : (
-                    <ImageIcon className="w-4 h-4 text-white/40" />
-                  )}
+                  <ChevronDown className={`w-4 h-4 text-white/40 transition-transform ${showPasteField ? 'rotate-180' : ''}`} />
                 </button>
 
-                {/* Progress bar during OCR */}
-                {isProcessingOcr && (
-                  <div className="mt-2 w-full h-1.5 bg-white/[0.06] rounded-full overflow-hidden">
-                    <div
-                      className="h-full bg-gradient-to-r from-green-500 to-green-400 transition-all duration-300"
-                      style={{ width: `${ocrProgress}%` }}
+                {/* Paste Text Field - Expandable */}
+                {showPasteField && (
+                  <div className="p-3 rounded-lg bg-white/[0.02] border border-white/[0.06] space-y-3">
+                    <textarea
+                      value={pasteText}
+                      onChange={(e) => setPasteText(e.target.value)}
+                      placeholder="Pega aquí el texto del comprobante, mensaje o datos bancarios...
+
+Ejemplo:
+Beneficiario: JUAN PEREZ LOPEZ
+CLABE: 012180015000000001
+Monto: $1,500.00"
+                      className="w-full h-32 px-3 py-2 text-sm bg-white/[0.02] border border-white/[0.08] rounded-lg text-white/80 placeholder:text-white/20 resize-none focus:outline-none focus:ring-1 focus:ring-purple-500/50"
                     />
+                    <div className="flex items-center justify-between gap-3">
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={handleProcessPasteText}
+                        disabled={!pasteText.trim()}
+                        leftIcon={<CheckCircle className="w-4 h-4" />}
+                      >
+                        Detectar datos
+                      </Button>
+                      {pasteStatus && (
+                        <p className={`text-xs ${
+                          pasteStatus.includes('detectados') ? 'text-green-400' : 'text-amber-400/80'
+                        }`}>
+                          {pasteStatus}
+                        </p>
+                      )}
+                    </div>
+                    <p className="text-[10px] text-white/20">
+                      Detecta automáticamente: CLABE, nombre del beneficiario, monto y concepto
+                    </p>
                   </div>
                 )}
-
-                {/* Status message */}
-                {ocrStatus && !isProcessingOcr && (
-                  <p className={`text-xs mt-2 px-4 ${
-                    ocrStatus.includes('detectados') ? 'text-green-400' : 'text-amber-400/80'
-                  }`}>
-                    {ocrStatus}
-                  </p>
-                )}
-
-                <p className="text-[10px] text-white/20 mt-2 px-4">
-                  Sube una foto de un comprobante bancario para extraer CLABE, nombre y monto
-                </p>
               </CardContent>
             </Card>
 

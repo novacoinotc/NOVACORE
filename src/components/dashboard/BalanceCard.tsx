@@ -39,13 +39,13 @@ export function BalanceCard({ totalBalance, availableBalance, transitBalance }: 
       <div className="grid grid-cols-2 gap-4 pt-4 border-t border-white/[0.06]">
         <div>
           <p className="text-xs text-white/30 mb-1">Disponible</p>
-          <p className="font-mono text-sm text-white/70">
+          <p className="font-mono text-sm text-green-400 font-medium">
             {showBalance ? formatCurrency(availableBalance) : '••••••'}
           </p>
         </div>
         <div>
-          <p className="text-xs text-white/30 mb-1">En transito</p>
-          <p className="font-mono text-sm text-white/70">
+          <p className="text-xs text-white/30 mb-1">En tránsito</p>
+          <p className="font-mono text-sm text-yellow-400/70">
             {showBalance ? formatCurrency(transitBalance) : '••••••'}
           </p>
         </div>

@@ -20,6 +20,7 @@ import {
   TrendingDown,
   Clock,
   Check,
+  Ban,
 } from 'lucide-react';
 import { useAuth, getAuthHeaders } from '@/context/AuthContext';
 import { formatCurrency, formatDate, getStatusText, cn, formatClabe } from '@/lib/utils';
@@ -206,9 +207,30 @@ export default function HistoryPage() {
       case 'scattered': return 'bg-green-500/20 text-green-400 border-green-500/30';
       case 'sent': return 'bg-blue-500/20 text-blue-400 border-blue-500/30';
       case 'pending': case 'pending_confirmation': return 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30';
-      case 'returned': case 'canceled': return 'bg-red-500/20 text-red-400 border-red-500/30';
+      case 'returned': return 'bg-red-500/20 text-red-400 border-red-500/30';
+      case 'canceled': return 'bg-gray-500/20 text-gray-400 border-gray-500/30';
       default: return 'bg-white/10 text-white/60 border-white/20';
     }
+  };
+
+  // Helper to get amount color based on type and status
+  const getAmountColor = (tx: Transaction) => {
+    if (tx.status === 'canceled') return 'text-gray-400';
+    return tx.type === 'incoming' ? 'text-green-400' : 'text-red-400';
+  };
+
+  // Helper to get type indicator style based on status
+  const getTypeIndicator = (tx: Transaction) => {
+    if (tx.status === 'canceled') {
+      return {
+        bgColor: 'bg-gray-500/10',
+        iconColor: 'text-gray-400',
+        Icon: Ban,
+      };
+    }
+    return tx.type === 'incoming'
+      ? { bgColor: 'bg-green-500/10', iconColor: 'text-green-400', Icon: ArrowDownLeft }
+      : { bgColor: 'bg-red-500/10', iconColor: 'text-red-400', Icon: ArrowUpRight };
   };
 
   return (
@@ -292,15 +314,19 @@ export default function HistoryPage() {
               </tr>
             </thead>
             <tbody>
-              {transactions.map((tx, index) => (
+              {transactions.map((tx, index) => {
+                const typeIndicator = getTypeIndicator(tx);
+                return (
                 <motion.tr key={tx.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: index * 0.02 }} className="border-b border-white/[0.04] hover:bg-white/[0.02] transition-colors cursor-pointer" onClick={() => setSelectedTransaction(tx)}>
                   <td className="px-6 py-4 text-right">
-                    <span className={`font-mono font-semibold ${tx.type === 'incoming' ? 'text-green-400' : 'text-red-400'}`}>
-                      {tx.type === 'incoming' ? '+' : '-'}{formatCurrency(tx.amount)}
+                    <span className={`font-mono font-semibold ${getAmountColor(tx)}`}>
+                      {tx.status === 'canceled' ? '' : (tx.type === 'incoming' ? '+' : '-')}{formatCurrency(tx.amount)}
                     </span>
                   </td>
                   <td className="px-6 py-4">
-                    <p className="text-white font-medium text-sm truncate max-w-[180px]">{tx.type === 'incoming' ? tx.payerName : tx.beneficiaryName || 'Sin nombre'}</p>
+                    <p className={`font-medium text-sm truncate max-w-[180px] ${tx.status === 'canceled' ? 'text-gray-400' : 'text-white'}`}>
+                      {tx.type === 'incoming' ? tx.payerName : tx.beneficiaryName || 'Sin nombre'}
+                    </p>
                   </td>
                   <td className="px-6 py-4">
                     <span className="text-white/60 text-sm">{formatDate(tx.createdAt)}</span>
@@ -310,11 +336,9 @@ export default function HistoryPage() {
                   </td>
                   <td className="px-6 py-4 text-center">
                     <div className="flex items-center justify-center gap-2">
-                      {tx.type === 'incoming' ? (
-                        <div className="p-1.5 bg-green-500/10 rounded-lg"><ArrowDownLeft className="w-4 h-4 text-green-400" /></div>
-                      ) : (
-                        <div className="p-1.5 bg-red-500/10 rounded-lg"><ArrowUpRight className="w-4 h-4 text-red-400" /></div>
-                      )}
+                      <div className={`p-1.5 ${typeIndicator.bgColor} rounded-lg`}>
+                        <typeIndicator.Icon className={`w-4 h-4 ${typeIndicator.iconColor}`} />
+                      </div>
                     </div>
                   </td>
                   <td className="px-6 py-4 text-center">
@@ -323,7 +347,8 @@ export default function HistoryPage() {
                     </button>
                   </td>
                 </motion.tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>

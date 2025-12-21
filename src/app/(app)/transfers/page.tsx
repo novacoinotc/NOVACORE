@@ -64,9 +64,18 @@ export default function TransfersPage() {
   const [isLoadingSavedAccounts, setIsLoadingSavedAccounts] = useState(false);
   const [showSavedAccountsDropdown, setShowSavedAccountsDropdown] = useState(false);
 
-  // Source CLABE accounts (payer accounts)
-  const [clabeAccounts, setClabeAccounts] = useState<{ id: string; clabe: string; alias: string }[]>([]);
+  // Source CLABE accounts (payer accounts) - includes balance info
+  const [clabeAccounts, setClabeAccounts] = useState<{
+    id: string;
+    clabe: string;
+    alias: string;
+    availableBalance?: number;
+    inTransit?: number;
+  }[]>([]);
   const [isLoadingClabeAccounts, setIsLoadingClabeAccounts] = useState(false);
+
+  // Get selected account balance
+  const selectedAccount = clabeAccounts.find(acc => acc.clabe === formData.payerAccount);
 
   // 2FA state for transfers - initialize based on user's 2FA status
   const [requires2FA, setRequires2FA] = useState(false);
@@ -548,8 +557,8 @@ export default function TransfersPage() {
           <div className="lg:col-span-2 space-y-4">
             {/* Saved Accounts Selector */}
             {savedAccounts.length > 0 && (
-              <Card>
-                <CardContent className="py-3">
+              <Card className="overflow-visible relative z-20">
+                <CardContent className="py-3 overflow-visible">
                   <div className="relative">
                     <button
                       type="button"
@@ -565,7 +574,7 @@ export default function TransfersPage() {
                     </button>
 
                     {showSavedAccountsDropdown && (
-                      <div className="absolute top-full left-0 right-0 mt-1 z-50 bg-[#0a0a1a] border border-white/[0.08] rounded-lg shadow-xl max-h-64 overflow-y-auto">
+                      <div className="absolute top-full left-0 right-0 mt-1 z-[100] bg-[#0a0a1a] border border-white/[0.08] rounded-lg shadow-2xl max-h-64 overflow-y-auto">
                         {savedAccounts.map((account) => (
                           <button
                             key={account.id}
@@ -598,9 +607,19 @@ export default function TransfersPage() {
             {/* Source Account Selector */}
             <Card>
               <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Building2 className="w-4 h-4 text-white/40" />
-                  Cuenta de Origen
+                <CardTitle className="flex items-center justify-between">
+                  <span className="flex items-center gap-2">
+                    <Building2 className="w-4 h-4 text-white/40" />
+                    Cuenta de Origen
+                  </span>
+                  {selectedAccount && typeof selectedAccount.availableBalance === 'number' && (
+                    <span className="text-sm font-normal">
+                      <span className="text-white/40">Disponible: </span>
+                      <span className="text-green-400 font-mono font-medium">
+                        {formatCurrency(selectedAccount.availableBalance)}
+                      </span>
+                    </span>
+                  )}
                 </CardTitle>
               </CardHeader>
               <CardContent>
@@ -610,7 +629,7 @@ export default function TransfersPage() {
                     { value: '', label: 'Seleccionar cuenta...' },
                     ...clabeAccounts.map((acc) => ({
                       value: acc.clabe,
-                      label: `${acc.alias} - ${acc.clabe.replace(/(.{4})/g, '$1 ').trim()}`,
+                      label: `${acc.alias} - ${acc.clabe.replace(/(.{4})/g, '$1 ').trim()}${typeof acc.availableBalance === 'number' ? ` (${formatCurrency(acc.availableBalance)})` : ''}`,
                     })),
                   ]}
                   value={formData.payerAccount}
@@ -618,6 +637,11 @@ export default function TransfersPage() {
                   error={errors.payerAccount}
                   disabled={isLoadingClabeAccounts}
                 />
+                {selectedAccount && typeof selectedAccount.inTransit === 'number' && selectedAccount.inTransit > 0 && (
+                  <p className="text-xs text-yellow-400/70 mt-2">
+                    En tránsito: {formatCurrency(selectedAccount.inTransit)}
+                  </p>
+                )}
                 {clabeAccounts.length === 0 && !isLoadingClabeAccounts && (
                   <p className="text-xs text-amber-400/70 mt-2">
                     No hay cuentas CLABE registradas. Ve a "Cuentas CLABE" para agregar una.

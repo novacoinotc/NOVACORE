@@ -232,11 +232,12 @@ export async function GET(request: NextRequest) {
     // Note: pending_confirmation = during 20-second grace period (can still cancel)
     // settled_incoming = incoming transactions that are fully settled (scattered)
     // settled_outgoing = outgoing transactions that are sent or settled (reduces available balance)
+    // IMPORTANT: Exclude canceled and returned transactions from totals
     const statsQuery = `
       SELECT
         COUNT(*) as total_count,
-        COALESCE(SUM(CASE WHEN type = 'incoming' THEN amount ELSE 0 END), 0) as total_incoming,
-        COALESCE(SUM(CASE WHEN type = 'outgoing' THEN amount ELSE 0 END), 0) as total_outgoing,
+        COALESCE(SUM(CASE WHEN type = 'incoming' AND status NOT IN ('canceled', 'returned', 'failed') THEN amount ELSE 0 END), 0) as total_incoming,
+        COALESCE(SUM(CASE WHEN type = 'outgoing' AND status NOT IN ('canceled', 'returned', 'failed') THEN amount ELSE 0 END), 0) as total_outgoing,
         COALESCE(SUM(CASE WHEN type = 'outgoing' AND status IN ('pending_confirmation', 'pending', 'sent', 'queued') THEN amount ELSE 0 END), 0) as in_transit,
         COALESCE(SUM(CASE WHEN type = 'incoming' AND status = 'scattered' THEN amount ELSE 0 END), 0) as settled_incoming,
         COALESCE(SUM(CASE WHEN type = 'outgoing' AND status IN ('sent', 'scattered') THEN amount ELSE 0 END), 0) as settled_outgoing

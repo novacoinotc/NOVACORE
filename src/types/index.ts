@@ -134,6 +134,11 @@ export interface ClabeAccount {
   updatedAt: number;
   // Populated fields
   company?: Company;
+  // Balance fields (calculated from transactions)
+  availableBalance?: number;
+  inTransit?: number;
+  settledIncoming?: number;
+  settledOutgoing?: number;
 }
 
 // ==================== USER TYPES ====================

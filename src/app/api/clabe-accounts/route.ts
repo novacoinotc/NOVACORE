@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'crypto';
-import { getAllClabeAccounts, getClabeAccountsByCompanyId, createClabeAccount, getClabeAccountByClabe, getCompanyById, getClabeAccountsForUser, DbClabeAccount } from '@/lib/db';
+import { getAllClabeAccounts, getClabeAccountsByCompanyId, createClabeAccount, getClabeAccountByClabe, getCompanyById, getClabeAccountsForUser, DbClabeAccount, getClabeAccountBalance } from '@/lib/db';
 import { validateClabe } from '@/lib/utils';
 import { authenticateRequest } from '@/lib/auth-middleware';
 
@@ -37,18 +37,28 @@ export async function GET(request: NextRequest) {
       dbClabeAccounts = await getClabeAccountsForUser(currentUser.id);
     }
 
-    // Transform to frontend format
-    const clabeAccounts = dbClabeAccounts.map((ca) => ({
-      id: ca.id,
-      companyId: ca.company_id,
-      clabe: ca.clabe,
-      alias: ca.alias,
-      description: ca.description,
-      isActive: ca.is_active,
-      isMain: ca.is_main,
-      createdAt: new Date(ca.created_at).getTime(),
-      updatedAt: new Date(ca.updated_at).getTime(),
-    }));
+    // Transform to frontend format with balance information
+    const clabeAccounts = await Promise.all(
+      dbClabeAccounts.map(async (ca) => {
+        const balance = await getClabeAccountBalance(ca.id);
+        return {
+          id: ca.id,
+          companyId: ca.company_id,
+          clabe: ca.clabe,
+          alias: ca.alias,
+          description: ca.description,
+          isActive: ca.is_active,
+          isMain: ca.is_main,
+          createdAt: new Date(ca.created_at).getTime(),
+          updatedAt: new Date(ca.updated_at).getTime(),
+          // Balance information
+          availableBalance: balance.availableBalance,
+          inTransit: balance.inTransit,
+          settledIncoming: balance.settledIncoming,
+          settledOutgoing: balance.settledOutgoing,
+        };
+      })
+    );
 
     return NextResponse.json(clabeAccounts);
   } catch (error) {

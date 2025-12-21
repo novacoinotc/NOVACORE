@@ -134,7 +134,8 @@ export default function HistoryPage() {
             alert('URL de CEP no segura.');
             return;
           }
-          window.open(cepUrl, '_blank', 'noopener,noreferrer');
+          // SECURITY: Use validated URL object instead of original input to prevent open redirect
+          window.open(url.toString(), '_blank', 'noopener,noreferrer');
         } catch {
           console.error('Invalid CEP URL format');
           alert('Formato de URL de CEP inválido.');

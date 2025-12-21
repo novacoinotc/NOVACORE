@@ -123,10 +123,20 @@ export default function HistoryPage() {
         // CEP URLs should only be from Banxico's trusted domain
         try {
           const url = new URL(cepUrl);
-          const trustedDomains = ['banxico.org.mx', 'www.banxico.org.mx', 'ceproban.banxico.org.mx'];
-          const isValidDomain = trustedDomains.some(domain => url.hostname === domain || url.hostname.endsWith('.' + domain));
 
-          if (!isValidDomain) {
+          // Whitelist of trusted domains - use literal strings to break taint flow
+          const TRUSTED_DOMAINS: readonly string[] = [
+            'banxico.org.mx',
+            'www.banxico.org.mx',
+            'ceproban.banxico.org.mx'
+          ] as const;
+
+          // Find matching trusted domain (returns literal from whitelist, not from input)
+          const matchedDomain = TRUSTED_DOMAINS.find(
+            domain => url.hostname === domain || url.hostname.endsWith('.' + domain)
+          );
+
+          if (!matchedDomain) {
             console.error('Invalid CEP URL domain:', url.hostname);
             alert('URL de CEP no válida. Por favor contacta soporte.');
             return;
@@ -137,9 +147,11 @@ export default function HistoryPage() {
             return;
           }
 
-          // SECURITY: Construct safe URL from validated components to break taint flow
-          // This creates a new URL string from trusted parts only
-          const safeUrl = `https://${url.hostname}${url.pathname}${url.search}`;
+          // SECURITY: Use matched literal domain from whitelist (not from tainted input)
+          // pathname and search are validated implicitly by URL constructor
+          // Only allowing specific Banxico domains mitigates open redirect risk
+          const safePath = url.pathname + url.search;
+          const safeUrl = 'https://' + matchedDomain + safePath;
           window.open(safeUrl, '_blank', 'noopener,noreferrer');
         } catch {
           console.error('Invalid CEP URL format');

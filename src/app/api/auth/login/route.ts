@@ -27,6 +27,10 @@ import {
 
 const LOCKOUT_THRESHOLD = 5;
 
+// SECURITY: Generate dummy hash at startup for timing attack prevention
+// This avoids hardcoding a hash value while maintaining constant-time behavior
+const DUMMY_HASH = bcrypt.hashSync('dummy_password_for_timing_attack_prevention', 12);
+
 export async function POST(request: NextRequest) {
   const clientIP = getClientIP(request);
   const userAgent = getUserAgent(request);
@@ -72,9 +76,7 @@ export async function POST(request: NextRequest) {
     const dbUser = await getUserByEmail(email);
 
     // SECURITY: Always perform password comparison to prevent timing attacks
-    // If user doesn't exist, compare against a dummy hash to maintain constant time
-    const DUMMY_HASH = '$2a$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/X4.TJzVL.nHe3KRLW';
-
+    // If user doesn't exist, compare against module-level dummy hash to maintain constant time
     if (!dbUser) {
       // Perform a dummy bcrypt comparison to prevent timing attacks
       // This ensures the response time is the same whether user exists or not

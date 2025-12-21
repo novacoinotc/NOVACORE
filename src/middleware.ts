@@ -96,10 +96,10 @@ export function middleware(request: NextRequest) {
 
   // Content Security Policy
   // Note: Next.js requires 'unsafe-inline' for scripts due to hydration
-  // worker-src 'self' blob: needed for Tesseract.js OCR Web Workers
+  // worker-src 'self' blob: https://cdn.jsdelivr.net needed for Tesseract.js OCR
   response.headers.set(
     'Content-Security-Policy',
-    "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: https: blob:; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self' https://api.opm.mx https://apiuat.opm.mx https:; worker-src 'self' blob:; frame-ancestors 'none'; base-uri 'self'; form-action 'self';"
+    "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: https: blob:; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self' https://api.opm.mx https://apiuat.opm.mx https:; worker-src 'self' blob: https://cdn.jsdelivr.net; frame-ancestors 'none'; base-uri 'self'; form-action 'self';"
   );
 
   // Handle preflight OPTIONS requests

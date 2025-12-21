@@ -234,37 +234,37 @@ export default function HistoryPage() {
   };
 
   return (
-    <div className="p-6 space-y-6 max-w-7xl mx-auto">
+    <div className="p-3 md:p-6 space-y-4 md:space-y-6 max-w-7xl mx-auto">
       <div>
-        <h1 className="text-2xl font-bold text-white">Historial</h1>
-        <p className="text-white/40 text-sm mt-1">Consulta todas tus operaciones</p>
+        <h1 className="text-xl md:text-2xl font-bold text-white">Historial</h1>
+        <p className="text-white/40 text-xs md:text-sm mt-1">Consulta todas tus operaciones</p>
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="backdrop-blur-xl bg-gradient-to-br from-purple-500/10 to-pink-500/10 border border-purple-500/20 rounded-xl p-5">
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-white/60 text-sm">Transacciones</span>
-            <button onClick={fetchTransactions} disabled={isLoading} className="p-1.5 text-white/30 hover:text-white hover:bg-white/[0.05] rounded transition-colors">
-              <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 md:gap-4">
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="backdrop-blur-xl bg-gradient-to-br from-purple-500/10 to-pink-500/10 border border-purple-500/20 rounded-xl p-3 md:p-5">
+          <div className="flex items-center justify-between mb-2 md:mb-3">
+            <span className="text-white/60 text-xs md:text-sm">Transacciones</span>
+            <button onClick={fetchTransactions} disabled={isLoading} className="p-1 md:p-1.5 text-white/30 hover:text-white hover:bg-white/[0.05] rounded transition-colors touch-manipulation">
+              <RefreshCw className={`w-3.5 h-3.5 md:w-4 md:h-4 ${isLoading ? 'animate-spin' : ''}`} />
             </button>
           </div>
-          <div className="flex items-baseline gap-2">
-            <DollarSign className="w-5 h-5 text-purple-400" />
-            <span className="text-2xl font-bold text-white">{isLoading ? '...' : stats.totalCount.toLocaleString()}</span>
+          <div className="flex items-baseline gap-1.5 md:gap-2">
+            <DollarSign className="w-4 h-4 md:w-5 md:h-5 text-purple-400" />
+            <span className="text-lg md:text-2xl font-bold text-white">{isLoading ? '...' : stats.totalCount.toLocaleString()}</span>
           </div>
         </motion.div>
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="backdrop-blur-xl bg-white/[0.02] border border-white/[0.06] rounded-xl p-5">
-          <div className="flex items-center gap-2 mb-3"><TrendingUp className="w-4 h-4 text-green-400" /><span className="text-white/60 text-sm">Total Entrante</span></div>
-          <div className="flex items-baseline gap-2"><ArrowDownLeft className="w-5 h-5 text-green-400" /><span className="text-2xl font-bold text-green-400">{formatCurrency(stats.totalIncoming)}</span></div>
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="backdrop-blur-xl bg-white/[0.02] border border-white/[0.06] rounded-xl p-3 md:p-5">
+          <div className="flex items-center gap-1.5 md:gap-2 mb-2 md:mb-3"><TrendingUp className="w-3.5 h-3.5 md:w-4 md:h-4 text-green-400" /><span className="text-white/60 text-xs md:text-sm">Entrante</span></div>
+          <div className="flex items-baseline gap-1.5 md:gap-2"><ArrowDownLeft className="w-4 h-4 md:w-5 md:h-5 text-green-400 hidden sm:block" /><span className="text-sm md:text-2xl font-bold text-green-400 truncate">{formatCurrency(stats.totalIncoming)}</span></div>
         </motion.div>
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} className="backdrop-blur-xl bg-white/[0.02] border border-white/[0.06] rounded-xl p-5">
-          <div className="flex items-center gap-2 mb-3"><TrendingDown className="w-4 h-4 text-red-400" /><span className="text-white/60 text-sm">Total Saliente</span></div>
-          <div className="flex items-baseline gap-2"><ArrowUpRight className="w-5 h-5 text-red-400" /><span className="text-2xl font-bold text-red-400">{formatCurrency(stats.totalOutgoing)}</span></div>
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} className="backdrop-blur-xl bg-white/[0.02] border border-white/[0.06] rounded-xl p-3 md:p-5">
+          <div className="flex items-center gap-1.5 md:gap-2 mb-2 md:mb-3"><TrendingDown className="w-3.5 h-3.5 md:w-4 md:h-4 text-red-400" /><span className="text-white/60 text-xs md:text-sm">Saliente</span></div>
+          <div className="flex items-baseline gap-1.5 md:gap-2"><ArrowUpRight className="w-4 h-4 md:w-5 md:h-5 text-red-400 hidden sm:block" /><span className="text-sm md:text-2xl font-bold text-red-400 truncate">{formatCurrency(stats.totalOutgoing)}</span></div>
         </motion.div>
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }} className="backdrop-blur-xl bg-white/[0.02] border border-white/[0.06] rounded-xl p-5">
-          <div className="flex items-center gap-2 mb-3"><Clock className="w-4 h-4 text-yellow-400" /><span className="text-white/60 text-sm">En Tránsito</span></div>
-          <div className="flex items-baseline gap-2"><span className="text-2xl font-bold text-yellow-400">{formatCurrency(stats.inTransit)}</span></div>
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }} className="backdrop-blur-xl bg-white/[0.02] border border-white/[0.06] rounded-xl p-3 md:p-5">
+          <div className="flex items-center gap-1.5 md:gap-2 mb-2 md:mb-3"><Clock className="w-3.5 h-3.5 md:w-4 md:h-4 text-yellow-400" /><span className="text-white/60 text-xs md:text-sm">En Tránsito</span></div>
+          <div className="flex items-baseline gap-1.5 md:gap-2"><span className="text-sm md:text-2xl font-bold text-yellow-400 truncate">{formatCurrency(stats.inTransit)}</span></div>
         </motion.div>
       </div>
 
@@ -305,12 +305,12 @@ export default function HistoryPage() {
           <table className="w-full">
             <thead>
               <tr className="border-b border-white/[0.06]">
-                <th className="text-right text-white/40 text-xs font-medium uppercase tracking-wider px-6 py-3">Monto</th>
-                <th className="text-left text-white/40 text-xs font-medium uppercase tracking-wider px-6 py-3">Nombre</th>
-                <th className="text-left text-white/40 text-xs font-medium uppercase tracking-wider px-6 py-3">Fecha y Hora</th>
-                <th className="text-left text-white/40 text-xs font-medium uppercase tracking-wider px-6 py-3">Clave Rastreo</th>
-                <th className="text-center text-white/40 text-xs font-medium uppercase tracking-wider px-6 py-3">Tipo</th>
-                <th className="text-center text-white/40 text-xs font-medium uppercase tracking-wider px-6 py-3"></th>
+                <th className="text-right text-white/40 text-xs font-medium uppercase tracking-wider px-3 md:px-6 py-3">Monto</th>
+                <th className="text-left text-white/40 text-xs font-medium uppercase tracking-wider px-3 md:px-6 py-3">Nombre</th>
+                <th className="text-left text-white/40 text-xs font-medium uppercase tracking-wider px-3 md:px-6 py-3 hidden sm:table-cell">Fecha</th>
+                <th className="text-left text-white/40 text-xs font-medium uppercase tracking-wider px-3 md:px-6 py-3 hidden lg:table-cell">Clave Rastreo</th>
+                <th className="text-center text-white/40 text-xs font-medium uppercase tracking-wider px-2 md:px-6 py-3">Tipo</th>
+                <th className="text-center text-white/40 text-xs font-medium uppercase tracking-wider px-2 md:px-6 py-3"></th>
               </tr>
             </thead>
             <tbody>
@@ -318,31 +318,31 @@ export default function HistoryPage() {
                 const typeIndicator = getTypeIndicator(tx);
                 return (
                 <motion.tr key={tx.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: index * 0.02 }} className="border-b border-white/[0.04] hover:bg-white/[0.02] transition-colors cursor-pointer" onClick={() => setSelectedTransaction(tx)}>
-                  <td className="px-6 py-4 text-right">
-                    <span className={`font-mono font-semibold ${getAmountColor(tx)}`}>
+                  <td className="px-3 md:px-6 py-3 md:py-4 text-right">
+                    <span className={`font-mono font-semibold text-sm md:text-base ${getAmountColor(tx)}`}>
                       {tx.status === 'canceled' ? '' : (tx.type === 'incoming' ? '+' : '-')}{formatCurrency(tx.amount)}
                     </span>
                   </td>
-                  <td className="px-6 py-4">
-                    <p className={`font-medium text-sm truncate max-w-[180px] ${tx.status === 'canceled' ? 'text-gray-400' : 'text-white'}`}>
+                  <td className="px-3 md:px-6 py-3 md:py-4">
+                    <p className={`font-medium text-xs md:text-sm truncate max-w-[100px] md:max-w-[180px] ${tx.status === 'canceled' ? 'text-gray-400' : 'text-white'}`}>
                       {tx.type === 'incoming' ? tx.payerName : tx.beneficiaryName || 'Sin nombre'}
                     </p>
                   </td>
-                  <td className="px-6 py-4">
-                    <span className="text-white/60 text-sm">{formatDate(tx.createdAt)}</span>
+                  <td className="px-3 md:px-6 py-3 md:py-4 hidden sm:table-cell">
+                    <span className="text-white/60 text-xs md:text-sm">{formatDate(tx.createdAt)}</span>
                   </td>
-                  <td className="px-6 py-4">
+                  <td className="px-3 md:px-6 py-3 md:py-4 hidden lg:table-cell">
                     <code className="text-purple-400 text-xs font-mono">{tx.trackingKey.length > 18 ? tx.trackingKey.slice(0, 18) + '...' : tx.trackingKey}</code>
                   </td>
-                  <td className="px-6 py-4 text-center">
-                    <div className="flex items-center justify-center gap-2">
-                      <div className={`p-1.5 ${typeIndicator.bgColor} rounded-lg`}>
-                        <typeIndicator.Icon className={`w-4 h-4 ${typeIndicator.iconColor}`} />
+                  <td className="px-2 md:px-6 py-3 md:py-4 text-center">
+                    <div className="flex items-center justify-center">
+                      <div className={`p-1 md:p-1.5 ${typeIndicator.bgColor} rounded-lg`}>
+                        <typeIndicator.Icon className={`w-3.5 h-3.5 md:w-4 md:h-4 ${typeIndicator.iconColor}`} />
                       </div>
                     </div>
                   </td>
-                  <td className="px-6 py-4 text-center">
-                    <button onClick={(e) => { e.stopPropagation(); setSelectedTransaction(tx); }} className="p-2 text-white/40 hover:text-white hover:bg-white/[0.05] rounded-lg transition-colors">
+                  <td className="px-2 md:px-6 py-3 md:py-4 text-center">
+                    <button onClick={(e) => { e.stopPropagation(); setSelectedTransaction(tx); }} className="p-2 text-white/40 hover:text-white hover:bg-white/[0.05] rounded-lg transition-colors touch-manipulation">
                       <Eye className="w-4 h-4" />
                     </button>
                   </td>
@@ -364,11 +364,13 @@ export default function HistoryPage() {
         {isLoading && <div className="text-center py-12"><RefreshCw className="w-8 h-8 text-purple-500 animate-spin mx-auto" /></div>}
 
         {pagination.totalPages > 1 && (
-          <div className="flex items-center justify-between px-6 py-4 border-t border-white/[0.06]">
-            <span className="text-white/40 text-sm">Mostrando {((pagination.page - 1) * pagination.itemsPerPage) + 1} - {Math.min(pagination.page * pagination.itemsPerPage, pagination.total)} de {pagination.total}</span>
+          <div className="flex items-center justify-between px-3 md:px-6 py-3 md:py-4 border-t border-white/[0.06]">
+            <span className="text-white/40 text-xs md:text-sm">
+              <span className="hidden sm:inline">Mostrando </span>{((pagination.page - 1) * pagination.itemsPerPage) + 1}-{Math.min(pagination.page * pagination.itemsPerPage, pagination.total)} de {pagination.total}
+            </span>
             <div className="flex gap-2">
-              <button onClick={() => setPagination(prev => ({ ...prev, page: prev.page - 1 }))} disabled={pagination.page <= 1} className="p-2 bg-white/[0.03] border border-white/[0.08] rounded-lg disabled:opacity-50 hover:bg-white/[0.05] transition-colors"><ChevronLeft className="w-4 h-4 text-white/60" /></button>
-              <button onClick={() => setPagination(prev => ({ ...prev, page: prev.page + 1 }))} disabled={pagination.page >= pagination.totalPages} className="p-2 bg-white/[0.03] border border-white/[0.08] rounded-lg disabled:opacity-50 hover:bg-white/[0.05] transition-colors"><ChevronRight className="w-4 h-4 text-white/60" /></button>
+              <button onClick={() => setPagination(prev => ({ ...prev, page: prev.page - 1 }))} disabled={pagination.page <= 1} className="p-2.5 bg-white/[0.03] border border-white/[0.08] rounded-lg disabled:opacity-50 hover:bg-white/[0.05] transition-colors touch-manipulation"><ChevronLeft className="w-4 h-4 text-white/60" /></button>
+              <button onClick={() => setPagination(prev => ({ ...prev, page: prev.page + 1 }))} disabled={pagination.page >= pagination.totalPages} className="p-2.5 bg-white/[0.03] border border-white/[0.08] rounded-lg disabled:opacity-50 hover:bg-white/[0.05] transition-colors touch-manipulation"><ChevronRight className="w-4 h-4 text-white/60" /></button>
             </div>
           </div>
         )}

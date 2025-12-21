@@ -83,7 +83,8 @@ export function middleware(request: NextRequest) {
   response.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
 
   // Permissions Policy (restrict browser features)
-  response.headers.set('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+  // camera=(self) needed for OCR feature to use mobile camera
+  response.headers.set('Permissions-Policy', 'camera=(self), microphone=(), geolocation=()');
 
   // HSTS - Force HTTPS in production
   if (process.env.NODE_ENV === 'production') {
@@ -95,10 +96,10 @@ export function middleware(request: NextRequest) {
 
   // Content Security Policy
   // Note: Next.js requires 'unsafe-inline' for scripts due to hydration
-  // In production, consider using nonces for better security
+  // worker-src 'self' blob: needed for Tesseract.js OCR Web Workers
   response.headers.set(
     'Content-Security-Policy',
-    "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: https:; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self' https://api.opm.mx https://apiuat.opm.mx; frame-ancestors 'none'; base-uri 'self'; form-action 'self';"
+    "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: https: blob:; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self' https://api.opm.mx https://apiuat.opm.mx https:; worker-src 'self' blob:; frame-ancestors 'none'; base-uri 'self'; form-action 'self';"
   );
 
   // Handle preflight OPTIONS requests

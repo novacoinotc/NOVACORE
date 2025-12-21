@@ -393,13 +393,25 @@ export default function TransfersPage() {
       }
     }
 
+    // If we found at least CLABE or name, apply defaults for missing fields
+    if (updates.beneficiaryAccount || updates.beneficiaryName) {
+      // Default concept if not detected
+      if (!updates.concept) {
+        updates.concept = 'TRANSFER';
+      }
+      // Default numerical reference if not set
+      if (!formData.numericalReference) {
+        updates.numericalReference = '1';
+      }
+    }
+
     // Apply updates if any were found
     if (Object.keys(updates).length > 0) {
       setFormData(prev => ({ ...prev, ...updates }));
       return true;
     }
     return false;
-  }, []);
+  }, [formData.numericalReference]);
 
   // OCR image processing handler
   const handleImageUpload = useCallback(async (file: File) => {

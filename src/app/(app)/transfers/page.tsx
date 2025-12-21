@@ -78,9 +78,6 @@ export default function TransfersPage() {
   }[]>([]);
   const [isLoadingClabeAccounts, setIsLoadingClabeAccounts] = useState(false);
 
-  // Get selected account balance
-  const selectedAccount = clabeAccounts.find(acc => acc.clabe === formData.payerAccount);
-
   // Recent transfers for "repeat transfer" feature
   interface RecentTransfer {
     id: string;
@@ -125,6 +122,9 @@ export default function TransfersPage() {
     concept: '',
     numericalReference: '',
   });
+
+  // Get selected account balance (must be after formData is defined)
+  const selectedAccount = clabeAccounts.find(acc => acc.clabe === formData.payerAccount);
 
   const [errors, setErrors] = useState<Record<string, string>>({});
 

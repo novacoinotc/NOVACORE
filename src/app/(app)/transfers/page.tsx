@@ -251,17 +251,19 @@ export default function TransfersPage() {
     }
   };
 
-  // Smart paste handler - detects CLABE, name, and amount from pasted text
+  // Smart paste handler - detects CLABE, name, amount, and concept from pasted text
   const handleSmartPaste = useCallback((pastedText: string) => {
     const updates: Partial<typeof formData> = {};
 
-    // Clean the text
+    // Keep original text for line-based matching, also create space-normalized version
+    const originalText = pastedText.trim();
     const text = pastedText.replace(/\s+/g, ' ').trim();
 
     // Detect CLABE (18 consecutive digits or with spaces/separators)
     const clabePatterns = [
       /CLABE[:\s]*(\d{18})/i,
       /Cuenta[:\s]*(\d{18})/i,
+      /Cuenta\s*CLABE[:\s]*(\d{18})/i,
       /(\d{3}[\s.-]?\d{3}[\s.-]?\d{11}[\s.-]?\d{1})/,
       /\b(\d{18})\b/,
     ];
@@ -282,27 +284,51 @@ export default function TransfersPage() {
       }
     }
 
-    // Detect beneficiary name
+    // Detect beneficiary name - more flexible patterns for OCR
     const namePatterns = [
-      /(?:Beneficiario|Nombre|Titular|A nombre de)[:\s]+([A-Za-záéíóúñÁÉÍÓÚÑ\s]+?)(?:\n|$|CLABE|Cuenta|RFC|Banco)/i,
-      /(?:Razón Social)[:\s]+([A-Za-záéíóúñÁÉÍÓÚÑ\s.,]+?)(?:\n|$)/i,
+      // Common labels with various separators
+      /(?:Beneficiario|Nombre|Titular|A nombre de|Destinatario|Para|Receptor)[:\s]+([A-Za-záéíóúñÁÉÍÓÚÑüÜ\s]+?)(?:\s+(?:CLABE|Cuenta|RFC|Banco|Monto|Importe|\$|\d{18})|\s*$)/i,
+      /(?:Razón\s*Social|Razon\s*Social)[:\s]+([A-Za-záéíóúñÁÉÍÓÚÑüÜ\s.,]+?)(?:\s+(?:CLABE|Cuenta|RFC|\d{18})|\s*$)/i,
+      // Handle name after CLABE (common format: "CLABE: 123... Nombre: Juan...")
+      /(?:Nombre|Beneficiario)[:\s]+([A-Z][A-Za-záéíóúñÁÉÍÓÚÑüÜ\s]{2,39})/i,
     ];
 
+    // First try on original text (preserves line structure)
     for (const pattern of namePatterns) {
-      const match = text.match(pattern);
+      const match = originalText.match(pattern);
       if (match) {
         const name = sanitizeForSpei(match[1].trim());
-        if (name.length >= 3) {
-          updates.beneficiaryName = name.substring(0, 40); // SPEI limit
+        if (name.length >= 3 && name.length <= 40) {
+          updates.beneficiaryName = name.toUpperCase();
           break;
         }
       }
     }
 
-    // Detect amount
+    // If no name found, try on normalized text
+    if (!updates.beneficiaryName) {
+      for (const pattern of namePatterns) {
+        const match = text.match(pattern);
+        if (match) {
+          const name = sanitizeForSpei(match[1].trim());
+          if (name.length >= 3 && name.length <= 40) {
+            updates.beneficiaryName = name.toUpperCase();
+            break;
+          }
+        }
+      }
+    }
+
+    // Detect amount - more patterns for different formats
     const amountPatterns = [
-      /(?:Monto|Importe|Total|Cantidad)[:\s]*\$?[\s]*([0-9,]+(?:\.[0-9]{2})?)/i,
-      /\$[\s]*([0-9,]+(?:\.[0-9]{2})?)/,
+      // With labels
+      /(?:Monto|Importe|Total|Cantidad|Pago|Transferencia)[:\s]*\$?\s*([0-9,]+(?:\.[0-9]{1,2})?)/i,
+      /(?:Monto|Importe|Total|Cantidad)[:\s]*MXN?\s*\$?\s*([0-9,]+(?:\.[0-9]{1,2})?)/i,
+      // Currency symbol with amount
+      /\$\s*([0-9,]+\.[0-9]{2})\b/,
+      /MXN\s*\$?\s*([0-9,]+(?:\.[0-9]{2})?)/i,
+      // Large amounts with commas (1,000.00 or 1000.00)
+      /\b([1-9][0-9]{0,2}(?:,[0-9]{3})*\.[0-9]{2})\b/,
     ];
 
     for (const pattern of amountPatterns) {
@@ -310,25 +336,41 @@ export default function TransfersPage() {
       if (match) {
         const amount = match[1].replace(/,/g, '');
         const numAmount = parseFloat(amount);
-        if (!isNaN(numAmount) && numAmount > 0) {
+        if (!isNaN(numAmount) && numAmount > 0 && numAmount < 100000000) {
           updates.amount = numAmount.toString();
           break;
         }
       }
     }
 
-    // Detect concept
+    // Detect concept/reference - more flexible patterns
     const conceptPatterns = [
-      /(?:Concepto|Referencia|Descripción)[:\s]+([A-Za-z0-9áéíóúñÁÉÍÓÚÑ\s.,]+?)(?:\n|$)/i,
+      /(?:Concepto|Referencia|Descripción|Descripcion|Motivo|Por concepto de)[:\s]+([A-Za-z0-9áéíóúñÁÉÍÓÚÑüÜ\s.,\-\/]+?)(?:\s+(?:Monto|Importe|Total|\$|Fecha)|\s*$)/i,
+      /(?:Concepto|Referencia)[:\s]+([A-Za-z0-9áéíóúñÁÉÍÓÚÑüÜ\s.,\-\/]{3,40})/i,
     ];
 
+    // Try on original text first
     for (const pattern of conceptPatterns) {
-      const match = text.match(pattern);
+      const match = originalText.match(pattern);
       if (match) {
         const concept = sanitizeForSpei(match[1].trim());
-        if (concept.length >= 3) {
-          updates.concept = concept.substring(0, 40);
+        if (concept.length >= 3 && concept.length <= 40) {
+          updates.concept = concept.toUpperCase();
           break;
+        }
+      }
+    }
+
+    // If no concept found, try normalized text
+    if (!updates.concept) {
+      for (const pattern of conceptPatterns) {
+        const match = text.match(pattern);
+        if (match) {
+          const concept = sanitizeForSpei(match[1].trim());
+          if (concept.length >= 3 && concept.length <= 40) {
+            updates.concept = concept.toUpperCase();
+            break;
+          }
         }
       }
     }

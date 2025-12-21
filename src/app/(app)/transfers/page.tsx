@@ -258,6 +258,7 @@ export default function TransfersPage() {
     // Keep original text for line-based matching, also create space-normalized version
     const originalText = pastedText.trim();
     const text = pastedText.replace(/\s+/g, ' ').trim();
+    const lines = originalText.split(/[\n\r]+/).map(l => l.trim()).filter(l => l.length > 0);
 
     // Detect CLABE (18 consecutive digits or with spaces/separators)
     const clabePatterns = [
@@ -293,7 +294,7 @@ export default function TransfersPage() {
       /(?:Nombre|Beneficiario)[:\s]+([A-Z][A-Za-záéíóúñÁÉÍÓÚÑüÜ\s]{2,39})/i,
     ];
 
-    // First try on original text (preserves line structure)
+    // First try labeled patterns on original text
     for (const pattern of namePatterns) {
       const match = originalText.match(pattern);
       if (match) {
@@ -305,14 +306,24 @@ export default function TransfersPage() {
       }
     }
 
-    // If no name found, try on normalized text
+    // If no name found with labels, try unlabeled line detection
+    // Look for a line that looks like a name (letters only, 2+ words)
     if (!updates.beneficiaryName) {
-      for (const pattern of namePatterns) {
-        const match = text.match(pattern);
-        if (match) {
-          const name = sanitizeForSpei(match[1].trim());
-          if (name.length >= 3 && name.length <= 40) {
-            updates.beneficiaryName = name.toUpperCase();
+      for (const line of lines) {
+        // Skip if line is a CLABE (18 digits)
+        if (/^\d{18}$/.test(line.replace(/[\s.-]/g, ''))) continue;
+        // Skip if line looks like an amount (numbers with comma/period)
+        if (/^[\$]?\s*[\d,]+(\.\d{1,2})?$/.test(line)) continue;
+        // Skip if line is too short or too long
+        if (line.length < 5 || line.length > 50) continue;
+
+        // Check if line looks like a name (mostly letters, possibly with spaces)
+        const nameMatch = line.match(/^([A-Za-záéíóúñÁÉÍÓÚÑüÜ\s]{5,40})$/);
+        if (nameMatch) {
+          const potentialName = sanitizeForSpei(nameMatch[1].trim());
+          // Must have at least one space (first + last name) or be a reasonable single word
+          if (potentialName.length >= 5 && /[A-Za-z]/.test(potentialName)) {
+            updates.beneficiaryName = potentialName.toUpperCase();
             break;
           }
         }
@@ -343,13 +354,34 @@ export default function TransfersPage() {
       }
     }
 
+    // If no amount found with labels, try unlabeled amount detection
+    if (!updates.amount) {
+      for (const line of lines) {
+        // Skip if line is a CLABE
+        if (/^\d{18}$/.test(line.replace(/[\s.-]/g, ''))) continue;
+        // Skip if line looks like a name
+        if (/^[A-Za-záéíóúñÁÉÍÓÚÑüÜ\s]+$/.test(line) && line.length > 4) continue;
+
+        // Match amount patterns: 15,000 or 15000 or 15,000.00 or $15,000
+        const amountMatch = line.match(/^\$?\s*([0-9,]+(?:\.[0-9]{1,2})?)$/);
+        if (amountMatch) {
+          const amount = amountMatch[1].replace(/,/g, '');
+          const numAmount = parseFloat(amount);
+          if (!isNaN(numAmount) && numAmount > 0 && numAmount < 100000000) {
+            updates.amount = numAmount.toString();
+            break;
+          }
+        }
+      }
+    }
+
     // Detect concept/reference - more flexible patterns
     const conceptPatterns = [
       /(?:Concepto|Referencia|Descripción|Descripcion|Motivo|Por concepto de)[:\s]+([A-Za-z0-9áéíóúñÁÉÍÓÚÑüÜ\s.,\-\/]+?)(?:\s+(?:Monto|Importe|Total|\$|Fecha)|\s*$)/i,
       /(?:Concepto|Referencia)[:\s]+([A-Za-z0-9áéíóúñÁÉÍÓÚÑüÜ\s.,\-\/]{3,40})/i,
     ];
 
-    // Try on original text first
+    // Try labeled patterns on original text first
     for (const pattern of conceptPatterns) {
       const match = originalText.match(pattern);
       if (match) {
@@ -357,20 +389,6 @@ export default function TransfersPage() {
         if (concept.length >= 3 && concept.length <= 40) {
           updates.concept = concept.toUpperCase();
           break;
-        }
-      }
-    }
-
-    // If no concept found, try normalized text
-    if (!updates.concept) {
-      for (const pattern of conceptPatterns) {
-        const match = text.match(pattern);
-        if (match) {
-          const concept = sanitizeForSpei(match[1].trim());
-          if (concept.length >= 3 && concept.length <= 40) {
-            updates.concept = concept.toUpperCase();
-            break;
-          }
         }
       }
     }

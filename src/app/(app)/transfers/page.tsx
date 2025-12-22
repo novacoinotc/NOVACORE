@@ -1015,7 +1015,6 @@ export default function TransfersPage() {
                     accept="image/*"
                     onChange={handleFileInputChange}
                     className="hidden"
-                    capture="environment"
                   />
 
                   <button

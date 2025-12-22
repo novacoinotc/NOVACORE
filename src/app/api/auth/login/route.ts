@@ -354,9 +354,10 @@ export async function POST(request: NextRequest) {
     const requiresTotpSetup = !securityStatus.totpEnabled;
 
     // SECURITY FIX: Create response with httpOnly secure cookie
+    // SECURITY: Token is NOT included in JSON response - only sent via httpOnly cookie
+    // This prevents XSS attacks from stealing the session token
     const response = NextResponse.json({
       user,
-      token, // Still include token in response for backward compatibility
       expiresAt,
       requiresTotpSetup, // Frontend should redirect to 2FA setup if true
     });

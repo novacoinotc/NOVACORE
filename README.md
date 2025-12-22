@@ -49,7 +49,7 @@ Crea un archivo `.env.local` basado en `.env.example`:
 
 \`\`\`env
 # OPM API Configuration
-NEXT_PUBLIC_OPM_API_URL=https://apiuat.opm.mx
+OPM_API_URL=https://apiuat.opm.mx
 OPM_API_KEY=your_api_key_here
 
 # RSA Keys (Base64 encoded)

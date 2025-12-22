@@ -124,10 +124,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return { success: false, error: data.error || 'Error de autenticación' };
       }
 
-      // Save session to localStorage
+      // SECURITY FIX: Save session to localStorage WITHOUT the token
+      // The token is stored only in httpOnly cookie (set by server)
+      // This prevents XSS attacks from stealing session tokens
       const session = {
         user: data.user,
-        token: data.token,
+        // NOTE: token is NOT stored here - it's only in httpOnly cookie
         expiresAt: data.expiresAt,
         requiresTotpSetup: data.requiresTotpSetup || false,
       };
@@ -154,26 +156,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const logout = useCallback(async () => {
     // Call server-side logout to invalidate session
+    // SECURITY FIX: Use credentials: 'include' to send httpOnly cookie
+    // No need to manually send token - cookie is sent automatically
     try {
-      const sessionStr = localStorage.getItem('novacorp_session');
-      if (sessionStr) {
-        const session = JSON.parse(sessionStr);
-        if (session.token) {
-          await fetch('/api/auth/logout', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${session.token}`,
-            },
-            body: JSON.stringify({}),
-          }).catch(() => {}); // Ignore errors - we're logging out anyway
-        }
-      }
+      await fetch('/api/auth/logout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include', // Send httpOnly cookie
+        body: JSON.stringify({}),
+      }).catch(() => {}); // Ignore errors - we're logging out anyway
     } catch {
       // Ignore errors during logout
     }
 
-    // Clear local storage
+    // Clear local storage (user data only, token was never stored)
     try {
       localStorage.removeItem('novacorp_session');
     } catch {
@@ -275,41 +271,32 @@ export function useRequirePermission(permission: Permission, redirectTo = '/dash
 
 /**
  * Get authentication headers for API requests
- * Returns headers with Bearer token from stored session
+ * SECURITY FIX: No longer includes token - authentication is via httpOnly cookie
+ * Returns basic headers, cookie is sent automatically via credentials: 'include'
  */
 export function getAuthHeaders(): HeadersInit {
   const headers: HeadersInit = {
     'Content-Type': 'application/json',
   };
 
-  try {
-    const sessionStr = localStorage.getItem('novacorp_session');
-    if (sessionStr) {
-      const session = JSON.parse(sessionStr);
-      if (session.token) {
-        headers['Authorization'] = `Bearer ${session.token}`;
-      }
-      // Also include x-user-id for backward compatibility during transition
-      if (session.user?.id) {
-        headers['x-user-id'] = session.user.id;
-      }
-    }
-  } catch {
-    // Ignore errors
-  }
+  // SECURITY FIX: Token is no longer sent via Authorization header
+  // Authentication is handled by httpOnly cookie sent automatically
+  // This prevents XSS attacks from stealing session tokens
 
   return headers;
 }
 
 /**
  * Create authenticated fetch function
- * Automatically includes auth headers
+ * SECURITY FIX: Uses credentials: 'include' to send httpOnly cookie
+ * No longer sends token via Authorization header
  */
 export async function authFetch(url: string, options: RequestInit = {}): Promise<Response> {
   const headers = getAuthHeaders();
 
   return fetch(url, {
     ...options,
+    credentials: 'include', // SECURITY FIX: Send httpOnly cookie automatically
     headers: {
       ...headers,
       ...options.headers,

@@ -1307,15 +1307,24 @@ export async function confirmPendingTransaction(
   return result[0] as DbTransaction | null;
 }
 
+// SECURITY FIX: Require mandatory clabeAccountIds to prevent data leakage
+// This function now REQUIRES a list of CLABE IDs that the user has access to
+// An empty array means no access (returns empty results), not "access to all"
 export async function listTransactions(params: {
+  clabeAccountIds: string[]; // MANDATORY: List of CLABE IDs user has access to
   type?: 'incoming' | 'outgoing';
   status?: string;
-  clabeAccountId?: string;
+  clabeAccountId?: string; // Optional: filter to specific CLABE within allowed list
   from?: Date;
   to?: Date;
   page?: number;
   itemsPerPage?: number;
 }): Promise<{ transactions: DbTransaction[]; total: number }> {
+  // SECURITY: If no CLABE IDs provided, return empty results (no access)
+  if (!params.clabeAccountIds || params.clabeAccountIds.length === 0) {
+    return { transactions: [], total: 0 };
+  }
+
   const page = params.page || 1;
   const itemsPerPage = params.itemsPerPage || 50;
   const offset = (page - 1) * itemsPerPage;
@@ -1326,13 +1335,19 @@ export async function listTransactions(params: {
 
   const type = params.type && validTypes.includes(params.type) ? params.type : null;
   const status = params.status && validStatuses.includes(params.status) ? params.status : null;
-  const clabeAccountId = params.clabeAccountId || null;
 
-  // Use parameterized query with conditional filtering
+  // If specific CLABE requested, verify it's in allowed list
+  let clabeAccountId: string | null = null;
+  if (params.clabeAccountId && params.clabeAccountIds.includes(params.clabeAccountId)) {
+    clabeAccountId = params.clabeAccountId;
+  }
+
+  // Use parameterized query with MANDATORY CLABE filtering
   const countResult = await sql`
     SELECT COUNT(*) as count FROM transactions
     WHERE
-      (${type}::text IS NULL OR type = ${type})
+      clabe_account_id = ANY(${params.clabeAccountIds})
+      AND (${type}::text IS NULL OR type = ${type})
       AND (${status}::text IS NULL OR status = ${status})
       AND (${clabeAccountId}::text IS NULL OR clabe_account_id = ${clabeAccountId})
   `;
@@ -1341,7 +1356,8 @@ export async function listTransactions(params: {
   const result = await sql`
     SELECT * FROM transactions
     WHERE
-      (${type}::text IS NULL OR type = ${type})
+      clabe_account_id = ANY(${params.clabeAccountIds})
+      AND (${type}::text IS NULL OR type = ${type})
       AND (${status}::text IS NULL OR status = ${status})
       AND (${clabeAccountId}::text IS NULL OR clabe_account_id = ${clabeAccountId})
     ORDER BY created_at DESC
@@ -1647,9 +1663,11 @@ export async function createSavedAccount(savedAccount: {
   return result[0] as DbSavedAccount;
 }
 
-export async function getSavedAccountById(id: string): Promise<DbSavedAccount | null> {
+// SECURITY FIX: Require userId to prevent IDOR vulnerabilities
+// Always filter by user_id at the database layer for defense-in-depth
+export async function getSavedAccountById(id: string, userId: string): Promise<DbSavedAccount | null> {
   const result = await sql`
-    SELECT * FROM saved_accounts WHERE id = ${id}
+    SELECT * FROM saved_accounts WHERE id = ${id} AND user_id = ${userId}
   `;
   return result[0] as DbSavedAccount | null;
 }
@@ -1661,8 +1679,10 @@ export async function getSavedAccountsByUserId(userId: string): Promise<DbSavedA
   return result as DbSavedAccount[];
 }
 
+// SECURITY FIX: Require userId to prevent IDOR vulnerabilities
 export async function updateSavedAccount(
   id: string,
+  userId: string,
   updates: Partial<{
     alias: string;
     clabe: string;
@@ -1687,17 +1707,19 @@ export async function updateSavedAccount(
         notes = COALESCE(${updates.notes}, notes),
         is_active = COALESCE(${updates.isActive}, is_active),
         updated_at = CURRENT_TIMESTAMP
-    WHERE id = ${id}
+    WHERE id = ${id} AND user_id = ${userId}
     RETURNING *
   `;
   return result[0] as DbSavedAccount | null;
 }
 
-export async function deleteSavedAccount(id: string): Promise<boolean> {
-  await sql`
-    DELETE FROM saved_accounts WHERE id = ${id}
+// SECURITY FIX: Require userId to prevent IDOR vulnerabilities
+export async function deleteSavedAccount(id: string, userId: string): Promise<boolean> {
+  const result = await sql`
+    DELETE FROM saved_accounts WHERE id = ${id} AND user_id = ${userId}
+    RETURNING id
   `;
-  return true;
+  return result.length > 0;
 }
 
 export async function getSavedAccountByUserAndClabe(userId: string, clabe: string): Promise<DbSavedAccount | null> {

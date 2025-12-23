@@ -117,7 +117,8 @@ export function middleware(request: NextRequest) {
       preflightResponse.headers.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
       preflightResponse.headers.set(
         'Access-Control-Allow-Headers',
-        'X-Custom-Auth, X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version, Authorization, x-auth-token'
+        // SECURITY: x-auth-token removed - only httpOnly cookie authentication allowed
+        'X-Custom-Auth, X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version'
       );
       preflightResponse.headers.set('Access-Control-Max-Age', '86400'); // 24 hours cache
     }

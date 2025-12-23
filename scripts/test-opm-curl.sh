@@ -4,9 +4,24 @@
 #
 # Uso: ./test-opm-curl.sh
 #
+# SECURITY: API key is loaded from environment variable
+# Set OPM_API_KEY before running: export OPM_API_KEY="your_key_here"
+#
 
-API_KEY="cba28c3936558c5bf851d5d67d9d36a1fb69b27a717d6fe4ecd759215e7ef632"
-API_URL="https://apiuat.opm.mx"
+# Load from .env if exists
+if [ -f .env ]; then
+    export $(cat .env | grep "^OPM_API_KEY" | xargs)
+fi
+
+API_KEY="${OPM_API_KEY:-}"
+API_URL="${OPM_API_URL:-https://apiuat.opm.mx}"
+
+if [ -z "$API_KEY" ]; then
+    echo "❌ ERROR: OPM_API_KEY environment variable not set"
+    echo "   Set it with: export OPM_API_KEY='your_api_key'"
+    echo "   Or create a .env file with OPM_API_KEY=your_api_key"
+    exit 1
+fi
 
 echo "╔══════════════════════════════════════════════════════════════╗"
 echo "║           OPM API CURL TEST                                  ║"

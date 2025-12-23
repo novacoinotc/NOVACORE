@@ -8,6 +8,7 @@ import {
   getProcessedWebhook,
   recordProcessedWebhook,
   hashWebhookPayload,
+  isWebhookProcessingDisabled,
 } from '@/lib/db';
 import { processCommission, canReceiveSpei } from '@/lib/commissions';
 import { verifySignature } from '@/lib/crypto';
@@ -49,6 +50,21 @@ export async function POST(request: NextRequest) {
 
     // Get body
     body = await request.json();
+
+    // SECURITY: Kill switch for webhook processing
+    // When enabled, webhooks are logged but NOT processed (ingest-only mode)
+    if (isWebhookProcessingDisabled()) {
+      console.warn('=== WEBHOOK PROCESSING DISABLED (KILL SWITCH) ===');
+      console.warn('Webhook received but NOT processed. Payload logged for later replay.');
+      console.warn('Payload (sanitized):', JSON.stringify(sanitizeWebhookDataForLog(body)));
+      console.warn('================================================');
+      return NextResponse.json({
+        received: true,
+        timestamp,
+        processed: false,
+        message: 'Webhook processing temporarily disabled',
+      });
+    }
 
     // Validate payload structure
     const payloadCheck = validateWebhookPayload(body, 'deposit');

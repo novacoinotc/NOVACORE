@@ -1,16 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'crypto';
-import { getPendingConfirmationTransactions, confirmPendingTransaction, updateTransactionStatusValidated, createAuditLogEntry } from '@/lib/db';
+import {
+  getPendingConfirmationTransactions,
+  confirmPendingTransaction,
+  updateTransactionStatusValidated,
+  createAuditLogEntry,
+  tryAcquireAdvisoryLock,
+  releaseAdvisoryLock,
+  isOutgoingTransfersDisabled,
+} from '@/lib/db';
 import { createOrder, buildOrderOriginalString } from '@/lib/opm-api';
 import { signWithPrivateKey } from '@/lib/crypto';
 import { CreateOrderRequest } from '@/types';
 import { authenticateRequest } from '@/lib/auth-middleware';
 import { getClientIP } from '@/lib/security';
 
-// SECURITY FIX: In-memory lock to prevent concurrent execution
-// In production, use Redis distributed lock
-let isProcessing = false;
-let lastProcessingTime = 0;
+// SECURITY FIX: Use PostgreSQL advisory lock instead of in-memory lock
+// This works across multiple EC2 instances / PM2 workers
+const CONFIRM_PENDING_LOCK_ID = 'confirm-pending-batch';
 const MIN_PROCESSING_INTERVAL_MS = 5000; // Minimum 5 seconds between runs
 
 /**
@@ -52,26 +59,24 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // SECURITY FIX: Prevent concurrent execution (race condition protection)
-    const now = Date.now();
-    if (isProcessing) {
+    // SECURITY: Check kill switch for outgoing transfers
+    if (isOutgoingTransfersDisabled()) {
+      console.warn('=== OUTGOING TRANSFERS DISABLED VIA KILL SWITCH ===');
       return NextResponse.json(
-        { error: 'Procesamiento ya en curso', message: 'Espere a que termine el procesamiento actual' },
-        { status: 429 }
+        { error: 'Las transferencias salientes están temporalmente deshabilitadas' },
+        { status: 503 }
       );
     }
 
-    // Rate limit protection
-    if (now - lastProcessingTime < MIN_PROCESSING_INTERVAL_MS) {
+    // SECURITY FIX: Use PostgreSQL advisory lock for distributed locking
+    // This prevents race conditions across multiple instances/workers
+    const lockAcquired = await tryAcquireAdvisoryLock(CONFIRM_PENDING_LOCK_ID);
+    if (!lockAcquired) {
       return NextResponse.json(
-        { error: 'Demasiadas solicitudes', message: 'Espere al menos 5 segundos entre ejecuciones' },
+        { error: 'Procesamiento ya en curso', message: 'Otro proceso está ejecutando esta operación' },
         { status: 429 }
       );
     }
-
-    // Acquire lock
-    isProcessing = true;
-    lastProcessingTime = now;
 
     // Get all transactions past their confirmation deadline
     const pendingTransactions = await getPendingConfirmationTransactions();
@@ -222,8 +227,8 @@ export async function POST(request: NextRequest) {
       userAgent: request.headers.get('user-agent') || 'unknown',
     }).catch(err => console.error('Audit log error:', err));
 
-    // SECURITY FIX: Release lock
-    isProcessing = false;
+    // SECURITY FIX: Release PostgreSQL advisory lock
+    await releaseAdvisoryLock(CONFIRM_PENDING_LOCK_ID);
 
     return NextResponse.json({
       success: results.failed === 0,
@@ -231,8 +236,12 @@ export async function POST(request: NextRequest) {
       timestamp: new Date().toISOString(),
     });
   } catch (error) {
-    // SECURITY FIX: Release lock on error
-    isProcessing = false;
+    // SECURITY FIX: Release PostgreSQL advisory lock on error
+    try {
+      await releaseAdvisoryLock(CONFIRM_PENDING_LOCK_ID);
+    } catch (lockError) {
+      console.error('Error releasing advisory lock:', lockError);
+    }
 
     console.error('=== CONFIRMATION PROCESSING ERROR ===');
     console.error('Error:', error);

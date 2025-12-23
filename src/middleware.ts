@@ -1,12 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { randomBytes } from 'crypto';
 
 /**
  * Generate a cryptographically secure nonce for CSP
+ * Uses Web Crypto API (available in Edge Runtime) instead of Node.js crypto
  * This nonce is unique per request and prevents inline script injection
  */
 function generateNonce(): string {
-  return randomBytes(16).toString('base64');
+  const array = new Uint8Array(16);
+  crypto.getRandomValues(array);
+  // Convert to base64 using btoa (available in Edge Runtime)
+  // Use Array.from for TypeScript compatibility
+  return btoa(String.fromCharCode.apply(null, Array.from(array)));
 }
 
 /**

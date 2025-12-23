@@ -43,6 +43,15 @@ export async function POST(request: NextRequest) {
       path: '/',
     });
 
+    // Clear the CSRF cookie
+    response.cookies.set('novacorp_csrf', '', {
+      httpOnly: false,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      maxAge: 0, // Expire immediately
+      path: '/',
+    });
+
     return response;
   } catch (error) {
     console.error('Logout error:', error);
@@ -54,6 +63,15 @@ export async function POST(request: NextRequest) {
 
     response.cookies.set('novacorp_token', '', {
       httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      maxAge: 0,
+      path: '/',
+    });
+
+    // Clear the CSRF cookie
+    response.cookies.set('novacorp_csrf', '', {
+      httpOnly: false,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'strict',
       maxAge: 0,

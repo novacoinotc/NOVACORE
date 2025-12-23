@@ -12,7 +12,7 @@ import {
 import { createOrder, buildOrderOriginalString } from '@/lib/opm-api';
 import { signWithPrivateKey } from '@/lib/crypto';
 import { CreateOrderRequest } from '@/types';
-import { authenticateRequest } from '@/lib/auth-middleware';
+import { authenticateRequest, validateCsrfForRequest } from '@/lib/auth-middleware';
 import { getClientIP } from '@/lib/security';
 
 // SECURITY FIX: Use PostgreSQL advisory lock instead of in-memory lock
@@ -47,6 +47,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { error: authResult.error || 'No autorizado' },
         { status: authResult.statusCode || 401 }
+      );
+    }
+
+    // SECURITY: Validate CSRF token for batch confirmation
+    const csrfResult = validateCsrfForRequest(request);
+    if (!csrfResult.valid) {
+      return NextResponse.json(
+        { error: csrfResult.error || 'Error de validación CSRF' },
+        { status: 403 }
       );
     }
 

@@ -12,6 +12,7 @@ import {
   getUserSecurityStatus,
   getUserTotpSecret,
   createAuditLogEntry,
+  generateCsrfToken,
 } from '@/lib/db';
 import { ALL_PERMISSIONS, Permission, UserRole } from '@/types';
 import {
@@ -370,6 +371,20 @@ export async function POST(request: NextRequest) {
       secure: process.env.NODE_ENV === 'production', // HTTPS only in production
       sameSite: 'strict',       // Prevent CSRF
       maxAge: 24 * 60 * 60,     // 24 hours (matches session expiry)
+      path: '/',
+    });
+
+    // SECURITY: Set CSRF token cookie (double-submit cookie pattern)
+    // This cookie is NOT httpOnly so JavaScript can read it and send in header
+    // Server validates that X-CSRF-Token header matches this cookie value
+    const csrfToken = generateCsrfToken();
+    response.cookies.set({
+      name: 'novacorp_csrf',
+      value: csrfToken,
+      httpOnly: false,          // Must be readable by JavaScript
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',       // Same-site only
+      maxAge: 24 * 60 * 60,     // 24 hours
       path: '/',
     });
 

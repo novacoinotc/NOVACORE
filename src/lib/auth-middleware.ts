@@ -6,7 +6,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getSessionByToken, getUserById, invalidateSession } from './db';
+import { getSessionByToken, getUserById, invalidateSession, validateCsrfToken } from './db';
 
 export interface AuthenticatedUser {
   id: string;
@@ -121,6 +121,33 @@ export async function authenticateRequest(request: NextRequest): Promise<AuthRes
 }
 
 /**
+ * Validate CSRF token for state-changing requests
+ * SECURITY: Uses double-submit cookie pattern
+ * - Cookie is set with SameSite=strict (prevents CSRF from other domains)
+ * - Header must match cookie value (prevents subdomain attacks)
+ */
+export function validateCsrfForRequest(request: NextRequest): { valid: boolean; error?: string } {
+  const method = request.method.toUpperCase();
+
+  // CSRF only required for state-changing methods
+  if (['GET', 'HEAD', 'OPTIONS'].includes(method)) {
+    return { valid: true };
+  }
+
+  const csrfCookie = request.cookies.get('novacorp_csrf')?.value;
+  const csrfHeader = request.headers.get('X-CSRF-Token');
+
+  if (!validateCsrfToken(csrfCookie, csrfHeader || undefined)) {
+    return {
+      valid: false,
+      error: 'Token CSRF inválido o faltante'
+    };
+  }
+
+  return { valid: true };
+}
+
+/**
  * Higher-order function to wrap API route handlers with authentication
  */
 export function withAuth(
@@ -128,6 +155,7 @@ export function withAuth(
   options?: {
     requiredRole?: string | string[];
     requiredPermission?: string;
+    requireCsrf?: boolean; // SECURITY: Set true for critical state-changing operations
   }
 ) {
   return async (request: NextRequest): Promise<NextResponse> => {
@@ -138,6 +166,17 @@ export function withAuth(
         { error: authResult.error || 'No autorizado' },
         { status: authResult.statusCode || 401 }
       );
+    }
+
+    // SECURITY: Validate CSRF token for critical operations
+    if (options?.requireCsrf) {
+      const csrfResult = validateCsrfForRequest(request);
+      if (!csrfResult.valid) {
+        return NextResponse.json(
+          { error: csrfResult.error || 'Error de validación CSRF' },
+          { status: 403 }
+        );
+      }
     }
 
     const user = authResult.user;

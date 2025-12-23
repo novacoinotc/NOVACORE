@@ -2688,3 +2688,37 @@ export function getActiveKillSwitches(): string[] {
 
   return switches.filter(sw => isKillSwitchEnabled(sw));
 }
+
+// ==================== CSRF TOKEN GENERATION ====================
+
+/**
+ * Generate a cryptographically secure CSRF token
+ * Used with double-submit cookie pattern for CSRF protection
+ */
+export function generateCsrfToken(): string {
+  return crypto.randomBytes(32).toString('hex');
+}
+
+/**
+ * Validate CSRF token using constant-time comparison
+ * Prevents timing attacks on token validation
+ */
+export function validateCsrfToken(cookieToken: string | undefined, headerToken: string | undefined): boolean {
+  if (!cookieToken || !headerToken) {
+    return false;
+  }
+
+  // Use constant-time comparison to prevent timing attacks
+  try {
+    const cookieBuffer = Buffer.from(cookieToken);
+    const headerBuffer = Buffer.from(headerToken);
+
+    if (cookieBuffer.length !== headerBuffer.length) {
+      return false;
+    }
+
+    return crypto.timingSafeEqual(cookieBuffer, headerBuffer);
+  } catch {
+    return false;
+  }
+}

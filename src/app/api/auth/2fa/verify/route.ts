@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getUserById, getUserTotpSecret, enableTotp, createAuditLogEntry } from '@/lib/db';
 import { verifyTOTP, getClientIP, getUserAgent } from '@/lib/security';
-import { authenticateRequest } from '@/lib/auth-middleware';
+import { authenticateRequest, validateCsrfForRequest } from '@/lib/auth-middleware';
 import crypto from 'crypto';
 
 /**
@@ -20,6 +20,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { error: authResult.error || 'No autorizado' },
         { status: authResult.statusCode || 401 }
+      );
+    }
+
+    // SECURITY: Validate CSRF token for 2FA verification
+    const csrfResult = validateCsrfForRequest(request);
+    if (!csrfResult.valid) {
+      return NextResponse.json(
+        { error: csrfResult.error || 'Error de validación CSRF' },
+        { status: 403 }
       );
     }
 

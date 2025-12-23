@@ -82,13 +82,37 @@ export function middleware(request: NextRequest) {
     );
   }
 
-  // Content Security Policy
-  // Note: Next.js requires 'unsafe-inline' for scripts due to hydration
+  // Content Security Policy - Environment-aware configuration
+  // SECURITY: Production uses stricter CSP without 'unsafe-eval'
+  // Note: Next.js requires 'unsafe-inline' for scripts due to hydration (nonce would require App Router changes)
   // worker-src 'self' blob: https://cdn.jsdelivr.net needed for Tesseract.js OCR
-  response.headers.set(
-    'Content-Security-Policy',
-    "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: https: blob:; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self' https://api.opm.mx https://apiuat.opm.mx https:; worker-src 'self' blob: https://cdn.jsdelivr.net; frame-ancestors 'none'; base-uri 'self'; form-action 'self';"
-  );
+  const isProduction = process.env.NODE_ENV === 'production';
+
+  // Base CSP directives (shared between environments)
+  const baseCSP = [
+    "default-src 'self'",
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+    "img-src 'self' data: https: blob:",
+    "font-src 'self' data: https://fonts.gstatic.com",
+    "connect-src 'self' https://api.opm.mx https://apiuat.opm.mx",
+    "worker-src 'self' blob: https://cdn.jsdelivr.net",
+    "frame-ancestors 'none'",
+    "base-uri 'self'",
+    "form-action 'self'",
+  ];
+
+  // Script-src differs: production removes 'unsafe-eval' for security
+  // 'unsafe-eval' is only needed in development for Next.js hot reload
+  const scriptSrc = isProduction
+    ? "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net"  // No unsafe-eval in production
+    : "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net";  // Dev needs eval for HMR
+
+  // Production-only: upgrade HTTP to HTTPS
+  const upgradeInsecure = isProduction ? "upgrade-insecure-requests" : "";
+
+  const cspValue = [...baseCSP, scriptSrc, upgradeInsecure].filter(Boolean).join('; ') + ';';
+
+  response.headers.set('Content-Security-Policy', cspValue);
 
   // Handle preflight OPTIONS requests
   if (method === 'OPTIONS') {

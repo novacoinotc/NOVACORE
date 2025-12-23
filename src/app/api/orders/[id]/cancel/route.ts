@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'crypto';
 import { getTransactionForCancel, updateTransactionStatus, getTransactionById, createAuditLogEntry } from '@/lib/db';
-import { authenticateRequest, validateClabeAccess } from '@/lib/auth-middleware';
+import { authenticateRequest, validateClabeAccess, validateCsrfForRequest } from '@/lib/auth-middleware';
 import { getClientIP, getUserAgent } from '@/lib/security';
 
 /**
@@ -49,6 +49,18 @@ export async function POST(
       return NextResponse.json(
         { error: authResult.error || 'No autorizado' },
         { status: authResult.statusCode || 401 }
+      );
+    }
+
+    // ============================================
+    // CSRF PROTECTION - Validate CSRF token for cancel operation
+    // ============================================
+    const csrfResult = validateCsrfForRequest(request);
+    if (!csrfResult.valid) {
+      console.error('CANCEL ERROR: CSRF validation failed');
+      return NextResponse.json(
+        { error: csrfResult.error || 'Error de validación CSRF' },
+        { status: 403 }
       );
     }
 

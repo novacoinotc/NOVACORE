@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
 import { getUserById, disableTotp, isUserTotpEnabled, createAuditLogEntry, getUserTotpSecret } from '@/lib/db';
 import { getClientIP, getUserAgent, verifyTOTP } from '@/lib/security';
-import { authenticateRequest } from '@/lib/auth-middleware';
+import { authenticateRequest, validateCsrfForRequest } from '@/lib/auth-middleware';
 import crypto from 'crypto';
 
 /**
@@ -23,6 +23,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { error: authResult.error || 'No autorizado' },
         { status: authResult.statusCode || 401 }
+      );
+    }
+
+    // SECURITY: Validate CSRF token for security-critical operation
+    const csrfResult = validateCsrfForRequest(request);
+    if (!csrfResult.valid) {
+      return NextResponse.json(
+        { error: csrfResult.error || 'Error de validación CSRF' },
+        { status: 403 }
       );
     }
 

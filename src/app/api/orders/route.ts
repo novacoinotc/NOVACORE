@@ -5,7 +5,7 @@ import { generateNumericalReference, generateTrackingKey } from '@/lib/crypto';
 import { validateOrderFields, prepareTextForSpei, sanitizeForSpei } from '@/lib/utils';
 import { verifyTOTP, getClientIP, getUserAgent } from '@/lib/security';
 import { getUserTotpSecret, isUserTotpEnabled, createAuditLogEntry, getUserById, createOutgoingTransactionAtomic, getClabeAccountByClabe, getClabeAccountsByCompanyId } from '@/lib/db';
-import { authenticateRequest, validateClabeAccess } from '@/lib/auth-middleware';
+import { authenticateRequest, validateClabeAccess, validateCsrfForRequest } from '@/lib/auth-middleware';
 
 /**
  * POST /api/orders
@@ -46,6 +46,18 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { error: authResult.error || 'No autorizado' },
         { status: authResult.statusCode || 401 }
+      );
+    }
+
+    // ============================================
+    // CSRF PROTECTION - Validate CSRF token for transfers
+    // ============================================
+    const csrfResult = validateCsrfForRequest(request);
+    if (!csrfResult.valid) {
+      console.error('ORDER ERROR: CSRF validation failed');
+      return NextResponse.json(
+        { error: csrfResult.error || 'Error de validación CSRF' },
+        { status: 403 }
       );
     }
 

@@ -5,6 +5,9 @@ import { createSign, createVerify, createPrivateKey, createPublicKey, randomByte
 // The private key should NEVER be exposed to the client
 // All signing operations should happen server-side via API routes
 
+// SECURITY: No logging in crypto functions in production
+const isDev = process.env.NODE_ENV !== 'production';
+
 /**
  * Decode a Base64-encoded PEM key from environment variable
  * The .env file stores keys as Base64-encoded PEM strings
@@ -41,10 +44,11 @@ export async function signWithPrivateKey(
     // Decode the key if it's Base64 encoded
     const privateKeyPem = decodeKeyFromEnv(privateKeyInput);
 
-    // SECURITY FIX: Removed logging of originalString which contains sensitive account data
-    console.log('Signing with private key...');
-    console.log('Key format detected:', privateKeyPem.includes('RSA PRIVATE KEY') ? 'PKCS#1' : 'PKCS#8');
-    console.log('Original string length:', originalString.length);
+    // SECURITY: Only log in development - no crypto logs in production
+    if (isDev) {
+      console.log('Signing with private key...');
+      console.log('Key format detected:', privateKeyPem.includes('RSA PRIVATE KEY') ? 'PKCS#1' : 'PKCS#8');
+    }
 
     // Create a private key object - Node.js crypto handles both PKCS#1 and PKCS#8
     const privateKey = createPrivateKey({
@@ -60,7 +64,9 @@ export async function signWithPrivateKey(
     // Sign and return Base64-encoded signature
     const signature = signer.sign(privateKey, 'base64');
 
-    console.log('Signature generated successfully, length:', signature.length);
+    if (isDev) {
+      console.log('Signature generated successfully');
+    }
     return signature;
   } catch (error) {
     console.error('Error signing with private key:', error);
@@ -84,8 +90,11 @@ export async function verifySignature(
     // Decode the key if it's Base64 encoded
     const publicKeyPem = decodeKeyFromEnv(publicKeyInput);
 
-    console.log('Verifying signature...');
-    console.log('Key format:', publicKeyPem.includes('RSA PUBLIC KEY') ? 'PKCS#1' : 'SPKI');
+    // SECURITY: Only log in development - no crypto logs in production
+    if (isDev) {
+      console.log('Verifying signature...');
+      console.log('Key format:', publicKeyPem.includes('RSA PUBLIC KEY') ? 'PKCS#1' : 'SPKI');
+    }
 
     // Create a public key object
     const publicKey = createPublicKey({
@@ -101,7 +110,9 @@ export async function verifySignature(
     // Verify the signature
     const isValid = verifier.verify(publicKey, signature, 'base64');
 
-    console.log('Signature verification result:', isValid);
+    if (isDev) {
+      console.log('Signature verification result:', isValid);
+    }
     return isValid;
   } catch (error) {
     console.error('Signature verification failed:', error);

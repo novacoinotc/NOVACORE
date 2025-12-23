@@ -37,11 +37,30 @@ function getRdsCaCert(): string | undefined {
 // SECURITY: SSL is REQUIRED for database connections with proper certificate verification
 const rdsCaCert = getRdsCaCert();
 
-// SECURITY WARNING: Log if CA certificate is not configured in production
-if (!rdsCaCert && process.env.NODE_ENV === 'production') {
-  console.warn('⚠️  SECURITY WARNING: RDS CA certificate not configured');
-  console.warn('   Download from: https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem');
-  console.warn('   Place as rds-ca-bundle.pem in project root or set RDS_CA_BUNDLE env var');
+// SECURITY: FAIL-FAST in production if no CA certificate configured
+// This prevents the application from starting with insecure database connections
+// NOTE: Skip during Next.js build phase (NEXT_PHASE is set during build)
+const isNextBuild = process.env.NEXT_PHASE === 'phase-production-build';
+if (!rdsCaCert && process.env.NODE_ENV === 'production' && !isNextBuild) {
+  const errorMsg = `
+╔════════════════════════════════════════════════════════════════════════════╗
+║  SECURITY ERROR: RDS CA certificate not configured in production           ║
+╠════════════════════════════════════════════════════════════════════════════╣
+║  The application cannot start without proper TLS certificate verification. ║
+║                                                                            ║
+║  To fix:                                                                   ║
+║  1. Download: https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem
+║  2. Place as rds-ca-bundle.pem in project root                             ║
+║     OR set RDS_CA_BUNDLE environment variable with certificate content     ║
+╚════════════════════════════════════════════════════════════════════════════╝
+`;
+  console.error(errorMsg);
+  throw new Error('SECURITY: RDS CA certificate required in production');
+}
+
+// SECURITY: Log warning in non-production if CA not configured
+if (!rdsCaCert && process.env.NODE_ENV !== 'production') {
+  console.warn('⚠️  DEV WARNING: RDS CA certificate not configured (OK for local development)');
 }
 
 const pool = new Pool({
@@ -51,9 +70,9 @@ const pool = new Pool({
     rejectUnauthorized: true,
     ca: rdsCaCert,
   } : {
-    // Fallback for development/initial setup - still encrypted but no CA verification
-    // SECURITY: This should NOT be used in production
-    rejectUnauthorized: process.env.NODE_ENV === 'production' ? true : false,
+    // Development only - encrypted but no CA verification
+    // SECURITY: Production will throw before reaching this point
+    rejectUnauthorized: false,
   },
   max: 20, // Maximum number of clients in the pool
   idleTimeoutMillis: 30000,

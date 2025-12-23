@@ -125,8 +125,11 @@ export function middleware(request: NextRequest) {
     ? `script-src 'self' 'nonce-${nonce}' 'strict-dynamic' https://cdn.jsdelivr.net`
     : `script-src 'self' 'nonce-${nonce}' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net`;
 
-  // Style-src with nonce + 'unsafe-inline' for CSS-in-JS compatibility
-  const styleSrc = `style-src 'self' 'nonce-${nonce}' 'unsafe-inline' https://fonts.googleapis.com`;
+  // Style-src with nonce (production: no unsafe-inline for maximum security)
+  // Development keeps 'unsafe-inline' for CSS-in-JS hot reload compatibility
+  const styleSrc = isProduction
+    ? `style-src 'self' 'nonce-${nonce}' https://fonts.googleapis.com`
+    : `style-src 'self' 'nonce-${nonce}' 'unsafe-inline' https://fonts.googleapis.com`;
 
   // Production-only: upgrade HTTP to HTTPS
   const upgradeInsecure = isProduction ? "upgrade-insecure-requests" : "";

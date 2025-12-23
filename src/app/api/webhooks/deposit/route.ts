@@ -11,8 +11,7 @@ import {
   isWebhookProcessingDisabled,
 } from '@/lib/db';
 import { processCommission, canReceiveSpei } from '@/lib/commissions';
-import { verifySignature } from '@/lib/crypto';
-import { buildSupplyOriginalString } from '@/lib/opm-api';
+// NOTE: RSA imports removed - OPM does not provide their public key for signature validation
 import {
   validateWebhookSource,
   validateWebhookPayload,
@@ -129,40 +128,20 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // RSA signature validation from OPM
-    // PERMANENTLY DISABLED: OPM does not provide their public key for webhook validation
-    // Security relies on: (1) IP whitelist (hardcoded OPM IPs), (2) Webhook secret header
-    // If OPM ever provides their public key, set SKIP_WEBHOOK_SIGNATURE_VALIDATION=false
-    const skipSignatureValidation = process.env.SKIP_WEBHOOK_SIGNATURE_VALIDATION === 'true';
-
-    if (!skipSignatureValidation) {
-      const signatureValid = await validateOpmSignature(body);
-      if (!signatureValid) {
-        // SECURITY FIX: Don't log full body - use sanitized version
-        console.error('=== DEPOSIT WEBHOOK SIGNATURE VALIDATION FAILED ===');
-        console.error('Timestamp:', timestamp);
-        console.error('Payload (sanitized):', JSON.stringify(sanitizeWebhookDataForLog(body)));
-        console.error('Sign field present:', !!(body?.sign || body?.data?.sign));
-        console.error('================================================');
-
-        return NextResponse.json({
-          received: true,
-          timestamp,
-          processed: false,
-          returnCode: 99,
-          errorDescription: 'Invalid signature',
-          message: 'RSA signature validation failed',
-        });
-      }
-      console.log('RSA signature validated successfully');
-    } else {
-      // SECURITY NOTE: RSA validation is skipped because OPM doesn't provide their public key
-      // This is acceptable because we enforce strict IP whitelist (OPM IPs only)
-      // and validate webhook secret header as additional defense layers
-      if (process.env.NODE_ENV === 'production') {
-        console.log('RSA signature validation disabled (OPM limitation) - relying on IP whitelist');
-      }
-    }
+    // ============================================
+    // SECURITY MODEL (OPM does NOT provide RSA public key)
+    // ============================================
+    // Since OPM does not provide their public key for RSA signature validation,
+    // our webhook security relies on these layers:
+    //
+    // 1. IP WHITELIST - Only hardcoded OPM IPs can reach this endpoint (validated above)
+    // 2. WEBHOOK SECRET - x-webhook-secret header must match (validated above)
+    // 3. IDEMPOTENCY - Duplicate webhooks are detected and rejected (validated below)
+    // 4. PAYLOAD VALIDATION - Required fields and data types are checked
+    //
+    // This is the standard model when the provider doesn't offer signature verification.
+    // If OPM provides their public key in the future, implement RSA validation here.
+    // ============================================
 
     // Try to extract deposit data from various possible payload structures
     const depositData = extractDepositData(body);
@@ -313,76 +292,8 @@ function extractDepositData(body: any): DepositData | null {
   }
 }
 
-/**
- * Validate OPM RSA signature on incoming deposit webhook
- *
- * OPM signs all webhooks with their private key. We verify using their public key.
- * The original string format for supply webhooks is:
- * ||beneficiaryName|beneficiaryUid|beneficiaryAccount|beneficiaryBank|beneficiaryAccountType|
- * payerName|payerUid|payerAccount|payerBank|payerAccountType|amount|concept|trackingKey|numericalReference||
- */
-async function validateOpmSignature(body: any): Promise<boolean> {
-  try {
-    const publicKey = process.env.OPM_PUBLIC_KEY;
-
-    if (!publicKey) {
-      console.error('OPM_PUBLIC_KEY not configured - cannot validate signature');
-      return false;
-    }
-
-    // Extract signature from payload (can be at root level or in data)
-    const signature = body?.sign || body?.data?.sign;
-
-    if (!signature) {
-      console.error('No signature (sign field) found in webhook payload');
-      return false;
-    }
-
-    // Extract data for building original string
-    // Handle both nested (type: 'supply', data: {...}) and flat structures
-    const data = body?.type === 'supply' && body?.data ? body.data : body;
-
-    // Validate required fields for signature verification
-    if (!data?.beneficiaryAccount || !data?.trackingKey) {
-      console.error('Missing required fields for signature verification');
-      return false;
-    }
-
-    // Build the original string that OPM signed
-    const originalString = buildSupplyOriginalString({
-      beneficiaryName: data.beneficiaryName || '',
-      beneficiaryUid: data.beneficiaryUid || '',
-      beneficiaryAccount: data.beneficiaryAccount,
-      beneficiaryBank: data.beneficiaryBank || '',
-      beneficiaryAccountType: data.beneficiaryAccountType || 40,
-      payerName: data.payerName || '',
-      payerUid: data.payerUid || '',
-      payerAccount: data.payerAccount || '',
-      payerBank: data.payerBank || '',
-      payerAccountType: data.payerAccountType || 40,
-      amount: data.amount || 0,
-      concept: data.concept || '',
-      trackingKey: data.trackingKey,
-      numericalReference: data.numericalReference || 0,
-    });
-
-    console.log('Original string for signature verification:', originalString);
-
-    // Verify the signature using OPM's public key
-    const isValid = await verifySignature(originalString, signature, publicKey);
-
-    if (!isValid) {
-      console.error('RSA signature verification failed');
-      console.error('Expected signature for original string:', originalString);
-      console.error('Received signature:', signature);
-    }
-
-    return isValid;
-  } catch (error) {
-    console.error('Error during signature validation:', error);
-    return false;
-  }
-}
+// NOTE: RSA signature validation removed - OPM does not provide their public key
+// Security model documented above: IP whitelist + webhook secret + idempotency
 
 interface DepositData {
   trackingKey: string;

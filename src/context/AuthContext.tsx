@@ -169,12 +169,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // Ignore errors during logout
     }
 
-    // Clear local storage (user data only, token was never stored)
+    // SECURITY FIX: Aggressively clear all NOVACORP-related localStorage data
+    // This prevents PII leakage if XSS occurs after logout
     try {
+      // Clear known keys
       localStorage.removeItem('novacorp_session');
+      // Clear any other potential NOVACORP data
+      const keysToRemove: string[] = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && (key.startsWith('novacorp') || key.startsWith('nova_'))) {
+          keysToRemove.push(key);
+        }
+      }
+      keysToRemove.forEach(key => localStorage.removeItem(key));
     } catch {
-      // Ignore
+      // Ignore storage errors
     }
+
     setUser(null);
     setRequiresTotpSetup(false);
     router.push('/login');

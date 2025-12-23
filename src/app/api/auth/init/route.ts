@@ -40,15 +40,20 @@ async function ensureSecurityColumns() {
  *
  * SECURITY CRITICAL: This endpoint initializes the database and creates the super admin.
  *
- * Protection layers:
- * 1. BLOCKED in production by default (requires ENABLE_DB_INIT=true)
- * 2. Requires one-time INIT_TOKEN secret in X-Init-Token header
- * 3. All access attempts are logged
+ * ⚠️  BLOCKED IN PRODUCTION - NO EXCEPTIONS
  *
- * For production deployments:
- * - Prefer running initialization via deploy scripts, NOT via this endpoint
- * - If using this endpoint, set INIT_TOKEN to a strong random value
- * - After initialization, remove ENABLE_DB_INIT and INIT_TOKEN from environment
+ * This endpoint is ONLY available in development/staging environments.
+ * For production database initialization, use deploy scripts or SSM runbooks.
+ *
+ * Protection layers:
+ * 1. BLOCKED in production (NODE_ENV === 'production') - HARD BLOCK, no override
+ * 2. Requires INIT_TOKEN secret in X-Init-Token header (even in dev)
+ * 3. All access attempts are logged with IP
+ *
+ * Production initialization procedure:
+ * - Use database migration scripts in CI/CD pipeline
+ * - Use AWS SSM Session Manager for manual operations
+ * - Never expose init endpoints to the internet
  */
 export async function POST(request: NextRequest) {
   const clientIP = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
@@ -62,67 +67,62 @@ export async function POST(request: NextRequest) {
 
   try {
     // ============================================
-    // SECURITY LAYER 1: Block in production by default
+    // SECURITY LAYER 1: HARD BLOCK in production - NO EXCEPTIONS
     // ============================================
-    const isProduction = process.env.NODE_ENV === 'production';
-    const initEnabled = process.env.ENABLE_DB_INIT === 'true';
-
-    if (isProduction && !initEnabled) {
-      console.error('SECURITY: Init endpoint blocked in production (ENABLE_DB_INIT not set)');
+    if (process.env.NODE_ENV === 'production') {
+      console.error('SECURITY: Init endpoint BLOCKED - production environment detected');
+      console.error('Client IP attempted:', clientIP);
       return NextResponse.json(
         {
-          error: 'Este endpoint está deshabilitado en producción',
-          hint: 'Para operaciones de inicialización, use scripts de deploy o configure ENABLE_DB_INIT=true temporalmente'
+          error: 'Este endpoint no está disponible en producción',
+          hint: 'Para inicialización en producción, use scripts de deploy o SSM'
         },
         { status: 403 }
       );
     }
 
     // ============================================
-    // SECURITY LAYER 2: Require one-time init token
+    // SECURITY LAYER 2: Require init token (even in dev/staging)
     // ============================================
     const expectedToken = process.env.INIT_TOKEN;
     const providedToken = request.headers.get('X-Init-Token');
 
-    // INIT_TOKEN is required in production, optional in development
-    if (isProduction || expectedToken) {
-      if (!expectedToken) {
-        console.error('SECURITY: INIT_TOKEN environment variable not configured');
-        return NextResponse.json(
-          {
-            error: 'Configuración de seguridad incompleta',
-            hint: 'Configure INIT_TOKEN en las variables de entorno'
-          },
-          { status: 500 }
-        );
-      }
-
-      if (!providedToken) {
-        console.error('SECURITY: Init attempt without token from IP:', clientIP);
-        return NextResponse.json(
-          { error: 'Se requiere token de inicialización en header X-Init-Token' },
-          { status: 401 }
-        );
-      }
-
-      // Timing-safe comparison to prevent timing attacks
-      const expectedBuffer = Buffer.from(expectedToken);
-      const providedBuffer = Buffer.from(providedToken);
-
-      if (expectedBuffer.length !== providedBuffer.length ||
-          !crypto.timingSafeEqual(expectedBuffer, providedBuffer)) {
-        console.error('SECURITY: Invalid init token from IP:', clientIP);
-        return NextResponse.json(
-          { error: 'Token de inicialización inválido' },
-          { status: 401 }
-        );
-      }
-
-      console.log('SECURITY: Valid init token provided');
+    if (!expectedToken) {
+      console.error('SECURITY: INIT_TOKEN environment variable not configured');
+      return NextResponse.json(
+        {
+          error: 'Configuración de seguridad incompleta',
+          hint: 'Configure INIT_TOKEN en las variables de entorno'
+        },
+        { status: 500 }
+      );
     }
 
+    if (!providedToken) {
+      console.error('SECURITY: Init attempt without token from IP:', clientIP);
+      return NextResponse.json(
+        { error: 'Se requiere token de inicialización en header X-Init-Token' },
+        { status: 401 }
+      );
+    }
+
+    // Timing-safe comparison to prevent timing attacks
+    const expectedBuffer = Buffer.from(expectedToken);
+    const providedBuffer = Buffer.from(providedToken);
+
+    if (expectedBuffer.length !== providedBuffer.length ||
+        !crypto.timingSafeEqual(expectedBuffer, providedBuffer)) {
+      console.error('SECURITY: Invalid init token from IP:', clientIP);
+      return NextResponse.json(
+        { error: 'Token de inicialización inválido' },
+        { status: 401 }
+      );
+    }
+
+    console.log('SECURITY: Valid init token provided');
+
     // ============================================
-    // PROCEED WITH INITIALIZATION
+    // PROCEED WITH INITIALIZATION (dev/staging only)
     // ============================================
     console.log('Proceeding with database initialization...');
 
@@ -185,9 +185,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       message: 'Base de datos inicializada correctamente',
-      warning: isProduction
-        ? 'IMPORTANTE: Elimine ENABLE_DB_INIT e INIT_TOKEN del entorno después de la inicialización'
-        : undefined,
     });
   } catch (error) {
     console.error('=== DATABASE INIT ERROR ===');

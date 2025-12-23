@@ -114,14 +114,15 @@ export function middleware(request: NextRequest) {
     "form-action 'self'",
   ];
 
-  // Script-src with nonce + 'unsafe-inline' fallback
+  // Script-src with nonce + strict-dynamic (NO unsafe-inline in production)
   // SECURITY NOTES:
-  // - Modern browsers (CSP Level 2+) ignore 'unsafe-inline' when nonce is present
-  // - 'unsafe-inline' is fallback for older browsers and Next.js hydration scripts
+  // - 'nonce-xxx' allows only scripts with matching nonce attribute
   // - 'strict-dynamic' allows scripts loaded by nonced scripts to execute
-  // - 'unsafe-eval' removed in production to block eval() attacks
+  // - NO 'unsafe-inline' in production = maximum XSS protection
+  // - 'unsafe-eval' only in development for Next.js HMR
+  // - CDN allowed for Tesseract.js OCR (should use SRI in production)
   const scriptSrc = isProduction
-    ? `script-src 'self' 'nonce-${nonce}' 'strict-dynamic' 'unsafe-inline' https://cdn.jsdelivr.net`
+    ? `script-src 'self' 'nonce-${nonce}' 'strict-dynamic' https://cdn.jsdelivr.net`
     : `script-src 'self' 'nonce-${nonce}' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net`;
 
   // Style-src with nonce + 'unsafe-inline' for CSS-in-JS compatibility

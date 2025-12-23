@@ -36,10 +36,23 @@ const stagingIPs = !isProduction
 
 const OPM_WEBHOOK_IPS: readonly string[] = [...OPM_PRODUCTION_IPS, ...stagingIPs];
 
-// Rate limiting store (in-memory, consider Redis for production)
+// =============================================================================
+// RATE LIMITING - KNOWN LIMITATION
+// =============================================================================
+// WARNING: This in-memory rate limiting does NOT work across multiple instances!
+//
+// For production with EC2/PM2 clusters, you MUST implement rate limiting at:
+// 1. AWS WAF (recommended) - Rate-based rules at ALB level
+// 2. AWS API Gateway - If using API Gateway
+// 3. Redis/ElastiCache - If app-level rate limiting is needed
+//
+// This in-memory implementation is kept as a defense-in-depth layer for
+// single-instance deployments and development, but should NOT be relied upon
+// as the primary rate limiting mechanism in production.
+// =============================================================================
 const rateLimitStore: Map<string, { count: number; resetAt: number }> = new Map();
 
-// Max requests per minute per IP
+// Max requests per minute per IP (secondary defense only - use WAF for primary)
 const WEBHOOK_RATE_LIMIT = parseInt(process.env.WEBHOOK_RATE_LIMIT || '60', 10);
 const RATE_LIMIT_WINDOW_MS = 60 * 1000; // 1 minute
 

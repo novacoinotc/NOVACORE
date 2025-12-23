@@ -5,17 +5,17 @@ import { authenticateRequest } from '@/lib/auth-middleware';
 /**
  * POST /api/auth/logout
  * Invalidates the current session server-side
+ * SECURITY: Only accepts token from httpOnly cookie - no header-based auth
  */
 export async function POST(request: NextRequest) {
   try {
-    // Get token from request
-    const authHeader = request.headers.get('authorization');
-    const token = authHeader?.startsWith('Bearer ')
-      ? authHeader.substring(7)
-      : request.headers.get('x-auth-token');
+    // SECURITY FIX: Only accept token from httpOnly cookie
+    // This is consistent with our cookie-only auth model
+    const tokenCookie = request.cookies.get('novacorp_token');
+    const token = tokenCookie?.value;
 
     if (token) {
-      // Invalidate the specific session
+      // Invalidate the specific session in database
       await invalidateSession(token);
     }
 
@@ -28,16 +28,38 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    return NextResponse.json({
+    // SECURITY: Clear the cookie by setting maxAge to 0
+    const response = NextResponse.json({
       success: true,
       message: 'Sesión cerrada correctamente',
     });
+
+    // Clear the auth cookie
+    response.cookies.set('novacorp_token', '', {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      maxAge: 0, // Expire immediately
+      path: '/',
+    });
+
+    return response;
   } catch (error) {
     console.error('Logout error:', error);
-    // Even if there's an error, return success - the client will clear local storage anyway
-    return NextResponse.json({
+    // Even if there's an error, clear the cookie and return success
+    const response = NextResponse.json({
       success: true,
       message: 'Sesión cerrada',
     });
+
+    response.cookies.set('novacorp_token', '', {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      maxAge: 0,
+      path: '/',
+    });
+
+    return response;
   }
 }

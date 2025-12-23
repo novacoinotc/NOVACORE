@@ -36,28 +36,16 @@ function getAllowedOrigins(): string[] {
 }
 
 // Check if the origin is allowed
+// SECURITY: Only exact matches allowed - no wildcard patterns
+// Wildcard subdomains with credentials are a security risk in banking apps
 function isOriginAllowed(origin: string | null): boolean {
   if (!origin) return false;
 
   const allowedOrigins = getAllowedOrigins();
 
-  // Check for exact match
-  if (allowedOrigins.includes(origin)) {
-    return true;
-  }
-
-  // Check for pattern match (e.g., *.novacore.mx)
-  for (const allowed of allowedOrigins) {
-    if (allowed.startsWith('*.')) {
-      const domain = allowed.slice(2);
-      const originUrl = new URL(origin);
-      if (originUrl.hostname.endsWith(domain) || originUrl.hostname === domain.slice(1)) {
-        return true;
-      }
-    }
-  }
-
-  return false;
+  // SECURITY: Only exact match - wildcards removed for banking security
+  // If a subdomain is compromised, it could make authenticated requests
+  return allowedOrigins.includes(origin);
 }
 
 export function middleware(request: NextRequest) {

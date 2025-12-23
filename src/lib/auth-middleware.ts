@@ -27,22 +27,13 @@ export interface AuthResult {
 
 /**
  * Extract token from request
- * Checks Authorization header (Bearer token) and cookies
+ * SECURITY: Only accepts httpOnly cookie - no header-based token
+ * This prevents XSS attacks from stealing session tokens
  */
 function extractToken(request: NextRequest): string | null {
-  // Check Authorization header first (Bearer token)
-  const authHeader = request.headers.get('authorization');
-  if (authHeader?.startsWith('Bearer ')) {
-    return authHeader.substring(7);
-  }
-
-  // Check x-auth-token header (legacy support)
-  const tokenHeader = request.headers.get('x-auth-token');
-  if (tokenHeader) {
-    return tokenHeader;
-  }
-
-  // Check cookies
+  // SECURITY FIX: Only accept token from httpOnly cookie
+  // Headers (Authorization, x-auth-token) are disabled to prevent XSS token theft
+  // The token is set by the server via Set-Cookie with httpOnly flag
   const tokenCookie = request.cookies.get('novacorp_token');
   if (tokenCookie?.value) {
     return tokenCookie.value;

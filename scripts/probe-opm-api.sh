@@ -8,11 +8,11 @@
 
 # Cargar variables de entorno
 if [ -f .env ]; then
-    export $(cat .env | grep -E "^(OPM_API_KEY|NEXT_PUBLIC_OPM_API_URL)" | xargs)
+    export $(cat .env | grep -E "^(OPM_API_KEY|OPM_API_URL)" | xargs)
 fi
 
 # Configuración
-API_BASE="${NEXT_PUBLIC_OPM_API_URL:-https://api.opm.mx}"
+API_BASE="${OPM_API_URL:-https://api.opm.mx}"
 API_KEY="${OPM_API_KEY}"
 
 if [ -z "$API_KEY" ]; then

@@ -10,7 +10,7 @@
 
 import 'dotenv/config';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_OPM_API_URL || 'https://api.opm.mx';
+const API_BASE_URL = process.env.OPM_API_URL || 'https://api.opm.mx';
 const API_KEY = process.env.OPM_API_KEY || '';
 
 interface ProbeResult {

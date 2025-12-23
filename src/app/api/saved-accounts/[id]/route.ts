@@ -44,20 +44,15 @@ export async function GET(
     const currentUser = authResult.user;
 
     const { id } = await params;
-    const dbSavedAccount = await getSavedAccountById(id);
+    // SECURITY FIX: Pass userId to enforce ownership at database layer
+    const dbSavedAccount = await getSavedAccountById(id, currentUser.id);
 
     if (!dbSavedAccount) {
+      // Returns 404 whether account doesn't exist or belongs to another user
+      // This prevents enumeration attacks
       return NextResponse.json(
         { error: 'Cuenta guardada no encontrada' },
         { status: 404 }
-      );
-    }
-
-    // Users can only see their own saved accounts
-    if (dbSavedAccount.user_id !== currentUser.id) {
-      return NextResponse.json(
-        { error: 'No tienes permiso para ver esta cuenta guardada' },
-        { status: 403 }
       );
     }
 
@@ -90,20 +85,13 @@ export async function PUT(
     const currentUser = authResult.user;
 
     const { id } = await params;
-    const existingAccount = await getSavedAccountById(id);
+    // SECURITY FIX: Pass userId to enforce ownership at database layer
+    const existingAccount = await getSavedAccountById(id, currentUser.id);
 
     if (!existingAccount) {
       return NextResponse.json(
         { error: 'Cuenta guardada no encontrada' },
         { status: 404 }
-      );
-    }
-
-    // Users can only update their own saved accounts
-    if (existingAccount.user_id !== currentUser.id) {
-      return NextResponse.json(
-        { error: 'No tienes permiso para actualizar esta cuenta guardada' },
-        { status: 403 }
       );
     }
 
@@ -130,7 +118,8 @@ export async function PUT(
       }
     }
 
-    const dbSavedAccount = await updateSavedAccount(id, {
+    // SECURITY FIX: Pass userId to enforce ownership at database layer
+    const dbSavedAccount = await updateSavedAccount(id, currentUser.id, {
       alias,
       clabe,
       bankCode,
@@ -178,24 +167,15 @@ export async function DELETE(
     const currentUser = authResult.user;
 
     const { id } = await params;
-    const existingAccount = await getSavedAccountById(id);
+    // SECURITY FIX: Pass userId to enforce ownership at database layer
+    const deleted = await deleteSavedAccount(id, currentUser.id);
 
-    if (!existingAccount) {
+    if (!deleted) {
       return NextResponse.json(
         { error: 'Cuenta guardada no encontrada' },
         { status: 404 }
       );
     }
-
-    // Users can only delete their own saved accounts
-    if (existingAccount.user_id !== currentUser.id) {
-      return NextResponse.json(
-        { error: 'No tienes permiso para eliminar esta cuenta guardada' },
-        { status: 403 }
-      );
-    }
-
-    await deleteSavedAccount(id);
 
     return NextResponse.json({ success: true, message: 'Cuenta guardada eliminada correctamente' });
   } catch (error) {

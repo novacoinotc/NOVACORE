@@ -1,19 +1,59 @@
 import { Pool, QueryResult } from 'pg';
 import crypto from 'crypto';
+import fs from 'fs';
+import path from 'path';
 import { signTransaction, isSigningConfigured } from './transaction-signing';
 
+// SECURITY: Load AWS RDS CA certificate for proper TLS verification
+// Download from: https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem
+// Place in project root or set RDS_CA_BUNDLE environment variable
+function getRdsCaCert(): string | undefined {
+  // Check environment variable first
+  if (process.env.RDS_CA_BUNDLE) {
+    return process.env.RDS_CA_BUNDLE;
+  }
+
+  // Check for CA bundle file in project root
+  const caBundlePaths = [
+    path.join(process.cwd(), 'rds-ca-bundle.pem'),
+    path.join(process.cwd(), 'global-bundle.pem'),
+    '/etc/ssl/certs/rds-ca-bundle.pem',
+  ];
+
+  for (const caPath of caBundlePaths) {
+    try {
+      if (fs.existsSync(caPath)) {
+        return fs.readFileSync(caPath, 'utf8');
+      }
+    } catch {
+      // Continue to next path
+    }
+  }
+
+  return undefined;
+}
+
 // Create PostgreSQL connection pool for AWS RDS
-// SECURITY: SSL is REQUIRED for database connections
-// Note: AWS RDS uses Amazon's internal CA which requires special handling
+// SECURITY: SSL is REQUIRED for database connections with proper certificate verification
+const rdsCaCert = getRdsCaCert();
+
+// SECURITY WARNING: Log if CA certificate is not configured in production
+if (!rdsCaCert && process.env.NODE_ENV === 'production') {
+  console.warn('⚠️  SECURITY WARNING: RDS CA certificate not configured');
+  console.warn('   Download from: https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem');
+  console.warn('   Place as rds-ca-bundle.pem in project root or set RDS_CA_BUNDLE env var');
+}
+
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: {
-    // AWS RDS uses Amazon's internal CA certificates
-    // rejectUnauthorized: false is acceptable here because:
-    // 1. The connection is still encrypted (TLS)
-    // 2. AWS RDS is within Amazon's secure network
-    // 3. The DATABASE_URL already specifies sslmode=require
-    rejectUnauthorized: false,
+  ssl: rdsCaCert ? {
+    // SECURITY: Proper certificate verification with AWS RDS CA
+    rejectUnauthorized: true,
+    ca: rdsCaCert,
+  } : {
+    // Fallback for development/initial setup - still encrypted but no CA verification
+    // SECURITY: This should NOT be used in production
+    rejectUnauthorized: process.env.NODE_ENV === 'production' ? true : false,
   },
   max: 20, // Maximum number of clients in the pool
   idleTimeoutMillis: 30000,
@@ -1307,15 +1347,24 @@ export async function confirmPendingTransaction(
   return result[0] as DbTransaction | null;
 }
 
+// SECURITY FIX: Require mandatory clabeAccountIds to prevent data leakage
+// This function now REQUIRES a list of CLABE IDs that the user has access to
+// An empty array means no access (returns empty results), not "access to all"
 export async function listTransactions(params: {
+  clabeAccountIds: string[]; // MANDATORY: List of CLABE IDs user has access to
   type?: 'incoming' | 'outgoing';
   status?: string;
-  clabeAccountId?: string;
+  clabeAccountId?: string; // Optional: filter to specific CLABE within allowed list
   from?: Date;
   to?: Date;
   page?: number;
   itemsPerPage?: number;
 }): Promise<{ transactions: DbTransaction[]; total: number }> {
+  // SECURITY: If no CLABE IDs provided, return empty results (no access)
+  if (!params.clabeAccountIds || params.clabeAccountIds.length === 0) {
+    return { transactions: [], total: 0 };
+  }
+
   const page = params.page || 1;
   const itemsPerPage = params.itemsPerPage || 50;
   const offset = (page - 1) * itemsPerPage;
@@ -1326,13 +1375,19 @@ export async function listTransactions(params: {
 
   const type = params.type && validTypes.includes(params.type) ? params.type : null;
   const status = params.status && validStatuses.includes(params.status) ? params.status : null;
-  const clabeAccountId = params.clabeAccountId || null;
 
-  // Use parameterized query with conditional filtering
+  // If specific CLABE requested, verify it's in allowed list
+  let clabeAccountId: string | null = null;
+  if (params.clabeAccountId && params.clabeAccountIds.includes(params.clabeAccountId)) {
+    clabeAccountId = params.clabeAccountId;
+  }
+
+  // Use parameterized query with MANDATORY CLABE filtering
   const countResult = await sql`
     SELECT COUNT(*) as count FROM transactions
     WHERE
-      (${type}::text IS NULL OR type = ${type})
+      clabe_account_id = ANY(${params.clabeAccountIds})
+      AND (${type}::text IS NULL OR type = ${type})
       AND (${status}::text IS NULL OR status = ${status})
       AND (${clabeAccountId}::text IS NULL OR clabe_account_id = ${clabeAccountId})
   `;
@@ -1341,7 +1396,8 @@ export async function listTransactions(params: {
   const result = await sql`
     SELECT * FROM transactions
     WHERE
-      (${type}::text IS NULL OR type = ${type})
+      clabe_account_id = ANY(${params.clabeAccountIds})
+      AND (${type}::text IS NULL OR type = ${type})
       AND (${status}::text IS NULL OR status = ${status})
       AND (${clabeAccountId}::text IS NULL OR clabe_account_id = ${clabeAccountId})
     ORDER BY created_at DESC
@@ -1647,9 +1703,11 @@ export async function createSavedAccount(savedAccount: {
   return result[0] as DbSavedAccount;
 }
 
-export async function getSavedAccountById(id: string): Promise<DbSavedAccount | null> {
+// SECURITY FIX: Require userId to prevent IDOR vulnerabilities
+// Always filter by user_id at the database layer for defense-in-depth
+export async function getSavedAccountById(id: string, userId: string): Promise<DbSavedAccount | null> {
   const result = await sql`
-    SELECT * FROM saved_accounts WHERE id = ${id}
+    SELECT * FROM saved_accounts WHERE id = ${id} AND user_id = ${userId}
   `;
   return result[0] as DbSavedAccount | null;
 }
@@ -1661,8 +1719,10 @@ export async function getSavedAccountsByUserId(userId: string): Promise<DbSavedA
   return result as DbSavedAccount[];
 }
 
+// SECURITY FIX: Require userId to prevent IDOR vulnerabilities
 export async function updateSavedAccount(
   id: string,
+  userId: string,
   updates: Partial<{
     alias: string;
     clabe: string;
@@ -1687,17 +1747,19 @@ export async function updateSavedAccount(
         notes = COALESCE(${updates.notes}, notes),
         is_active = COALESCE(${updates.isActive}, is_active),
         updated_at = CURRENT_TIMESTAMP
-    WHERE id = ${id}
+    WHERE id = ${id} AND user_id = ${userId}
     RETURNING *
   `;
   return result[0] as DbSavedAccount | null;
 }
 
-export async function deleteSavedAccount(id: string): Promise<boolean> {
-  await sql`
-    DELETE FROM saved_accounts WHERE id = ${id}
+// SECURITY FIX: Require userId to prevent IDOR vulnerabilities
+export async function deleteSavedAccount(id: string, userId: string): Promise<boolean> {
+  const result = await sql`
+    DELETE FROM saved_accounts WHERE id = ${id} AND user_id = ${userId}
+    RETURNING id
   `;
-  return true;
+  return result.length > 0;
 }
 
 export async function getSavedAccountByUserAndClabe(userId: string, clabe: string): Promise<DbSavedAccount | null> {
@@ -2438,9 +2500,191 @@ export async function initializeSecurityTables(): Promise<void> {
     await sql`CREATE INDEX IF NOT EXISTS idx_processed_webhooks_lookup ON processed_webhooks (webhook_type, tracking_key)`;
     await sql`CREATE INDEX IF NOT EXISTS idx_state_log_transaction ON transaction_state_log (transaction_id, changed_at DESC)`;
 
+    // Create password reset tokens table
+    await sql`
+      CREATE TABLE IF NOT EXISTS password_reset_tokens (
+        id TEXT PRIMARY KEY,
+        email TEXT NOT NULL,
+        token_hash TEXT NOT NULL,
+        expires_at TIMESTAMPTZ NOT NULL,
+        used_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+        ip_address TEXT,
+        UNIQUE (token_hash)
+      )
+    `;
+    await sql`CREATE INDEX IF NOT EXISTS idx_reset_tokens_email ON password_reset_tokens (email, expires_at DESC)`;
+    await sql`CREATE INDEX IF NOT EXISTS idx_reset_tokens_expires ON password_reset_tokens (expires_at)`;
+
     console.log('Security tables initialized successfully');
   } catch (error) {
     console.error('Error initializing security tables:', error);
     // Don't throw - security tables are optional enhancements
   }
+}
+
+// ==================== PASSWORD RESET TOKENS (DB-based, not in-memory) ====================
+
+/**
+ * Create a password reset token in the database
+ * SECURITY: Token is hashed before storage to prevent DB compromise exposure
+ */
+export async function createPasswordResetToken(email: string, token: string, ipAddress?: string): Promise<void> {
+  const id = `prt_${crypto.randomUUID()}`;
+  const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+  const expiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
+
+  // Delete any existing tokens for this email first
+  await sql`DELETE FROM password_reset_tokens WHERE email = ${email}`;
+
+  await sql`
+    INSERT INTO password_reset_tokens (id, email, token_hash, expires_at, ip_address)
+    VALUES (${id}, ${email}, ${tokenHash}, ${expiresAt}, ${ipAddress || null})
+  `;
+}
+
+/**
+ * Validate and consume a password reset token
+ * Returns email if valid, null otherwise
+ * SECURITY: Token is marked as used atomically to prevent reuse
+ */
+export async function validateAndConsumeResetToken(token: string): Promise<string | null> {
+  const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+
+  // Atomically find and mark as used
+  const result = await sql`
+    UPDATE password_reset_tokens
+    SET used_at = CURRENT_TIMESTAMP
+    WHERE token_hash = ${tokenHash}
+      AND expires_at > CURRENT_TIMESTAMP
+      AND used_at IS NULL
+    RETURNING email
+  `;
+
+  if (result.length === 0) {
+    return null;
+  }
+
+  return result[0].email;
+}
+
+/**
+ * Clean up expired reset tokens (call periodically)
+ */
+export async function cleanupExpiredResetTokens(): Promise<number> {
+  const result = await sql`
+    DELETE FROM password_reset_tokens
+    WHERE expires_at < CURRENT_TIMESTAMP OR used_at IS NOT NULL
+    RETURNING id
+  `;
+  return result.length;
+}
+
+// ==================== POSTGRESQL ADVISORY LOCKS (for distributed locking) ====================
+
+/**
+ * Acquire a PostgreSQL advisory lock (session-level)
+ * Use for critical sections that must not run concurrently across instances
+ *
+ * @param lockId - Unique lock identifier (will be hashed to int8)
+ * @param timeoutMs - Timeout in milliseconds (default 5000)
+ * @returns true if lock acquired, false if timeout
+ */
+export async function acquireAdvisoryLock(lockId: string, timeoutMs: number = 5000): Promise<boolean> {
+  // Convert string to a consistent int8 for PostgreSQL
+  const lockHash = parseInt(crypto.createHash('md5').update(lockId).digest('hex').substring(0, 15), 16);
+
+  try {
+    // Set statement timeout
+    await pool.query(`SET LOCAL statement_timeout = '${timeoutMs}ms'`);
+
+    // Try to acquire the lock (blocks until acquired or timeout)
+    const result = await pool.query(
+      'SELECT pg_advisory_lock($1) as acquired',
+      [lockHash]
+    );
+
+    return true; // If we get here, lock was acquired
+  } catch (error: any) {
+    if (error.code === '57014') { // query_canceled due to timeout
+      return false;
+    }
+    throw error;
+  }
+}
+
+/**
+ * Try to acquire advisory lock without blocking
+ * Returns immediately with true/false
+ */
+export async function tryAcquireAdvisoryLock(lockId: string): Promise<boolean> {
+  const lockHash = parseInt(crypto.createHash('md5').update(lockId).digest('hex').substring(0, 15), 16);
+
+  const result = await pool.query(
+    'SELECT pg_try_advisory_lock($1) as acquired',
+    [lockHash]
+  );
+
+  return result.rows[0].acquired === true;
+}
+
+/**
+ * Release an advisory lock
+ */
+export async function releaseAdvisoryLock(lockId: string): Promise<void> {
+  const lockHash = parseInt(crypto.createHash('md5').update(lockId).digest('hex').substring(0, 15), 16);
+
+  await pool.query(
+    'SELECT pg_advisory_unlock($1)',
+    [lockHash]
+  );
+}
+
+// ==================== KILL SWITCHES (for emergency response) ====================
+
+/**
+ * Check if a feature kill switch is enabled
+ * Returns true if the feature is DISABLED (killed)
+ */
+export function isKillSwitchEnabled(switchName: string): boolean {
+  const envKey = `DISABLE_${switchName.toUpperCase().replace(/-/g, '_')}`;
+  return process.env[envKey] === 'true';
+}
+
+/**
+ * Check if outgoing transfers are disabled
+ * Use this before processing any SPEI out transfers
+ */
+export function isOutgoingTransfersDisabled(): boolean {
+  return isKillSwitchEnabled('OUTGOING_TRANSFERS');
+}
+
+/**
+ * Check if webhook processing is disabled
+ * When disabled, webhooks are logged but not processed
+ */
+export function isWebhookProcessingDisabled(): boolean {
+  return isKillSwitchEnabled('WEBHOOK_PROCESSING');
+}
+
+/**
+ * Check if new user registration is disabled
+ */
+export function isRegistrationDisabled(): boolean {
+  return isKillSwitchEnabled('REGISTRATION');
+}
+
+/**
+ * Get all active kill switches (for monitoring/debugging)
+ */
+export function getActiveKillSwitches(): string[] {
+  const switches = [
+    'OUTGOING_TRANSFERS',
+    'WEBHOOK_PROCESSING',
+    'REGISTRATION',
+    'PASSWORD_RESET',
+    'NEW_SESSIONS',
+  ];
+
+  return switches.filter(sw => isKillSwitchEnabled(sw));
 }

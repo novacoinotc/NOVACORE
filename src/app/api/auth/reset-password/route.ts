@@ -1,14 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
-import { getUserByEmail, updateUser, disableTotp, createAuditLogEntry } from '@/lib/db';
+import {
+  getUserByEmail,
+  updateUser,
+  disableTotp,
+  createAuditLogEntry,
+  createPasswordResetToken,
+  validateAndConsumeResetToken,
+  isKillSwitchEnabled,
+} from '@/lib/db';
 import { getClientIP, getUserAgent } from '@/lib/security';
 
 // SECURITY: Bcrypt rounds for password hashing (12+ recommended for production)
 const BCRYPT_ROUNDS = 12;
-
-// Simple in-memory store for reset tokens (in production, use database or Redis)
-const resetTokens = new Map<string, { email: string; expiresAt: number }>();
 
 /**
  * Generate a cryptographically secure reset token
@@ -31,6 +36,14 @@ function generateResetCode(): string {
 export async function POST(request: NextRequest) {
   const clientIP = getClientIP(request);
   const userAgent = getUserAgent(request);
+
+  // SECURITY: Check kill switch
+  if (isKillSwitchEnabled('PASSWORD_RESET')) {
+    return NextResponse.json(
+      { error: 'El restablecimiento de contraseña está temporalmente deshabilitado' },
+      { status: 503 }
+    );
+  }
 
   try {
     const { email, action, resetCode, newPassword } = await request.json();
@@ -57,10 +70,10 @@ export async function POST(request: NextRequest) {
 
       // Generate reset code
       const code = generateResetCode();
-      const expiresAt = Date.now() + 15 * 60 * 1000; // 15 minutes
 
-      // Store token
-      resetTokens.set(code, { email, expiresAt });
+      // SECURITY FIX: Store token in database, not in memory
+      // Token is hashed before storage for security
+      await createPasswordResetToken(email, code, clientIP);
 
       // Log the reset request
       await createAuditLogEntry({
@@ -115,25 +128,18 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      // Verify reset code
-      const tokenData = resetTokens.get(resetCode);
-      if (!tokenData) {
+      // SECURITY FIX: Validate and consume token atomically from database
+      // This prevents race conditions and ensures token can only be used once
+      const tokenEmail = await validateAndConsumeResetToken(resetCode);
+      if (!tokenEmail) {
         return NextResponse.json(
           { error: 'Código inválido o expirado' },
           { status: 400 }
         );
       }
 
-      if (tokenData.expiresAt < Date.now()) {
-        resetTokens.delete(resetCode);
-        return NextResponse.json(
-          { error: 'El código ha expirado. Solicita uno nuevo.' },
-          { status: 400 }
-        );
-      }
-
       // Get user
-      const user = await getUserByEmail(tokenData.email);
+      const user = await getUserByEmail(tokenEmail);
       if (!user) {
         return NextResponse.json(
           { error: 'Usuario no encontrado' },
@@ -154,15 +160,12 @@ export async function POST(request: NextRequest) {
         // Ignore if 2FA was not enabled
       }
 
-      // Remove used token
-      resetTokens.delete(resetCode);
-
       // Log the password reset
       await createAuditLogEntry({
         id: `audit_${crypto.randomUUID()}`,
         action: 'PASSWORD_RESET_COMPLETED',
         userId: user.id,
-        userEmail: tokenData.email,
+        userEmail: tokenEmail,
         ipAddress: clientIP,
         userAgent,
         details: { twoFAReset: true },

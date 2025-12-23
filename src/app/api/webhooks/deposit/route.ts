@@ -8,6 +8,7 @@ import {
   getProcessedWebhook,
   recordProcessedWebhook,
   hashWebhookPayload,
+  isWebhookProcessingDisabled,
 } from '@/lib/db';
 import { processCommission, canReceiveSpei } from '@/lib/commissions';
 import { verifySignature } from '@/lib/crypto';
@@ -50,6 +51,21 @@ export async function POST(request: NextRequest) {
     // Get body
     body = await request.json();
 
+    // SECURITY: Kill switch for webhook processing
+    // When enabled, webhooks are logged but NOT processed (ingest-only mode)
+    if (isWebhookProcessingDisabled()) {
+      console.warn('=== WEBHOOK PROCESSING DISABLED (KILL SWITCH) ===');
+      console.warn('Webhook received but NOT processed. Payload logged for later replay.');
+      console.warn('Payload (sanitized):', JSON.stringify(sanitizeWebhookDataForLog(body)));
+      console.warn('================================================');
+      return NextResponse.json({
+        received: true,
+        timestamp,
+        processed: false,
+        message: 'Webhook processing temporarily disabled',
+      });
+    }
+
     // Validate payload structure
     const payloadCheck = validateWebhookPayload(body, 'deposit');
     if (!payloadCheck.valid) {
@@ -69,28 +85,54 @@ export async function POST(request: NextRequest) {
     console.log('Payload (sanitized):', JSON.stringify(sanitizeWebhookDataForLog(body)));
     console.log('================================');
 
-    // Optional: Validate webhook secret if configured
+    // SECURITY FIX: Validate webhook secret if configured - MUST block on mismatch
     const webhookSecret = process.env.WEBHOOK_SECRET;
     const receivedSecret = request.headers.get('x-webhook-secret');
 
-    // SECURITY FIX: Use timing-safe comparison for webhook secret
-    if (webhookSecret && receivedSecret) {
+    if (webhookSecret) {
+      // If webhook secret is configured, validation is MANDATORY
+      if (!receivedSecret) {
+        console.error('=== WEBHOOK REJECTED: Missing secret header ===');
+        return NextResponse.json({
+          received: true,
+          timestamp,
+          processed: false,
+          returnCode: 99,
+          errorDescription: 'Missing webhook secret',
+        }, { status: 401 });
+      }
+
       try {
         const secretBuffer = Buffer.from(webhookSecret);
         const receivedBuffer = Buffer.from(receivedSecret);
         if (secretBuffer.length !== receivedBuffer.length ||
             !crypto.timingSafeEqual(secretBuffer, receivedBuffer)) {
-          console.warn('Webhook secret mismatch');
+          console.error('=== WEBHOOK REJECTED: Secret mismatch ===');
+          return NextResponse.json({
+            received: true,
+            timestamp,
+            processed: false,
+            returnCode: 99,
+            errorDescription: 'Invalid webhook secret',
+          }, { status: 401 });
         }
-      } catch {
-        console.warn('Webhook secret comparison failed');
+        console.log('Webhook secret validated successfully');
+      } catch (e) {
+        console.error('=== WEBHOOK REJECTED: Secret comparison failed ===', e);
+        return NextResponse.json({
+          received: true,
+          timestamp,
+          processed: false,
+          returnCode: 99,
+          errorDescription: 'Secret validation error',
+        }, { status: 401 });
       }
     }
 
     // RSA signature validation from OPM
-    // TEMPORARILY DISABLED: Awaiting OPM's public key for webhook validation
-    // The keys downloaded from OPM portal are OUR keys, not theirs
-    // Contact OPM to get their public key for validating incoming webhooks
+    // PERMANENTLY DISABLED: OPM does not provide their public key for webhook validation
+    // Security relies on: (1) IP whitelist (hardcoded OPM IPs), (2) Webhook secret header
+    // If OPM ever provides their public key, set SKIP_WEBHOOK_SIGNATURE_VALIDATION=false
     const skipSignatureValidation = process.env.SKIP_WEBHOOK_SIGNATURE_VALIDATION === 'true';
 
     if (!skipSignatureValidation) {
@@ -114,10 +156,12 @@ export async function POST(request: NextRequest) {
       }
       console.log('RSA signature validated successfully');
     } else {
-      console.warn('=== WEBHOOK SIGNATURE VALIDATION SKIPPED ===');
-      console.warn('SKIP_WEBHOOK_SIGNATURE_VALIDATION is enabled');
-      console.warn('This should only be used temporarily until OPM provides their public key');
-      console.warn('============================================');
+      // SECURITY NOTE: RSA validation is skipped because OPM doesn't provide their public key
+      // This is acceptable because we enforce strict IP whitelist (OPM IPs only)
+      // and validate webhook secret header as additional defense layers
+      if (process.env.NODE_ENV === 'production') {
+        console.log('RSA signature validation disabled (OPM limitation) - relying on IP whitelist');
+      }
     }
 
     // Try to extract deposit data from various possible payload structures

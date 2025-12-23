@@ -11,7 +11,9 @@ import {
 } from '@/types';
 import crypto from 'crypto';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_OPM_API_URL || 'https://apiuat.opm.mx';
+// SECURITY FIX: Use server-only env var (no NEXT_PUBLIC_ prefix)
+// This prevents exposing the API URL to client-side JavaScript
+const API_BASE_URL = process.env.OPM_API_URL || 'https://apiuat.opm.mx';
 const API_VERSION = '1.0';
 
 // ==================== RSA-SHA256 SIGNATURE ====================

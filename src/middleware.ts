@@ -1,4 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { randomBytes } from 'crypto';
+
+/**
+ * Generate a cryptographically secure nonce for CSP
+ * This nonce is unique per request and prevents inline script injection
+ */
+function generateNonce(): string {
+  return randomBytes(16).toString('base64');
+}
 
 /**
  * SECURITY: Dynamic CORS Middleware
@@ -82,16 +91,20 @@ export function middleware(request: NextRequest) {
     );
   }
 
-  // Content Security Policy - Environment-aware configuration
-  // SECURITY: Production uses stricter CSP without 'unsafe-eval'
-  // Note: Next.js requires 'unsafe-inline' for scripts due to hydration (nonce would require App Router changes)
+  // Content Security Policy - Nonce-based configuration for banking security
+  // SECURITY: Uses per-request nonce instead of 'unsafe-inline' for maximum XSS protection
   // worker-src 'self' blob: https://cdn.jsdelivr.net needed for Tesseract.js OCR
   const isProduction = process.env.NODE_ENV === 'production';
+
+  // Generate unique nonce for this request
+  const nonce = generateNonce();
+
+  // Pass nonce to Next.js via header (read by layout.tsx)
+  response.headers.set('x-nonce', nonce);
 
   // Base CSP directives (shared between environments)
   const baseCSP = [
     "default-src 'self'",
-    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
     "img-src 'self' data: https: blob:",
     "font-src 'self' data: https://fonts.gstatic.com",
     "connect-src 'self' https://api.opm.mx https://apiuat.opm.mx",
@@ -101,16 +114,23 @@ export function middleware(request: NextRequest) {
     "form-action 'self'",
   ];
 
-  // Script-src differs: production removes 'unsafe-eval' for security
-  // 'unsafe-eval' is only needed in development for Next.js hot reload
+  // Script-src with nonce + 'unsafe-inline' fallback
+  // SECURITY NOTES:
+  // - Modern browsers (CSP Level 2+) ignore 'unsafe-inline' when nonce is present
+  // - 'unsafe-inline' is fallback for older browsers and Next.js hydration scripts
+  // - 'strict-dynamic' allows scripts loaded by nonced scripts to execute
+  // - 'unsafe-eval' removed in production to block eval() attacks
   const scriptSrc = isProduction
-    ? "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net"  // No unsafe-eval in production
-    : "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net";  // Dev needs eval for HMR
+    ? `script-src 'self' 'nonce-${nonce}' 'strict-dynamic' 'unsafe-inline' https://cdn.jsdelivr.net`
+    : `script-src 'self' 'nonce-${nonce}' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net`;
+
+  // Style-src with nonce + 'unsafe-inline' for CSS-in-JS compatibility
+  const styleSrc = `style-src 'self' 'nonce-${nonce}' 'unsafe-inline' https://fonts.googleapis.com`;
 
   // Production-only: upgrade HTTP to HTTPS
   const upgradeInsecure = isProduction ? "upgrade-insecure-requests" : "";
 
-  const cspValue = [...baseCSP, scriptSrc, upgradeInsecure].filter(Boolean).join('; ') + ';';
+  const cspValue = [...baseCSP, scriptSrc, styleSrc, upgradeInsecure].filter(Boolean).join('; ') + ';';
 
   response.headers.set('Content-Security-Policy', cspValue);
 

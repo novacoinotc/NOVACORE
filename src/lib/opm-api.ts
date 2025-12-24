@@ -124,10 +124,26 @@ async function fetchApi<T>(
 
     clearTimeout(timeoutId);
 
-    const data = await response.json();
+    // Handle empty responses gracefully
+    const text = await response.text();
+
+    if (!text || text.trim() === '') {
+      if (!response.ok) {
+        throw new Error(`OPM API Error: ${response.status} - Empty response`);
+      }
+      // Empty successful response - return empty object/array based on context
+      return {} as ApiResponse<T>;
+    }
+
+    let data: ApiResponse<T>;
+    try {
+      data = JSON.parse(text);
+    } catch (parseError) {
+      throw new Error(`OPM API returned invalid JSON: ${text.substring(0, 100)}...`);
+    }
 
     if (!response.ok) {
-      throw new Error(data.error || `API Error: ${response.status}`);
+      throw new Error((data as any).error || `API Error: ${response.status}`);
     }
 
     return data;

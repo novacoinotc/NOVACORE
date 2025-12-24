@@ -84,23 +84,14 @@ export async function POST(request: NextRequest) {
     console.log('Payload (sanitized):', JSON.stringify(sanitizeWebhookDataForLog(body)));
     console.log('================================');
 
-    // SECURITY FIX: Validate webhook secret if configured - MUST block on mismatch
+    // SECURITY: Webhook secret is OPTIONAL - OPM does not provide it
+    // Primary security relies on IP whitelist (validated above in validateWebhookSource)
+    // If OPM sends a secret header in the future, we validate it; otherwise we allow
     const webhookSecret = process.env.WEBHOOK_SECRET;
     const receivedSecret = request.headers.get('x-webhook-secret');
 
-    if (webhookSecret) {
-      // If webhook secret is configured, validation is MANDATORY
-      if (!receivedSecret) {
-        console.error('=== WEBHOOK REJECTED: Missing secret header ===');
-        return NextResponse.json({
-          received: true,
-          timestamp,
-          processed: false,
-          returnCode: 99,
-          errorDescription: 'Missing webhook secret',
-        }, { status: 401 });
-      }
-
+    if (webhookSecret && receivedSecret) {
+      // Both configured and received - validate the secret
       try {
         const secretBuffer = Buffer.from(webhookSecret);
         const receivedBuffer = Buffer.from(receivedSecret);
@@ -126,21 +117,25 @@ export async function POST(request: NextRequest) {
           errorDescription: 'Secret validation error',
         }, { status: 401 });
       }
+    } else if (receivedSecret && !webhookSecret) {
+      // OPM sent a secret but we don't have one configured - log for awareness
+      console.log('Webhook secret received but not configured - ignoring');
     }
+    // If no secret received, that's OK - IP whitelist is our primary security
 
     // ============================================
-    // SECURITY MODEL (OPM does NOT provide RSA public key)
+    // SECURITY MODEL (OPM does NOT provide RSA public key or webhook secret)
     // ============================================
-    // Since OPM does not provide their public key for RSA signature validation,
+    // Since OPM does not provide signature validation or webhook secrets,
     // our webhook security relies on these layers:
     //
-    // 1. IP WHITELIST - Only hardcoded OPM IPs can reach this endpoint (validated above)
-    // 2. WEBHOOK SECRET - x-webhook-secret header must match (validated above)
+    // 1. IP WHITELIST - Only hardcoded OPM IPs can reach this endpoint (PRIMARY - validated above)
+    // 2. WEBHOOK SECRET - Optional, validated only if OPM sends it (currently they don't)
     // 3. IDEMPOTENCY - Duplicate webhooks are detected and rejected (validated below)
     // 4. PAYLOAD VALIDATION - Required fields and data types are checked
     //
-    // This is the standard model when the provider doesn't offer signature verification.
-    // If OPM provides their public key in the future, implement RSA validation here.
+    // The IP whitelist is our PRIMARY security measure.
+    // If OPM provides secrets or RSA keys in the future, we'll validate them.
     // ============================================
 
     // Try to extract deposit data from various possible payload structures

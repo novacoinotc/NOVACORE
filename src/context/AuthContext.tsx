@@ -295,6 +295,20 @@ export function getAuthHeaders(): HeadersInit {
   // Authentication is handled by httpOnly cookie sent automatically
   // This prevents XSS attacks from stealing session tokens
 
+  // CSRF Protection: Read CSRF token from cookie and send in header
+  // This is the double-submit cookie pattern
+  if (typeof document !== 'undefined') {
+    const csrfCookie = document.cookie
+      .split('; ')
+      .find(row => row.startsWith('novacorp_csrf='));
+    if (csrfCookie) {
+      const csrfToken = csrfCookie.split('=')[1];
+      if (csrfToken) {
+        (headers as Record<string, string>)['X-CSRF-Token'] = csrfToken;
+      }
+    }
+  }
+
   return headers;
 }
 

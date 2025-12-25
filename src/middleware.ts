@@ -1,6 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 /**
+ * Generate a unique Request ID for tracing
+ * This ID follows requests through the entire system for debugging and security auditing
+ */
+function generateRequestId(): string {
+  const timestamp = Date.now().toString(36);
+  const randomPart = Math.random().toString(36).substring(2, 10);
+  return `req_${timestamp}_${randomPart}`;
+}
+
+/**
  * Generate a cryptographically secure nonce for CSP
  * Uses Web Crypto API (available in Edge Runtime) instead of Node.js crypto
  * This nonce is unique per request and prevents inline script injection
@@ -65,8 +75,19 @@ export function middleware(request: NextRequest) {
   const origin = request.headers.get('origin');
   const method = request.method;
 
+  // Generate unique Request ID for tracing through entire request lifecycle
+  // This ID is used for: logging, debugging, security auditing, and correlating events
+  const requestId = generateRequestId();
+
   // Create response for the request
   const response = NextResponse.next();
+
+  // Add Request ID to response headers for client-side correlation
+  // X-Request-ID: Standard header for request tracing
+  response.headers.set('X-Request-ID', requestId);
+
+  // Also pass to API routes via custom header (accessible in route handlers)
+  response.headers.set('x-request-id', requestId);
 
   // SECURITY FIX: Add essential security headers to ALL responses
   // These headers protect against common web vulnerabilities
